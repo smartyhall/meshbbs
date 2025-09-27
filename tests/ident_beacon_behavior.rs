@@ -45,6 +45,7 @@ async fn test_config_with_beacon(enabled: bool, frequency: &str) -> Config {
             enabled,
             frequency: frequency.to_string(),
         },
+        weather: Default::default(),
     }
 }
 

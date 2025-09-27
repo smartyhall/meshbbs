@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.15-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.16-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
   [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
   [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -63,7 +63,7 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory and h
 - **🧷 Persistent Topic Locks**: Moderators can LOCK/UNLOCK topics; state survives restarts
 - **📊 Deletion Audit Log**: `DELLOG` command for accountability tracking
 - **📈 Network Statistics**: Usage and performance monitoring
-- **🌤️ Proactive Weather Updates**: Automatic 5-minute weather refresh
+- **🌤️ Weather Integration**: Real-time weather via OpenWeatherMap API with intelligent caching
 
 ## 🚀 Quick Start
 
@@ -109,7 +109,16 @@ nano config.toml  # or vim, code, etc.
    name = "Your BBS Name"
    sysop = "sysop"  # This becomes your admin username
    location = "Your Location"
-   zipcode = "12345"    # For weather features
+   ```
+
+4. **🌤️ Weather Setup** - Configure OpenWeatherMap integration:
+   ```toml
+   [weather]
+   api_key = "your_openweathermap_api_key"  # Get free at openweathermap.org
+   default_location = "Portland"            # City name, zipcode, or city ID
+   location_type = "city"                   # "city", "zipcode", or "city_id"
+   country_code = "US"                      # Optional country code
+   enabled = true                           # Enable weather functionality
    ```
 
 3. **🔐 Set Sysop Password** - Secure your admin account:
@@ -151,7 +160,6 @@ Note: `meshbbs init` also seeds default forum topics into `data/topics.json` (ru
 name = "meshbbs Station"
 sysop = "sysop"
 location = "Your Location" 
-zipcode = "97210"
 description = "A bulletin board system for mesh networks"
 max_users = 100             # Hard cap on concurrent logged-in sessions
 session_timeout = 10        # Minutes of inactivity before auto-logout
@@ -172,6 +180,14 @@ help_broadcast_delay_ms = 3500          # Delay HELP public broadcast after DM (
 data_dir = "./data"
 max_message_size = 230        # Protocol hard cap
 
+[weather]
+api_key = "your_openweathermap_api_key"   # Get free at openweathermap.org
+default_location = "Portland"             # City name, zipcode, or city ID  
+location_type = "city"                    # "city", "zipcode", or "city_id"
+country_code = "US"                       # Optional country code
+cache_ttl_minutes = 10                    # Cache weather data (minutes)
+timeout_seconds = 5                       # API request timeout
+enabled = true                            # Enable weather functionality
 
 [logging]
 level = "info"
@@ -185,6 +201,7 @@ file = "meshbbs.log"
 |---------|---------|--------------|
 | `[bbs]` | Basic BBS settings | `name`, `sysop`, `max_users`, `session_timeout` |
 | `[meshtastic]` | Device connection | `port`, `baud_rate`, `channel` |
+| `[weather]` | OpenWeatherMap integration | `api_key`, `default_location`, `enabled` |
 ### Fairness / Writer Tuning Fields
 
 These pacing controls reduce airtime contention and avoid triggering device / network rate limits:
@@ -390,7 +407,7 @@ Control optional functionality with Cargo features:
 |---------|---------|-------------|
 | `serial` | ✅ | Serial port communication |
 | `meshtastic-proto` | ✅ | Protobuf parsing of Meshtastic packets |
-| `weather` | ✅ | Weather lookup via wttr.in |
+| `weather` | ✅ | Real-time weather via OpenWeatherMap API |
 | `api-reexports` | ✅ | Re-export internal types |
 
 ```bash

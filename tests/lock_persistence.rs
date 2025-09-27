@@ -9,8 +9,9 @@ async fn base_config(dir: &str) -> Config {
         storage: StorageConfig { data_dir: dir.to_string(), max_message_size: 1024 },
         message_topics: HashMap::new(),
         logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
-        security: Default::default(),
+        security: None,
         ident_beacon: IdentBeaconConfig::default(),
+        weather: Default::default(),
     }
 }
 

@@ -57,3 +57,20 @@ enabled = true
 # Frequency of ident beacon broadcasts
 # Options: "15min", "30min", "1hour", "2hours", "4hours"
 frequency = "15min"
+
+[weather]
+# OpenWeatherMap API key - Get one free from https://openweathermap.org/api
+# Required for weather functionality
+api_key = "your_api_key_here"
+# Location for weather reports - can be city name, zipcode, or city ID
+# Examples: "Los Angeles", "90210", "5368361"
+location = "Los Angeles"
+# Country code for disambiguation (optional)
+# Use ISO 3166 country codes: "US", "CA", "GB", etc.
+country_code = "US"
+# Units: "metric" (Celsius), "imperial" (Fahrenheit), or "kelvin"
+units = "imperial"
+# Weather cache TTL in seconds (default: 300 = 5 minutes)
+cache_ttl = 300
+# Request timeout in seconds (default: 10)
+timeout = 10

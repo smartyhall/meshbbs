@@ -15,6 +15,8 @@ use crate::validation::validate_sysop_name;
 use super::session::Session;
 use super::public::{PublicState, PublicCommandParser, PublicCommand};
 use super::roles::{LEVEL_MODERATOR, LEVEL_USER, role_name};
+#[cfg(feature = "weather")]
+use super::weather::WeatherService;
 
 macro_rules! sec_log {
     ($($arg:tt)*) => { log::warn!(target: "security", $($arg)*); };
@@ -105,7 +107,7 @@ pub struct BbsServer {
     public_state: PublicState,
     public_parser: PublicCommandParser,
     #[cfg(feature = "weather")]
-    weather_cache: Option<(Instant, String)>, // (fetched_at, value)
+    weather_service: WeatherService,
     #[cfg(feature = "weather")]
     weather_last_poll: Instant, // track when we last attempted proactive weather refresh
     #[cfg(feature = "meshtastic-proto")]
@@ -278,7 +280,7 @@ impl BbsServer {
         };
 
         let mut server = Self {
-            config,
+            config: config.clone(),
             storage,
             device: None,
             sessions: HashMap::new(),
@@ -299,7 +301,7 @@ impl BbsServer {
             ),
             public_parser: PublicCommandParser::new(),
             #[cfg(feature = "weather")]
-            weather_cache: None,
+            weather_service: WeatherService::new(config.weather.clone()),
             #[cfg(feature = "weather")]
             weather_last_poll: Instant::now() - Duration::from_secs(301),
             #[cfg(feature = "meshtastic-proto")]
@@ -1745,8 +1747,7 @@ impl BbsServer {
                         }
                         if !broadcasted {
                             // Fallback: send as direct message so user gets feedback instead of silence
-                            let reply = format!("Weather: {}", weather);
-                            if let Err(e) = self.send_message(&node_key, &reply).await { warn!("Weather DM fallback failed: {e:?}"); }
+                            if let Err(e) = self.send_message(&node_key, &weather).await { warn!("Weather DM fallback failed: {e:?}"); }
                         }
                     }
                 }
@@ -2047,85 +2048,10 @@ impl BbsServer {
     #[allow(unused)]
     #[cfg(feature = "weather")]
     async fn fetch_weather(&mut self) -> Option<String> {
-        use tokio::time::timeout;
-        use std::time::{SystemTime, UNIX_EPOCH};
-        const TTL: Duration = Duration::from_secs(5 * 60); // 5 minutes
-        const MAX_STALE_AGE: Duration = Duration::from_secs(60 * 60); // 1 hour max age for stale cache
-        
-        // If we have a fresh cached value, return it immediately
-        if let Some((ts, val)) = &self.weather_cache {
-            let age = ts.elapsed();
-            debug!("Weather cache check: age={:.1}min, TTL={:.1}min, MAX_STALE={:.1}min", 
-                   age.as_secs_f64() / 60.0, TTL.as_secs_f64() / 60.0, MAX_STALE_AGE.as_secs_f64() / 60.0);
-            
-            // Failsafe: if cache is suspiciously old (>2 hours), force clear it
-            if age > Duration::from_secs(2 * 60 * 60) {
-                warn!("Weather cache extremely stale ({:.1} hours), forcing clear", age.as_secs_f64() / 3600.0);
-                self.weather_cache = None;
-            } else if age < TTL { 
-                debug!("Returning fresh cached weather (age: {:.1} min)", age.as_secs_f64() / 60.0);
-                return Some(val.clone()); 
-            }
-        }
-        
-        // Attempt refresh
-        let location = self.config.bbs.location.trim();
-        let encoded_location = location.replace(" ", "%20");
-    let url = format!("https://wttr.in/{}?format=%l:+%C+%t", encoded_location);
-    debug!("Fetching weather from URL: {}", url);
-        let fut = async {
-            let client = reqwest::Client::new();
-            match client.get(&url).send().await {
-                Ok(resp) => {
-                    if !resp.status().is_success() { return None; }
-                    match resp.text().await { 
-                        Ok(txt) => {
-                            let sanitized = Self::sanitize_weather(&txt);
-                            // Check if the response indicates an error condition
-                            if sanitized.to_lowercase().contains("unknown location") || 
-                               sanitized.to_lowercase().contains("error") ||
-                               sanitized.starts_with("ERROR") ||
-                               sanitized.len() < 5 {  // Very short responses are likely errors
-                                debug!("Weather service returned error response: {}", sanitized);
-                                return None;
-                            }
-                            Some(sanitized)
-                        },
-                        Err(_) => None 
-                    }
-                },
-                Err(e) => { debug!("weather fetch error from {}: {e:?}", url); None }
-            }
-        };
-        let result = match timeout(Duration::from_secs(4), fut).await { 
-            Ok(v) => v, 
-            Err(_) => { debug!("weather fetch timeout from URL: {}", url); None }
-        };
-        match result {
-            Some(v) => { 
-                debug!("Weather fetched successfully: {}", v.chars().take(50).collect::<String>());
-                self.weather_cache = Some((Instant::now(), v.clone())); 
-                Some(v) 
-            },
-            None => {
-                warn!("Weather fetch failed from URL: {}", url);
-                // If refresh failed but we have a stale cached value, check if it's not too old
-                if let Some((ts, val)) = &self.weather_cache {
-                    let age = ts.elapsed();
-                    if age < MAX_STALE_AGE {
-                        // Add staleness indicator for old cache
-                        if age > TTL {
-                            debug!("Returning stale weather cache (age: {:.1} min)", age.as_secs_f64() / 60.0);
-                            return Some(format!("{} (cached)", val));
-                        } else {
-                            return Some(val.clone());
-                        }
-                    } else {
-                        // Cache is too old, discard it
-                        warn!("Weather cache too old ({:.1} minutes), discarding", age.as_secs_f64() / 60.0);
-                        self.weather_cache = None;
-                    }
-                }
+        match self.weather_service.get_weather().await {
+            Ok(weather) => Some(weather),
+            Err(e) => {
+                debug!("Weather service error: {}", e);
                 None
             }
         }
@@ -2134,16 +2060,6 @@ impl BbsServer {
     #[allow(unused)]
     #[cfg(not(feature = "weather"))]
     async fn fetch_weather(&mut self) -> Option<String> { None }
-
-    fn sanitize_weather(raw: &str) -> String {
-        let mut out = String::new();
-        for ch in raw.chars() {
-            if ch == '\n' { break; }
-            if ch.is_ascii() && !ch.is_control() { out.push(ch); }
-        }
-        let trimmed = out.trim();
-        if trimmed.is_empty() { "Weather: Service temporarily unavailable".to_string() } else { format!("Weather: {}", trimmed) }
-    }
 
     /// Show BBS status and statistics
     pub async fn show_status(&self) -> Result<()> {

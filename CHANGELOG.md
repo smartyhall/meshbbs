@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This file records notable changes for meshbbs. Starting with the 1.0.0 BETA baseline, new entries will be added above this section over time (e.g., 1.0.1, 1.0.2).
 
+## [1.0.16-beta] - 2025-09-27
+
+### Added
+- **Major Feature**: OpenWeatherMap API integration replacing wttr.in for weather services
+- Support for multiple location types: city names, ZIP codes, and city IDs
+- Comprehensive weather configuration with API key, location preferences, and country codes
+- Intelligent caching system with configurable TTL and stale data fallback
+- Enhanced error handling with graceful degradation when API unavailable
+- Real-time weather data with temperature, conditions, and location information
+
+### Enhanced
+- Improved weather service reliability with proper HTTP status handling
+- Added comprehensive unit and integration tests for weather functionality
+- Better weather response formatting with clear location and condition display
+- Configurable timeouts and cache behavior for optimal performance
+
+### Changed
+- **Breaking**: Weather service now requires OpenWeatherMap API key configuration
+- Migrated from wttr.in text-based API to OpenWeatherMap JSON API
+- Updated configuration format with new `[weather]` section parameters
+- Enhanced weather command output format for better readability
+
+### Technical
+- New `WeatherService` struct with async API integration
+- Added `urlencoding` dependency for proper URL parameter encoding
+- Enhanced reqwest features with JSON parsing support
+- Updated example configurations with weather setup instructions
+- Removed hard-coded API keys from examples for better security
+
+### Security
+- API keys properly excluded from git repository via .gitignore
+- Example files load configuration from config.toml instead of hard-coded values
+- Secure credential management for production deployments
+
 ## [1.0.15-beta] - 2025-09-27
 
 ### Added

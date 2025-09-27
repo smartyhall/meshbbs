@@ -72,6 +72,7 @@ pub mod dispatch;
 pub mod slotmachine;
 pub mod eightball;
 pub mod fortune;
+pub mod weather;
 
 pub use server::BbsServer;
 

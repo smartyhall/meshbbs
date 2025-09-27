@@ -106,6 +106,8 @@ pub struct Config {
     pub security: Option<SecurityConfig>,
     #[serde(default)]
     pub ident_beacon: IdentBeaconConfig,
+    #[serde(default)]
+    pub weather: WeatherConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -212,6 +214,38 @@ impl IdentBeaconConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeatherConfig {
+    /// OpenWeatherMap API key
+    pub api_key: String,
+    /// Default location for weather queries (city name, zipcode, or city ID)
+    pub default_location: String,
+    /// Location type: "city", "zipcode", or "city_id"
+    pub location_type: String,
+    /// Country code for zipcode lookups (e.g., "US", "GB")
+    pub country_code: Option<String>,
+    /// Cache TTL in minutes
+    pub cache_ttl_minutes: u32,
+    /// Request timeout in seconds
+    pub timeout_seconds: u32,
+    /// Enable/disable weather functionality
+    pub enabled: bool,
+}
+
+impl Default for WeatherConfig {
+    fn default() -> Self {
+        Self {
+            api_key: String::new(),
+            default_location: "Los Angeles".to_string(),
+            location_type: "city".to_string(),
+            country_code: Some("US".to_string()),
+            cache_ttl_minutes: 10,
+            timeout_seconds: 5,
+            enabled: false, // Disabled by default until API key is provided
+        }
+    }
+}
+
 impl Config {
     /// Load configuration from a file
     pub async fn load(path: &str) -> Result<Self> {
@@ -299,6 +333,7 @@ impl Default for Config {
             },
             security: Some(SecurityConfig::default()),
             ident_beacon: IdentBeaconConfig::default(),
+            weather: WeatherConfig::default(),
         }
     }
 }

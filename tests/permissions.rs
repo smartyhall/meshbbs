@@ -15,6 +15,7 @@ async fn config_with_areas(dir: &str) -> Config {
         logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
+        weather: Default::default(),
     }
 }
 

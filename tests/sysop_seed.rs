@@ -20,8 +20,9 @@ fn sysop_user_seeded_with_hash() {
             storage: StorageConfig { data_dir: datadir.to_str().unwrap().to_string(), max_message_size: 1024 },
             message_topics: HashMap::new(),
             logging: LoggingConfig { level: "info".into(), file: None, security_file: None },
-            security: Default::default(),
+            security: None,
             ident_beacon: IdentBeaconConfig::default(),
+            weather: Default::default(),
         };
         let mut server = BbsServer::new(cfg).await.unwrap();
         server.seed_sysop().await.unwrap();

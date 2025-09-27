@@ -19,6 +19,7 @@ async fn base_config() -> Config {
         logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
+        weather: Default::default(),
     }
 }
 
