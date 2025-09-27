@@ -112,6 +112,10 @@ pub struct BbsServer {
     pending_direct: Vec<(u32, u32, String)>, // queue of (dest_node_id, channel, message) awaiting our node id
     #[cfg(feature = "meshtastic-proto")]
     node_cache_last_cleanup: Instant, // track when we last cleaned up stale nodes
+    #[cfg(feature = "meshtastic-proto")]
+    our_node_id: Option<u32>, // our node ID for ident broadcasts
+    #[cfg(feature = "meshtastic-proto")]
+    last_ident_time: Instant, // track when we last sent an ident beacon
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String,String)>, // collected outbound messages (testing)
@@ -302,6 +306,10 @@ impl BbsServer {
             pending_direct: Vec::new(),
             #[cfg(feature = "meshtastic-proto")]
             node_cache_last_cleanup: Instant::now() - Duration::from_secs(3601),
+            #[cfg(feature = "meshtastic-proto")]
+            our_node_id: None,
+            #[cfg(feature = "meshtastic-proto")]
+            last_ident_time: Instant::now() - Duration::from_secs(901), // Start ready to send
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -394,6 +402,80 @@ impl BbsServer {
     #[doc(hidden)]
     #[allow(dead_code)] // Used only by integration tests (help_broadcast_delay) to inject an outgoing channel
     pub fn test_set_outgoing(&mut self, tx: tokio::sync::mpsc::UnboundedSender<crate::meshtastic::OutgoingMessage>) { self.outgoing_tx = Some(tx); }
+
+    /// Check if it's time to send an ident beacon and send it if so
+    #[cfg(feature = "meshtastic-proto")]
+    async fn check_and_send_ident(&mut self) -> Result<()> {
+        // Check if ident beacon is enabled
+        if !self.config.ident_beacon.enabled {
+            return Ok(());
+        }
+        
+        use chrono::{Utc, Timelike};
+        
+        let now = Utc::now();
+        let minutes = now.minute();
+        let frequency_minutes = self.config.ident_beacon.frequency_minutes();
+        
+        // Check if we're at the right time boundary based on configured frequency
+        let should_send = match frequency_minutes {
+            15 => minutes % 15 == 0,  // Every 15 minutes (0, 15, 30, 45)
+            30 => minutes % 30 == 0,  // Every 30 minutes (0, 30)
+            60 => minutes == 0,       // Every hour (0)
+            120 => minutes == 0 && now.hour() % 2 == 0,  // Every 2 hours (0, 2, 4, ...)
+            240 => minutes == 0 && now.hour() % 4 == 0,  // Every 4 hours (0, 4, 8, ...)
+            _ => minutes % 15 == 0,   // Default to 15 minutes for invalid config
+        };
+        
+        if !should_send {
+            return Ok(());
+        }
+        
+        // Prevent sending multiple idents in the same minute
+        if self.last_ident_time.elapsed() < Duration::from_secs(55) {
+            return Ok(());
+        }
+        
+        // Use available node ID or fallback
+        let short_id = if let Some(node_id) = self.our_node_id {
+            format!("0x{:06X}", node_id & 0xFFFFFF) // 6-digit hex format
+        } else {
+            // Try to get from config if available, otherwise use placeholder
+            if !self.config.meshtastic.node_id.is_empty() {
+                if let Ok(id) = self.config.meshtastic.node_id.parse::<u32>() {
+                    format!("0x{:06X}", id & 0xFFFFFF)
+                } else if self.config.meshtastic.node_id.starts_with("0x") || self.config.meshtastic.node_id.starts_with("0X") {
+                    let hex_part = &self.config.meshtastic.node_id[2..];
+                    if let Ok(id) = u32::from_str_radix(hex_part, 16) {
+                        format!("0x{:06X}", id & 0xFFFFFF)
+                    } else {
+                        self.config.meshtastic.node_id.clone()
+                    }
+                } else {
+                    self.config.meshtastic.node_id.clone()
+                }
+            } else {
+                "Unknown".to_string()
+            }
+        };
+        
+        let ident_msg = format!(
+            "[IDENT] {} ({}) - {} UTC - Type ^HELP for commands",
+            self.config.bbs.name,
+            short_id,
+            now.format("%Y-%m-%d %H:%M:%S")
+        );
+        
+        // Send to public channel
+        if let Err(e) = self.send_broadcast(&ident_msg).await {
+            warn!("Failed to send ident beacon: {}", e);
+        } else {
+            info!("Sent ident beacon: {}", ident_msg);
+            self.last_ident_time = Instant::now();
+        }
+        
+        Ok(())
+    }
     /// 4. **Session Management**: Handles user session lifecycle and timeouts
     /// 5. **Weather Updates**: Provides proactive weather information (if enabled)
     /// 6. **Audit Logging**: Records security and administrative events
@@ -460,6 +542,12 @@ impl BbsServer {
             if self.node_cache_last_cleanup.elapsed() >= Duration::from_secs(3600) {
                 // Note: node cache cleanup is now handled by the reader task
                 self.node_cache_last_cleanup = Instant::now();
+            }
+
+            // Ident beacon at configured intervals (if enabled)
+            #[cfg(feature = "meshtastic-proto")]
+            if let Err(e) = self.check_and_send_ident().await {
+                debug!("Ident beacon error: {}", e);
             }
 
             #[cfg(feature = "meshtastic-proto")]

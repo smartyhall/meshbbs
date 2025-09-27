@@ -104,6 +104,8 @@ pub struct Config {
     pub message_topics: HashMap<String, MessageTopicConfig>,
     pub logging: LoggingConfig,
     pub security: Option<SecurityConfig>,
+    #[serde(default)]
+    pub ident_beacon: IdentBeaconConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +178,38 @@ pub struct Argon2Config {
 pub struct SecurityConfig {
     #[serde(default)]
     pub argon2: Option<Argon2Config>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentBeaconConfig {
+    pub enabled: bool,
+    pub frequency: String,
+}
+
+impl Default for IdentBeaconConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            frequency: "15min".to_string(),
+        }
+    }
+}
+
+impl IdentBeaconConfig {
+    /// Convert frequency string to minutes
+    pub fn frequency_minutes(&self) -> u32 {
+        match self.frequency.as_str() {
+            "15min" => 15,
+            "30min" => 30,
+            "1hour" => 60,
+            "2hours" => 120,
+            "4hours" => 240,
+            _ => {
+                eprintln!("Invalid ident beacon frequency '{}', defaulting to 15min", self.frequency);
+                15
+            }
+        }
+    }
 }
 
 impl Config {
@@ -264,6 +298,119 @@ impl Default for Config {
                 security_file: Some("meshbbs-security.log".to_string()),
             },
             security: Some(SecurityConfig::default()),
+            ident_beacon: IdentBeaconConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ident_beacon_config_default() {
+        let config = IdentBeaconConfig::default();
+        assert_eq!(config.enabled, true);
+        assert_eq!(config.frequency, "15min");
+    }
+
+    #[test]
+    fn test_ident_beacon_frequency_minutes_valid() {
+        let test_cases = vec![
+            ("15min", 15),
+            ("30min", 30),
+            ("1hour", 60),
+            ("2hours", 120),
+            ("4hours", 240),
+        ];
+
+        for (frequency, expected_minutes) in test_cases {
+            let config = IdentBeaconConfig {
+                enabled: true,
+                frequency: frequency.to_string(),
+            };
+            assert_eq!(
+                config.frequency_minutes(),
+                expected_minutes,
+                "Expected {} to convert to {} minutes",
+                frequency,
+                expected_minutes
+            );
+        }
+    }
+
+    #[test]
+    fn test_ident_beacon_frequency_minutes_invalid() {
+        let invalid_frequencies = vec![
+            "invalid",
+            "5min",
+            "10hours",
+            "",
+            "60min",
+            "30mins",
+            "1hr",
+        ];
+
+        for invalid_freq in invalid_frequencies {
+            let config = IdentBeaconConfig {
+                enabled: true,
+                frequency: invalid_freq.to_string(),
+            };
+            // Invalid frequencies should default to 15 minutes
+            assert_eq!(
+                config.frequency_minutes(),
+                15,
+                "Expected invalid frequency '{}' to default to 15 minutes",
+                invalid_freq
+            );
+        }
+    }
+
+    #[test]
+    fn test_ident_beacon_disabled() {
+        let config = IdentBeaconConfig {
+            enabled: false,
+            frequency: "30min".to_string(),
+        };
+        assert_eq!(config.enabled, false);
+        assert_eq!(config.frequency_minutes(), 30);
+    }
+
+    #[test]
+    fn test_ident_beacon_config_serde() {
+        let config = IdentBeaconConfig {
+            enabled: true,
+            frequency: "1hour".to_string(),
+        };
+
+        // Test serialization
+        let serialized = serde_json::to_string(&config).unwrap();
+        assert!(serialized.contains("\"enabled\":true"));
+        assert!(serialized.contains("\"frequency\":\"1hour\""));
+
+        // Test deserialization
+        let deserialized: IdentBeaconConfig = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.enabled, config.enabled);
+        assert_eq!(deserialized.frequency, config.frequency);
+    }
+
+    #[test]
+    fn test_config_includes_ident_beacon() {
+        let config = Config::default();
+        assert_eq!(config.ident_beacon.enabled, true);
+        assert_eq!(config.ident_beacon.frequency, "15min");
+    }
+
+    #[test]
+    fn test_ident_beacon_config_clone() {
+        let config = IdentBeaconConfig {
+            enabled: false,
+            frequency: "4hours".to_string(),
+        };
+        
+        let cloned = config.clone();
+        assert_eq!(cloned.enabled, config.enabled);
+        assert_eq!(cloned.frequency, config.frequency);
+        assert_eq!(cloned.frequency_minutes(), 240);
     }
 }

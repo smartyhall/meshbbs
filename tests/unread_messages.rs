@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, StorageConfig, MeshtasticConfig, MessageTopicConfig, LoggingConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig, IdentBeaconConfig};
 use meshbbs::bbs::BbsServer;
 use chrono::{Utc, Duration};
 use std::collections::HashMap;
@@ -20,6 +20,7 @@ async fn unread_message_count_on_login() {
         },
         logging: LoggingConfig { level: "info".into(), file: None, security_file: None },
         security: None,
+        ident_beacon: IdentBeaconConfig::default(),
     };
     let cfg_clone = cfg.clone();
     let mut server = BbsServer::new(cfg_clone).await.unwrap();

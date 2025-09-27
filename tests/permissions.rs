@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig, IdentBeaconConfig};
 use meshbbs::bbs::server::BbsServer;
 use std::collections::HashMap;
 
@@ -13,7 +13,8 @@ async fn config_with_areas(dir: &str) -> Config {
         storage: StorageConfig { data_dir: dir.to_string(), max_message_size: 1024 },
         message_topics: areas,
         logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
-        security: Default::default(),
+        security: None,
+        ident_beacon: IdentBeaconConfig::default(),
     }
 }
 

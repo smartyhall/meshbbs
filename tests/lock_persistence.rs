@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
 use meshbbs::bbs::server::BbsServer;
 use std::collections::HashMap;
 
@@ -10,6 +10,7 @@ async fn base_config(dir: &str) -> Config {
         message_topics: HashMap::new(),
         logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
         security: Default::default(),
+        ident_beacon: IdentBeaconConfig::default(),
     }
 }
 

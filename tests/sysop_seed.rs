@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
 use meshbbs::bbs::server::BbsServer;
 use tokio::runtime::Runtime;
 use password_hash::{PasswordHasher, SaltString};
@@ -21,6 +21,7 @@ fn sysop_user_seeded_with_hash() {
             message_topics: HashMap::new(),
             logging: LoggingConfig { level: "info".into(), file: None, security_file: None },
             security: Default::default(),
+            ident_beacon: IdentBeaconConfig::default(),
         };
         let mut server = BbsServer::new(cfg).await.unwrap();
         server.seed_sysop().await.unwrap();

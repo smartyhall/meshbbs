@@ -1,5 +1,5 @@
 use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig};
-use meshbbs::bbs::server::BbsServer;
+use meshbbs::{config::*, bbs::server::BbsServer};
 use std::collections::HashMap;
 
 async fn base_config() -> Config {
@@ -17,7 +17,8 @@ async fn base_config() -> Config {
         storage: StorageConfig { data_dir: tempfile::tempdir().unwrap().path().join("data").to_str().unwrap().to_string(), max_message_size: 1024 },
         message_topics: topics,
         logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
-        security: Default::default(),
+        security: None,
+        ident_beacon: IdentBeaconConfig::default(),
     }
 }
 

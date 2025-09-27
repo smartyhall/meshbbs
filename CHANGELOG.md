@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This file records notable changes for meshbbs. Starting with the 1.0.0 BETA baseline, new entries will be added above this section over time (e.g., 1.0.1, 1.0.2).
 
+## [1.0.15-beta] - 2025-09-27
+
+### Added
+- **New Feature**: Configurable ident beacon system for periodic station identification
+- Ident beacon broadcasts BBS name, node ID, timestamp, and help hint to public channel
+- Configurable frequency options: 15min, 30min, 1hour, 2hours, 4hours (default: 15min)
+- Enable/disable control via `[ident_beacon]` section in config.toml
+- Smart time-boundary scheduling (beacons fire exactly at configured intervals)
+- Fallback node ID handling when dynamic ID unavailable
+
+### Enhanced
+- Added comprehensive unit tests for ident beacon configuration and timing logic
+- 14 new tests covering frequency validation, serialization, and integration
+- Improved configuration validation with clear error messages for invalid frequencies
+
+### Technical
+- New `IdentBeaconConfig` struct with serde support for TOML configuration
+- Time-based scheduling using chrono for UTC boundary calculations
+- Integration with existing public channel broadcast system
+- Backward-compatible configuration (defaults to enabled with 15min frequency)
+
 ## [1.0.13-beta] - 2025-01-27
 
 ### Fixed

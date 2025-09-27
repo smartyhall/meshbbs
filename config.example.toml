@@ -50,3 +50,10 @@ security_file = "meshbbs-security.log"
 # memory_kib = 19456
 # time_cost = 2
 # parallelism = 1
+
+[ident_beacon]
+# Enable or disable the periodic ident beacon
+enabled = true
+# Frequency of ident beacon broadcasts
+# Options: "15min", "30min", "1hour", "2hours", "4hours"
+frequency = "15min"
