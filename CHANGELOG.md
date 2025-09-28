@@ -9,6 +9,17 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.25] - 2025-09-28
+
+### Changed
+- Runtime: Parameterized user-facing public messages to respect the configured public command prefix:
+  - IDENT beacon hint now says: `Type <prefix>HELP for commands` (default `^`)
+  - Public broadcasts for Slot Machine, Magic 8‑Ball, Fortune, and Slot Stats include the configured prefix
+- Documentation: Updated README, user guides, getting-started, QA plan, and rustdoc to describe and demonstrate the configurable prefix (default `^`).
+
+### Notes
+- No functional behavior change aside from message formatting consistency.
+
 ## [1.0.22] - 2025-09-28
 
 ### Added
