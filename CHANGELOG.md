@@ -9,6 +9,16 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.22] - 2025-09-28
+
+### Added
+- Unit tests to verify UTF‑8 safe truncation behavior for log previews:
+  - Ensures truncation never splits multi‑byte characters (em‑dash, emoji)
+  - Guards against regression of the 1.0.21 fix
+
+### Notes
+- No functional changes beyond tests and release metadata.
+
 ## [1.0.21] - 2025-09-28
 
 ### Fixed

@@ -176,6 +176,38 @@ fn truncate_for_log(input: &str, max_bytes: usize) -> String {
     out
 }
 
+#[cfg(test)]
+mod utf8_tests {
+    use super::truncate_for_log;
+
+    #[test]
+    fn truncate_does_not_split_em_dash() {
+        // "—" (EM DASH) is 3 bytes in UTF-8. Choose a max that would cut mid‑char without the boundary fix.
+        // Bytes: "12345" (5) + "—" (3) + "7890" (4) = 12. With max_bytes=10, reserve=3 => cut_target=7 (inside em dash).
+        let s = "12345—7890";
+        let out = truncate_for_log(s, 10);
+        // Should retreat to boundary before em dash and append ellipsis
+        assert_eq!(out, "12345...");
+        // And still be valid UTF‑8 (implicitly true for Rust String) and not contain broken chars
+        assert!(out.is_char_boundary(out.len()));
+    }
+
+    #[test]
+    fn truncate_handles_emoji_boundary() {
+        // "🙂" is 4 bytes. With max_bytes=5, reserve=3 => cut_target=2, exactly before emoji start
+        let s = "ab🙂cd";
+        let out = truncate_for_log(s, 5);
+        assert_eq!(out, "ab...");
+    }
+
+    #[test]
+    fn no_truncation_when_within_limit() {
+        let s = "hello";
+        let out = truncate_for_log(s, 10);
+        assert_eq!(out, "hello");
+    }
+}
+
 #[cfg(feature = "meshtastic-proto")]
 fn fmt_percent(val: f32) -> String {
     if val.is_finite() {
