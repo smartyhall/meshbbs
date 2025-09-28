@@ -33,6 +33,16 @@ jobs:
           # but include `weather` so the weather module compiles (it references reqwest types).
           cargo doc --no-deps --no-default-features --features "weather,api-reexports"
 
+      - name: Verify rustdoc output exists
+        run: |
+          set -euo pipefail
+          ls -la target || true
+          ls -la target/doc || true
+          if [ ! -f target/doc/meshbbs/index.html ]; then
+            echo "ERROR: Rustdoc crate index missing at target/doc/meshbbs/index.html" >&2
+            exit 1
+          fi
+
       - name: Build Jekyll site from docs/
         uses: actions/jekyll-build-pages@v1
         with:
@@ -54,6 +64,9 @@ jobs:
           
           # Ensure GitHub Pages does not run Jekyll on the artifact (rustdoc needs raw files)
           touch _site/.nojekyll
+
+          echo "Final site structure (top-level):"
+          find _site -maxdepth 2 -type d -print | sort
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
