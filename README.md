@@ -368,19 +368,42 @@ Reply storage is structured and backward compatible: new replies record `timesta
 Meshbbs is built with a clean, modular architecture in Rust:
 
 ```mermaid
-graph TD
-    A[Meshtastic Device] --> B[Serial/Bluetooth Interface]
-    B --> C[Meshtastic Module]
-    C --> D[BBS Server]
-    D --> E[Sessions HashMap]
-    E --> F[Session State]
-    F --> G[Command Processor]
-    D --> H[Storage Layer]
-    H --> I[Message Database]
-    H --> J[User Database]
-    D --> K[Configuration]
-    D --> L[Device Interface]
-    D --> M[Public State]
+flowchart TD
+   M[Meshtastic Device]
+   SIO[Serial / Bluetooth]
+   R[Meshtastic Reader Task]
+   W[Meshtastic Writer Task]
+   SV[BBS Server]
+   SCH[Scheduler]
+   SESS[Sessions]
+   PST[Public State]
+   STOR[Storage Layer]
+   MSGDB[Message DB]
+   USERDB[User DB]
+   CFG[Configuration]
+   WX[(Weather Service)]
+
+   M <--> SIO
+   SIO --> R
+   W --> SIO
+
+   %% Event ingress from radio
+   R -- TextEvent (mpsc) --> SV
+   R -- our_node_id (mpsc) --> SV
+
+   %% Outgoing path via scheduler/ writer
+   SV -- Outgoing (mpsc) --> SCH
+   SCH -- dispatch --> W
+
+   %% Server subsystems
+   SV --> SESS
+   SESS -->|per-node| SV
+   SV --> PST
+   SV --> STOR
+   STOR --> MSGDB
+   STOR --> USERDB
+   SV --> CFG
+   SV --> WX
 ```
 
 ### 📁 Module Structure
