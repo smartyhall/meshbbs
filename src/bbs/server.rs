@@ -130,24 +130,29 @@ pub struct BbsServer {
 }
 
 // Verbose HELP material & chunker (outside impl so usable without Self scoping issues during compilation ordering)
-const VERBOSE_HELP: &str = concat!(
-    "Meshbbs Extended Help\n",
-    "Authentication:\n  REGISTER <name> <pass>  Create account\n  LOGIN <name> <pass>     Log in\n  SETPASS <new>           Set first password\n  CHPASS <old> <new>      Change password\n  LOGOUT                  End session\n\n",
-    "Compact Navigation:\n  M       Topics menu (paged)\n  1-9     Pick item on page\n  L       More items\n  U/B     Up/back (to parent)\n  X       Exit\n  WHERE/W Where am I breadcrumb\n\n",
-    "Topics → Subtopics → Threads → Read:\n  In Subtopics: 1-9 pick, U up\n  In Threads:   1-9 read, N new, F <text> filter, U up\n  In Read:      + next, - prev, Y reply\n\n",
-    "Moderator (level 5+):\n  Threads:  D<n> delete  P<n> pin/unpin  R<n> <title> rename  K lock/unlock area\n  Read:     D delete     P pin/unpin     R <title>            K lock/unlock area\n\n",
-    "Sysop (level 10):\n  G @user=LEVEL|ROLE      Grant level (1/5/10) or USER/MOD/SYSOP\n\n",
-    "Administration (mod/sysop):\n  USERS [pattern]         List users (filter optional)\n  WHO                     Show logged-in users\n  USERINFO <user>         Detailed user info\n  SESSIONS                List all sessions\n  KICK <user>             Force logout user\n  BROADCAST <msg>         Broadcast to all\n  ADMIN / DASHBOARD       System overview\n\n",
-    "Legacy commands (compat):\n  TOPICS / LIST           List topics\n  READ <topic>            Read recent messages\n  POST <topic> <text>     Post a message\n\n",
-    "Misc:\n  HELP        Compact help\n  HELP+ / HELP V  Verbose help (this)\n  Weather (public)       Send WEATHER on public channel\n  Slot Machine (public)  ^SLOT or ^SLOTMACHINE to play\n  Slot Stats (public)    ^SLOTSTATS\n  Magic 8-Ball (public)  ^8BALL\n  Fortune (public)       ^FORTUNE for classic Unix wisdom\n\n",
-    "Limits:\n  Max frame ~230 bytes; verbose help auto-splits.\n"
-);
+fn verbose_help_with_prefix(pfx: char) -> String {
+    format!(
+        concat!(
+        "Meshbbs Extended Help\n",
+        "Authentication:\n  REGISTER <name> <pass>  Create account\n  LOGIN <name> <pass>     Log in\n  SETPASS <new>           Set first password\n  CHPASS <old> <new>      Change password\n  LOGOUT                  End session\n\n",
+        "Compact Navigation:\n  M       Topics menu (paged)\n  1-9     Pick item on page\n  L       More items\n  U/B     Up/back (to parent)\n  X       Exit\n  WHERE/W Where am I breadcrumb\n\n",
+        "Topics → Subtopics → Threads → Read:\n  In Subtopics: 1-9 pick, U up\n  In Threads:   1-9 read, N new, F <text> filter, U up\n  In Read:      + next, - prev, Y reply\n\n",
+        "Moderator (level 5+):\n  Threads:  D<n> delete  P<n> pin/unpin  R<n> <title> rename  K lock/unlock area\n  Read:     D delete     P pin/unpin     R <title>            K lock/unlock area\n\n",
+        "Sysop (level 10):\n  G @user=LEVEL|ROLE      Grant level (1/5/10) or USER/MOD/SYSOP\n\n",
+        "Administration (mod/sysop):\n  USERS [pattern]         List users (filter optional)\n  WHO                     Show logged-in users\n  USERINFO <user>         Detailed user info\n  SESSIONS                List all sessions\n  KICK <user>             Force logout user\n  BROADCAST <msg>         Broadcast to all\n  ADMIN / DASHBOARD       System overview\n\n",
+        "Legacy commands (compat):\n  TOPICS / LIST           List topics\n  READ <topic>            Read recent messages\n  POST <topic> <text>     Post a message\n\n",
+        "Misc:\n  HELP        Compact help\n  HELP+ / HELP V  Verbose help (this)\n  Weather (public)       Send WEATHER on public channel\n  Slot Machine (public)  {p}SLOT or {p}SLOTMACHINE to play\n  Slot Stats (public)    {p}SLOTSTATS\n  Magic 8-Ball (public)  {p}8BALL\n  Fortune (public)       {p}FORTUNE for classic Unix wisdom\n\n",
+        "Limits:\n  Max frame ~230 bytes; verbose help auto-splits.\n"),
+        p = pfx
+    )
+}
 
-fn chunk_verbose_help() -> Vec<String> {
+fn chunk_verbose_help_with_prefix(pfx: char) -> Vec<String> {
     const MAX: usize = 230;
     let mut chunks = Vec::new();
+    let verbose = verbose_help_with_prefix(pfx);
     let mut current = String::new();
-    for line in VERBOSE_HELP.lines() {
+    for line in verbose.lines() {
         let candidate_len = current.len() + line.len() + 1;
         if candidate_len > MAX && !current.is_empty() {
             chunks.push(current);
@@ -307,7 +312,7 @@ impl BbsServer {
                 std::time::Duration::from_secs(20),
                 std::time::Duration::from_secs(300)
             ),
-            public_parser: PublicCommandParser::new(),
+            public_parser: PublicCommandParser::new_with_prefixes(config.bbs.public_command_prefixes.clone()),
             #[cfg(feature = "weather")]
             weather_service: WeatherService::new(config.weather.clone()),
             #[cfg(feature = "weather")]
@@ -1042,7 +1047,7 @@ impl BbsServer {
                         session.update_labels(Some(short), Some(long));
                     }
                     if upper == "HELP+" || upper == "HELP V" || upper == "HELP  V" || upper == "HELP  +" { // tolerate minor spacing variants
-                        let chunks = chunk_verbose_help();
+                        let chunks = chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char());
                         let total = chunks.len();
                         for (i, chunk) in chunks.into_iter().enumerate() {
                             let last = i + 1 == total;
@@ -1633,21 +1638,22 @@ impl BbsServer {
                         };
                         
                         // Create broadcast message showing available public commands with chunking
+                        let primary_prefix = self.public_parser.primary_prefix_char();
                         let mut public_commands = vec![
-                            "^HELP - Show this help",
-                            "^LOGIN <user> - Register for BBS",
+                            format!("{p}HELP - Show this help", p = primary_prefix),
+                            format!("{p}LOGIN <user> - Register for BBS", p = primary_prefix),
                         ];
                         
                         // Add optional weather command if enabled
                         #[cfg(feature = "weather")]
-                        public_commands.push("^WEATHER - Current conditions");
+                        public_commands.push(format!("{p}WEATHER - Current conditions", p = primary_prefix));
                         
                         // Add games and utilities
                         public_commands.extend_from_slice(&[
-                            "^SLOT - Play slot machine",
-                            "^SLOTSTATS - Show your stats",
-                            "^8BALL - Magic 8-Ball oracle",
-                            "^FORTUNE - Random wisdom",
+                            format!("{p}SLOT - Play slot machine", p = primary_prefix),
+                            format!("{p}SLOTSTATS - Show your stats", p = primary_prefix),
+                            format!("{p}8BALL - Magic 8-Ball oracle", p = primary_prefix),
+                            format!("{p}FORTUNE - Random wisdom", p = primary_prefix),
                         ]);
 
                         // Send DM first, then chunked public notices. This reduces the chance of a transient rate limit
@@ -2054,7 +2060,7 @@ impl BbsServer {
         if let Some(session) = self.sessions.get_mut(node_key) {
             session.update_activity();
             if upper == "HELP+" || upper == "HELP V" || upper == "HELP  V" || upper == "HELP  +" {
-                let chunks = chunk_verbose_help();
+                let chunks = chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char());
                 let total = chunks.len();
                 for (i, chunk) in chunks.into_iter().enumerate() { let last = i + 1 == total; self.send_session_message(node_key, &chunk, last).await?; }
                 return Ok(());

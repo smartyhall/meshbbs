@@ -1,11 +1,12 @@
 //! Public channel utilities: lightweight state and a tiny command parser.
 //!
-//! This module implements rate‑limiting and simple caret‑prefixed commands that can be
+//! This module implements rate‑limiting and simple prefix‑based commands that can be
 //! used from a shared public chat (e.g. `^HELP`, `^LOGIN alice`, `^SLOT`, `^8BALL`,
 //! `^FORTUNE`, `^WEATHER`). The [PublicState] tracks per‑node cooldowns to avoid spam
 //! while keeping logic extremely small and fast.
 //!
-//! The [PublicCommandParser] recognizes commands only when prefixed with `^` to reduce
+//! The [PublicCommandParser] recognizes commands only when prefixed with one of the configured
+//! characters (default `^`) to reduce
 //! accidental triggers from normal conversation. It returns a [PublicCommand] enum for
 //! server code to handle. Arguments after the command are intentionally minimal.
 //!
@@ -112,16 +113,34 @@ impl PublicState {
 }
 
 /// Minimal public channel command parser
-pub struct PublicCommandParser;
+#[derive(Clone)]
+pub struct PublicCommandParser {
+    allowed_prefixes: String,
+}
 
 impl PublicCommandParser {
-    pub fn new() -> Self { Self }
+    /// Create a parser. If `allowed_prefixes` is None or empty, defaults to "^".
+    pub fn new_with_prefixes(allowed_prefixes: Option<String>) -> Self {
+        let s = allowed_prefixes.unwrap_or_else(|| "^".to_string());
+        let trimmed = s.trim().to_string();
+        let final_set = if trimmed.is_empty() { "^".to_string() } else { trimmed };
+        Self { allowed_prefixes: final_set }
+    }
+    pub fn new() -> Self { Self::new_with_prefixes(None) }
+
+    /// Returns the first character of the allowed prefixes string for use in help text.
+    /// Defaults to '^' if configuration is empty for any reason.
+    pub fn primary_prefix_char(&self) -> char {
+        self.allowed_prefixes.chars().next().unwrap_or('^')
+    }
 
     pub fn parse(&self, raw: &str) -> PublicCommand {
-        let trimmed = raw.trim();
-        // Require caret prefix for public commands to reduce accidental noise
-        if !trimmed.starts_with('^') { return PublicCommand::Unknown; }
-        let body = &trimmed[1..];
+    let trimmed = raw.trim();
+    // Require prefix from allowed set for public commands to reduce accidental noise
+    let mut chars = trimmed.chars();
+    let Some(first) = chars.next() else { return PublicCommand::Unknown };
+    if !self.allowed_prefixes.chars().any(|c| c == first) { return PublicCommand::Unknown; }
+    let body: String = chars.collect();
     if body.eq_ignore_ascii_case("HELP") || body == "?" { trace!("Parsed HELP from '{}'" , raw); return PublicCommand::Help; }
     // WEATHER command: accept optional trailing arguments (ignored for now)
     if body.len() >= 7 && body.get(..7).map(|s| s.eq_ignore_ascii_case("WEATHER")).unwrap_or(false)

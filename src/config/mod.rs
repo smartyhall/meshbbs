@@ -93,6 +93,10 @@ pub struct BbsConfig {
     pub welcome_message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sysop_password_hash: Option<String>,
+    /// Allowed public command prefixes. The first character is used as the primary when rendering help.
+    /// Examples: "^", "^!+$/". If unset or empty, defaults to "^".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_command_prefixes: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,6 +317,7 @@ impl Default for Config {
                 session_timeout: 10,
                 welcome_message: "".to_string(),
                 sysop_password_hash: None,
+                public_command_prefixes: Some("^".to_string()),
             },
             meshtastic: MeshtasticConfig {
                 port: "/dev/ttyUSB0".to_string(),
