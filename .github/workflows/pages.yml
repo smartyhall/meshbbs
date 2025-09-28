@@ -37,13 +37,20 @@ jobs:
         uses: actions/jekyll-build-pages@v1
         with:
           source: ./docs
-          destination: ./_site
+          destination: ./_site_jekyll
 
-      - name: Add rustdoc into site (without overwriting Jekyll index)
+      - name: Assemble final site and add rustdoc (preserve Jekyll index)
         run: |
+          # Create a fresh output dir owned by the current user to avoid permission issues
+          rm -rf _site
           mkdir -p _site
-          # Copy cargo doc output but exclude the top-level index.html to preserve Jekyll homepage
-          rsync -a --exclude 'index.html' target/doc/ _site/
+          
+          # Copy Jekyll build into final site (without preserving owner/group)
+          rsync -rltD _site_jekyll/ _site/
+          
+          # Merge cargo doc output but exclude the top-level index.html to preserve Jekyll homepage
+          rsync -rltD --exclude 'index.html' target/doc/ _site/
+          
           # Ensure GitHub Pages does not run Jekyll on the artifact (rustdoc needs raw files)
           touch _site/.nojekyll
 
