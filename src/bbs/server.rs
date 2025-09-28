@@ -475,33 +475,28 @@ impl BbsServer {
             return Ok(());
         }
         
-        // Use available node ID or fallback
-        let short_id = if let Some(node_id) = self.our_node_id {
-            format!("0x{:06X}", node_id & 0xFFFFFF) // 6-digit hex format
-        } else {
-            // Try to get from config if available, otherwise use placeholder
-            if !self.config.meshtastic.node_id.is_empty() {
-                if let Ok(id) = self.config.meshtastic.node_id.parse::<u32>() {
-                    format!("0x{:06X}", id & 0xFFFFFF)
-                } else if self.config.meshtastic.node_id.starts_with("0x") || self.config.meshtastic.node_id.starts_with("0X") {
-                    let hex_part = &self.config.meshtastic.node_id[2..];
-                    if let Ok(id) = u32::from_str_radix(hex_part, 16) {
-                        format!("0x{:06X}", id & 0xFFFFFF)
-                    } else {
-                        self.config.meshtastic.node_id.clone()
-                    }
-                } else {
-                    self.config.meshtastic.node_id.clone()
-                }
+        // Determine identifier display: prefer short name, fallback to 4-hex-digit short ID
+        let id_display = if let Some(node_id) = self.our_node_id {
+            if let Some(sn) = self.lookup_short_name_from_cache(node_id) {
+                sn
             } else {
-                "Unknown".to_string()
+                format!("0x{:04X}", node_id & 0xFFFF)
             }
+        } else {
+            // our_node_id unknown: try config node_id for a hex fallback
+            let nid = if !self.config.meshtastic.node_id.is_empty() {
+                if let Ok(id) = self.config.meshtastic.node_id.parse::<u32>() { Some(id) }
+                else if let Some(hex) = self.config.meshtastic.node_id.strip_prefix("0x").or_else(|| self.config.meshtastic.node_id.strip_prefix("0X")) {
+                    u32::from_str_radix(hex, 16).ok()
+                } else { None }
+            } else { None };
+            if let Some(id) = nid { format!("0x{:04X}", id & 0xFFFF) } else { "Unknown".to_string() }
         };
         
         let ident_msg = format!(
             "[IDENT] {} ({}) - {} UTC - Type ^HELP for commands",
             self.config.bbs.name,
-            short_id,
+            id_display,
             now.format("%Y-%m-%d %H:%M:%S")
         );
         
