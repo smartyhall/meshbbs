@@ -169,12 +169,30 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 ## [1.0.7] - 2025-09-26
 
-Documentation alignment follow-up for the 1.0.6 release.
 
-### Changed
 - README and docs tweaks to clarify public broadcast ACK confirmation semantics and command examples. No functional code changes.
 
 ## [1.0.6] - 2025-09-26
+## [1.0.20] - 2025-09-27
+
+### Added
+- Expanded rustdoc coverage across modules (`bbs/commands.rs`, `bbs/public.rs`, `bbs/roles.rs`, `meshtastic/framer.rs`, crate binary docs)
+- New docs pages added to close gaps referenced by the docs index:
+  - Getting Started: First Run
+  - User Guide: Connecting, Message Topics, Troubleshooting
+  - Administration: Setup, User Management, Moderation
+  - Hardware: Device Compatibility, Device Setup
+  - Development: Architecture, Building from Source
+- Added `docs/index.md` and updated Jekyll config for better site navigation
+
+### Changed
+- README: added local API docs build instructions and ensured API docs link prominence
+- Documentation links updated/fixed for GitHub Pages compatibility (absolute links to repository files where needed)
+- Minor rustdoc warnings resolved (escaped angle brackets; relaxed HTML tag checks for generated protobuf docs)
+
+### Tests & Build
+- `cargo doc` passes with all features
+- Full test suite green (`cargo test`)
 
 Broadcast reliability telemetry and optional confirmation for public messages.
 

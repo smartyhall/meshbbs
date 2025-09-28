@@ -1,3 +1,25 @@
+//! Command processing and compact UI flows for the MeshBBS interactive experience.
+//!
+//! This module contains the state machine that drives navigation and actions in the
+//! BBS user interface. It is optimized for very small message sizes (≈230 bytes) and
+//! low‑bandwidth links, so all prompts and help are intentionally terse.
+//!
+//! Key ideas:
+//! - Stateless text commands that map to a [Session] state transition
+//! - Paged listings (max 5 items per page) to keep replies short
+//! - UTF‑8 safe truncation helpers to avoid splitting multi‑byte characters
+//! - Backwards‑compatible inline shortcuts like `READ <topic>` and `POST <topic> <text>`
+//!
+//! The primary entrypoint is [CommandProcessor::process], which routes commands to the
+//! appropriate handler based on [SessionState]. Handlers return fully rendered strings
+//! to be sent to the user via the server.
+//!
+//! Permissions and topic visibility are derived from runtime topic configuration in
+//! [crate::storage], falling back to legacy topic levels when needed for compatibility.
+//!
+//! Note: All outputs aim to remain within a single frame on constrained links. If you
+//! extend help text or add new commands, prefer concise phrasing and consider the
+//! 230‑byte budget per response.
 use anyhow::Result;
 // use log::{debug}; // retained for future detailed command tracing
 use log::{info, warn, error};

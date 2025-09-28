@@ -1,3 +1,13 @@
+//! Binary entrypoint for the MeshBBS CLI.
+//!
+//! Commands:
+//! - `start [--port <path>]` — run the BBS server, optionally connecting to a device
+//! - `init` — create a starter `config.toml` and default topics in `data/topics.json`
+//! - `status` — print current status and a brief summary
+//! - `smoketest --port <path> [-b <baud>] [--timeout <s>]` — probe device link
+//! - `sysop-passwd` — interactively set the sysop password (argon2 hashed)
+//!
+//! See the library crate docs for module‑level details: `meshbbs::`.
 use anyhow::Result;
 use log::{info, warn};
 use clap::{Parser, Subcommand};

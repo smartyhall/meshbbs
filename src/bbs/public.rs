@@ -1,3 +1,17 @@
+//! Public channel utilities: lightweight state and a tiny command parser.
+//!
+//! This module implements rate‑limiting and simple caret‑prefixed commands that can be
+//! used from a shared public chat (e.g. `^HELP`, `^LOGIN alice`, `^SLOT`, `^8BALL`,
+//! `^FORTUNE`, `^WEATHER`). The [PublicState] tracks per‑node cooldowns to avoid spam
+//! while keeping logic extremely small and fast.
+//!
+//! The [PublicCommandParser] recognizes commands only when prefixed with `^` to reduce
+//! accidental triggers from normal conversation. It returns a [PublicCommand] enum for
+//! server code to handle. Arguments after the command are intentionally minimal.
+//!
+//! Cooldowns are tuned for interactive feel on a mesh network and can be adjusted by
+//! changing the fields on [PublicState]. The internal maps are periodically pruned to
+//! bound memory usage.
 use log::trace;
 use std::collections::HashMap;
 use std::time::{Instant, Duration};

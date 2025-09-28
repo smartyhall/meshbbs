@@ -21,6 +21,7 @@ kramdown:
 
 # Navigation
 header_pages:
+  - index.md
   - getting-started/installation.md
   - user-guide/commands.md
   - administration/setup.md

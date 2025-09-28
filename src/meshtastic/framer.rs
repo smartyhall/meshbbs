@@ -1,3 +1,12 @@
+//! Varint length‑delimited protobuf framer for Meshtastic serial frames.
+//!
+//! Meshtastic binary messages on the serial link are emitted as:
+//!
+//!   `<varint length><protobuf bytes>`
+//!
+//! This module provides a small incremental framer that can be fed arbitrary chunks and
+//! yields whole frames when available. It applies conservative size limits and attempts
+//! simple resynchronization on malformed inputs by advancing a byte.
 use bytes::{BytesMut, Buf};
 
 /// Maximum allowed frame size (sane upper bound to avoid runaway allocation)

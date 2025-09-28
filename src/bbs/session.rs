@@ -76,7 +76,7 @@ pub struct Session {
     pub post_index: usize,
     /// Current slice index within a post body (1-based) when content spans multiple slices
     pub slice_index: usize,
-    /// Optional filter text for list/search context (e.g., F <text>)
+    /// Optional filter text for list/search context (e.g., `F <text>`) 
     pub filter_text: Option<String>,
     /// Baseline timestamp for unread indicators (captured as previous last_login when user logs in)
     pub unread_since: Option<DateTime<Utc>>,

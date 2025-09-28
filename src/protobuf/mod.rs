@@ -11,6 +11,8 @@ pub mod meshtastic_generated {
     //! hundreds of dead_code/unused warnings for portions of the API we don't (yet) use.
     #[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_macros)]
     #[allow(clippy::all)]
+    // Generated docs can contain tag-like text; relax strict rustdoc HTML checks here
+    #[allow(rustdoc::invalid_html_tags)]
     mod inner {
         include!(concat!(env!("OUT_DIR"), "/meshtastic.rs"));
     }

@@ -28,7 +28,7 @@ Welcome to the comprehensive documentation for meshbbs, a modern Bulletin Board 
 ### Development
 - [API Reference](https://martinbogo.github.io/meshbbs/meshbbs/) - Generated Rust API documentation
 - [Fortune Module Guide](development/fortune-module.md) - In-depth Fortune system documentation
-- [Contributing Guide](../CONTRIBUTING.md) - How to contribute to meshbbs
+- [Contributing Guide](https://github.com/martinbogo/meshbbs/blob/main/CONTRIBUTING.md) - How to contribute to meshbbs
 - [Architecture Overview](development/architecture.md) - System architecture and design
 - [Building from Source](development/building.md) - Development setup and building
 - [Releasing](development/releasing.md) - Step-by-step release checklist (printable)
@@ -38,7 +38,7 @@ Welcome to the comprehensive documentation for meshbbs, a modern Bulletin Board 
 
 ## 🔗 Quick Links
 
-- [Main README](../README.md) - Project overview and quick start
+- [Main README](https://github.com/martinbogo/meshbbs#readme) - Project overview and quick start
 - [API Documentation](https://martinbogo.github.io/meshbbs/meshbbs/) - Generated rustdoc
 - [GitHub Issues](https://github.com/martinbogo/meshbbs/issues) - Bug reports and feature requests
 - [GitHub Discussions](https://github.com/martinbogo/meshbbs/discussions) - Community discussions

@@ -169,7 +169,7 @@ cargo bench --features fortune
 
 ## Related Documentation
 
-- [Games Documentation](../docs/user-guide/games.md) - User-facing fortune documentation
-- [Commands Reference](../docs/user-guide/commands.md) - Command syntax
-- [Public Commands](src/bbs/public.rs) - Parser and rate limiting
-- [Server Integration](src/bbs/server.rs) - Broadcast handling
+- [Games Documentation](../user-guide/games.md) - User-facing fortune documentation
+- [Commands Reference](../user-guide/commands.md) - Command syntax
+- [Public Commands](https://github.com/martinbogo/meshbbs/blob/main/src/bbs/public.rs) - Parser and rate limiting
+- [Server Integration](https://github.com/martinbogo/meshbbs/blob/main/src/bbs/server.rs) - Broadcast handling

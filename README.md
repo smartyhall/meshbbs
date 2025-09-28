@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.18.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.20.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
   [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
   [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -34,6 +34,16 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory and h
 - **[Hardware Compatibility](docs/hardware/)** - Supported devices and setup
 
 > The documentation is maintained alongside the code and automatically updated with each release.
+
+### Building the API docs locally
+
+You can generate the same Rust API docs on your machine:
+
+1. Ensure Rust is installed (rustup).
+2. Run: `cargo doc --no-deps --all-features`
+3. Open: `target/doc/meshbbs/index.html`
+
+These docs reflect the inline rustdoc comments throughout the codebase. If you add or change public APIs, please include rustdoc so the generated docs stay complete.
 
 ## ✨ Features
 
