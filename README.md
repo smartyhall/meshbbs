@@ -373,41 +373,24 @@ Meshbbs is built with a clean, modular architecture in Rust:
 
 ```mermaid
 flowchart TD
-   M[Meshtastic Device]
-   SIO[Serial (USB/UART)]
-   R[Meshtastic Reader Task]
-   W[Meshtastic Writer Task]
-   SV[BBS Server]
-   SCH[Scheduler]
-   SESS[Sessions]
-   PST[Public State]
-   STOR[Storage Layer]
-   MSGDB[Message DB]
-   USERDB[User DB]
-   CFG[Configuration]
-   WX[(Weather Service)]
+   M[Meshtastic Device] --- SIO[Serial (USB / UART)]
+   SIO --> R[Meshtastic Reader Task]
+   W[Meshtastic Writer Task] --> SIO
 
-   M <--> SIO
-   SIO --> R
-   W --> SIO
+   R -- "TextEvent (mpsc)" --> SV[BBS Server]
+   R -- "our_node_id (mpsc)" --> SV
 
-   %% Event ingress from radio
-   R -- TextEvent (mpsc) --> SV
-   R -- our_node_id (mpsc) --> SV
-
-   %% Outgoing path via scheduler/ writer
-   SV -- Outgoing (mpsc) --> SCH
+   SV -- "Outgoing (mpsc)" --> SCH[Scheduler]
    SCH -- dispatch --> W
 
-   %% Server subsystems
-   SV --> SESS
+   SV --> SESS[Sessions]
    SESS -->|per-node| SV
-   SV --> PST
-   SV --> STOR
-   STOR --> MSGDB
-   STOR --> USERDB
-   SV --> CFG
-   SV --> WX
+   SV --> PST[Public State]
+   SV --> STOR[Storage Layer]
+   STOR --> MSGDB[Message DB]
+   STOR --> USERDB[User DB]
+   SV --> CFG[Configuration]
+   SV --> WX[(Weather Service)]
 ```
 
 ### 📁 Module Structure
