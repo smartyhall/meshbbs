@@ -29,8 +29,9 @@ jobs:
 
       - name: Build Rust API Docs (rustdoc)
         run: |
-          # Build docs with minimal features to avoid native deps and build.rs work
-          cargo doc --no-deps --no-default-features --features "api-reexports"
+          # Build docs without `serial` or `meshtastic-proto` to avoid native deps and build.rs,
+          # but include `weather` so the weather module compiles (it references reqwest types).
+          cargo doc --no-deps --no-default-features --features "weather,api-reexports"
 
       - name: Build Jekyll site from docs/
         uses: actions/jekyll-build-pages@v1
