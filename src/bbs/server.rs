@@ -413,6 +413,18 @@ impl BbsServer {
             return Ok(());
         }
         
+        // Check if initial radio configuration is complete
+        if let Some(ref device) = self.device {
+            if !device.initial_sync_complete() {
+                debug!("Ident beacon waiting for initial radio config to complete");
+                return Ok(());
+            }
+        } else {
+            // No device available yet, wait
+            debug!("Ident beacon waiting for device initialization");
+            return Ok(());
+        }
+        
         use chrono::{Utc, Timelike};
         
         let now = Utc::now();
