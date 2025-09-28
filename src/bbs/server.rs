@@ -1618,7 +1618,7 @@ impl BbsServer {
                                     fallback
                                 }
                             } else {
-                                info!("Help request from unparseable node key: '{}'", node_key);
+                                debug!("Help request from unparseable node key: '{}'", node_key);
                                 node_key.clone()
                             }
                         };
