@@ -23,7 +23,11 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
-## 📚 Documentation
+## � Release notes
+
+- 1.0.21 (2025-09-28): Critical hotfix for a crash when logging long messages containing multibyte characters (e.g., em dashes/emoji). We now truncate previews using a UTF-8 safe helper and hardened parser slices to avoid invalid byte-boundary slicing. If you saw a panic like "byte index N is not a char boundary", update immediately.
+
+## �📚 Documentation
 
 Comprehensive documentation is available in the [`docs/`](docs/) directory and hosted at [GitHub Pages](https://martinbogo.github.io/meshbbs):
 

@@ -9,6 +9,18 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.21] - 2025-09-28
+
+### Fixed
+- Critical: Prevent panic when logging long message previews containing multibyte UTF-8 characters (e.g., em dash, emoji).
+  - Replaced byte-slicing in log previews with a UTF-8 safe truncation helper.
+  - Hardened parser slices in public command parser to avoid accidental mid-char slicing.
+  - Observed crash looked like: `byte index N is not a char boundary; it is inside '—' ...`.
+
+### Notes
+- Recommended immediate update if you run public commands that may produce non-ASCII content (e.g., `^FORTUNE`).
+
+
 ## [1.0.21] - 2025-09-27
 
 ### Fixed
