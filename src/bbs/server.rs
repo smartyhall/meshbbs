@@ -436,13 +436,17 @@ impl BbsServer {
                 return Ok(());
             }
         } else {
-            // In reader/writer mode, BbsServer.device is not used for sending. Allow ident after a brief grace period.
-            let since_start = self.startup_instant.elapsed();
-            if since_start < Duration::from_secs(120) {
-                debug!("Ident beacon waiting for device initialization");
-                return Ok(());
+            // In reader/writer mode, BbsServer.device is not used for sending.
+            // Prefer to proceed once we've learned our node ID from the reader.
+            if self.our_node_id.is_none() {
+                let since_start = self.startup_instant.elapsed();
+                if since_start < Duration::from_secs(120) {
+                    debug!("Ident beacon waiting for our node ID");
+                    return Ok(());
+                }
+                // Fallback: after grace period, proceed even without node ID (will show 'Unknown').
             }
-            // Past grace period: proceed based on time boundary so idents don't get stuck forever.
+            // Proceed based on time boundary so idents don't get stuck forever.
         }
         
         use chrono::{Utc, Timelike};
