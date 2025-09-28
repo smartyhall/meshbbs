@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Fortune module (`src/bbs/fortune.rs`) implements the `^FORTUNE` public channel command, providing users with random wisdom quotes, programming humor, and inspirational messages.
+The Fortune module (`src/bbs/fortune.rs`) implements the `<prefix>FORTUNE` public channel command (default `^FORTUNE`), providing users with random wisdom quotes, programming humor, and inspirational messages.
 
 ## Architecture
 
@@ -14,7 +14,7 @@ The Fortune module (`src/bbs/fortune.rs`) implements the `^FORTUNE` public chann
 
 ### Integration Points
 
-- **Public Command Parser** (`src/bbs/public.rs`): Recognizes `^FORTUNE` commands
+- **Public Command Parser** (`src/bbs/public.rs`): Recognizes `<prefix>FORTUNE` commands (default `^FORTUNE`)
 - **Rate Limiting**: 5-second per-node cooldown via `PublicState::allow_fortune()`
 - **Broadcast System**: Messages sent via public channel broadcast only
 
@@ -128,7 +128,7 @@ println!("Maximum fortune length: {} chars", max_fortune_length());
 
 ### Potential Features
 
-1. **Categories**: Themed fortune subsets (`^FORTUNE PROGRAMMING`, `^FORTUNE WISDOM`)
+1. **Categories**: Themed fortune subsets (`<prefix>FORTUNE PROGRAMMING`, `<prefix>FORTUNE WISDOM`)
 2. **External Database**: Load fortunes from external files
 3. **User Favorites**: Allow users to save favorite fortunes
 4. **Fortune of the Day**: Daily fortune rotation

@@ -8,7 +8,7 @@ See also: the [Games](./games.md) page for public channel mini‑games (e.g., Sl
 
 ### Initial Discovery (Public Channel)
 
-These commands are used on the public Meshtastic channel and require the `^` prefix:
+These commands are used on the public Meshtastic channel and require a prefix. The default is `^`, but your sysop can change it via `bbs.public_command_prefix`.
 
 Reliability:
 - Public broadcasts are best‑effort; the BBS may request an ACK and treats any single ACK as basic delivery confirmation, but it does not retry broadcasts.
@@ -16,19 +16,19 @@ Reliability:
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `^HELP` | Show available public commands (broadcast) and send BBS instructions (DM) | `^HELP` |
-| `^LOGIN username` | Register for a private session | `^LOGIN alice` |
-| `^WEATHER` | Show current weather | `^WEATHER` |
-| `^SLOT` / `^SLOTMACHINE` | Spin the emoji slot machine (5 coins per spin; daily refill) | `^SLOT` |
-| `^SLOTSTATS` | Show your coin balance and slot stats | `^SLOTSTATS` |
-| `^8BALL` | Ask the Magic 8‑Ball a question; get a random response | `^8BALL` |
-| `^FORTUNE` | Get a random fortune from classic Unix wisdom databases | `^FORTUNE` |
+| `<prefix>HELP` | Show available public commands (broadcast) and send BBS instructions (DM) | `^HELP` (default) |
+| `<prefix>LOGIN username` | Register for a private session | `^LOGIN alice` (default) |
+| `<prefix>WEATHER` | Show current weather | `^WEATHER` (default) |
+| `<prefix>SLOT` / `<prefix>SLOTMACHINE` | Spin the emoji slot machine (5 coins per spin; daily refill) | `^SLOT` (default) |
+| `<prefix>SLOTSTATS` | Show your coin balance and slot stats | `^SLOTSTATS` (default) |
+| `<prefix>8BALL` | Ask the Magic 8‑Ball a question; get a random response | `^8BALL` (default) |
+| `<prefix>FORTUNE` | Get a random fortune from classic Unix wisdom databases | `^FORTUNE` (default) |
 
-> 💡 **Discovery Tip**: New to the BBS? Send `^HELP` on the public channel to see all available public commands broadcasted to everyone, plus get BBS setup instructions via DM.
+> 💡 **Discovery Tip**: New to the BBS? Send `<prefix>HELP` (default `^HELP`) on the public channel to see all available public commands broadcasted to everyone, plus get BBS setup instructions via DM.
 
 ## Session Commands (Direct Message)
 
-After using `^LOGIN` on the public channel, open a direct message to the BBS node to access these commands:
+After using `<prefix>LOGIN` (default `^LOGIN`) on the public channel, open a direct message to the BBS node to access these commands:
 
 ### Authentication
 
@@ -199,7 +199,7 @@ alice@hello>
 ### Basic Session Flow
 
 ```
-Public channel:
+Public channel (using the configured prefix; default shown):
 > ^LOGIN alice
 < Meshbbs: Pending login for 'alice'. Open a DM to start your session.
 

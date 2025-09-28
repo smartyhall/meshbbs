@@ -146,7 +146,7 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 ## [1.0.12-beta] - 2025-09-26
 
 ### Fixed
-- **Critical**: `^HELP` messages are now chunked to stay under Meshtastic's 230-byte transmission limit
+- **Critical**: Public HELP messages (e.g., `<prefix>HELP`, default `^HELP`) are now chunked to stay under Meshtastic's 230-byte transmission limit
 - Previous help message was 302 bytes, potentially causing transmission failures
 - Help content now split into multiple chunks (220-byte safety margin): first chunk with main commands + "DM for BBS access", continuation chunks with "More:" header
 - Each chunk sent with 2.5-second delays to respect rate limiting
@@ -160,12 +160,12 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 ## [1.0.11-beta] - 2025-09-26
 
 ### Added
-- Enhanced `^HELP` command now broadcasts all available public commands to improve discoverability
-- New behavior: `^HELP` sends BBS instructions via DM while broadcasting public commands list to channel
+- Enhanced public HELP command (`<prefix>HELP`, default `^HELP`) now broadcasts all available public commands to improve discoverability
+- New behavior: public HELP sends BBS instructions via DM while broadcasting public commands list to channel
 - Comprehensive test coverage for new help behavior in `tests/help_public_commands.rs`
 
 ### Changed  
-- `^HELP` command now shows: "Public Commands (for {user}): ^HELP - Show this help | ^LOGIN <user> - Register for BBS | ^SLOT - Play slot machine | ^SLOTSTATS - Show your stats | ^8BALL - Magic 8-Ball oracle | ^FORTUNE - Random wisdom | DM for BBS access"
+- HELP command now shows: "Public Commands (for {user}): <prefix>HELP - Show this help | <prefix>LOGIN <user> - Register for BBS | <prefix>SLOT - Play slot machine | <prefix>SLOTSTATS - Show your stats | <prefix>8BALL - Magic 8-Ball oracle | <prefix>FORTUNE - Random wisdom | DM for BBS access" (default prefix `^`)
 - Updated documentation in README.md and user guides to reflect improved command discoverability
 - Enhanced help system description in README from "Compact HELP + verbose HELP+" to "^HELP broadcasts all public commands for discovery, with BBS instructions via DM"
 
@@ -175,7 +175,7 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 ## [1.0.10-beta] - 2025-09-26
 
 ### Added
-- Public command `^FORTUNE` (Fortune Cookies): returns random wisdom from 140 curated Unix fortune database entries including programming quotes, philosophy, literature, and clean humor. All entries under 200 characters for mesh-friendly transmission. Broadcast-only with 5-second per-node cooldown.
+- Public command `<prefix>FORTUNE` (Fortune Cookies; default `^FORTUNE`): returns random wisdom from curated Unix fortune database entries. All entries under 200 characters for mesh-friendly transmission. Broadcast-only with 5-second per-node cooldown.
 - Comprehensive unit test coverage for Fortune module (11 test functions covering database validation, functionality, thread safety, and content quality)
 - Helper functions for Fortune module: `fortune_count()` and `max_fortune_length()` for diagnostics and testing
 - Extensive rustdoc documentation for Fortune module with examples and thread safety notes
@@ -184,13 +184,13 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 ## [1.0.9-beta] - 2025-09-26
 
 ### Added
-- Public command `^8BALL` (Magic 8‑Ball): returns one of 20 classic responses (emoji‑prefixed). Broadcast‑only with a lightweight per‑node cooldown like `^SLOT`.
+- Public command `<prefix>8BALL` (Magic 8‑Ball; default `^8BALL`): returns one of 20 classic responses (emoji‑prefixed). Broadcast‑only with a lightweight per‑node cooldown like `<prefix>SLOT`.
 
 ### Changed
 - Docs: README badge bumped to 1.0.9‑beta; user docs updated to include Magic 8‑Ball.
 
 ### Fixed
-- Slot machine docs/tests alignment: `^SLOT` clarified as broadcast‑only with a behavior test to prevent regressions.
+- Slot machine docs/tests alignment: `<prefix>SLOT` clarified as broadcast‑only with a behavior test to prevent regressions (default `^SLOT`).
 
 ## [1.0.8-beta] - 2025-09-26
 
@@ -198,7 +198,7 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 - Logging hygiene: demote noisy INFO logs to DEBUG in HELP flow, weather fetch/success, cache loads, serial open, reader/writer init, resend attempts, and per-message delivered ACK logs.
 
 ### Fixed
-- Public `^SLOT` behavior corrected to be broadcast-only (no DM). `^SLOTSTATS` remains broadcast-first with DM fallback for reliability.
+- Public `<prefix>SLOT` behavior corrected to be broadcast-only (no DM). `<prefix>SLOTSTATS` remains broadcast-first with DM fallback for reliability. (Default `^SLOT` / `^SLOTSTATS`.)
 
 ## [1.0.7] - 2025-09-26
 
@@ -247,8 +247,8 @@ Added a public‑channel slot machine mini‑game and related documentation upda
 
 ### Added
 - New public commands:
-	- `^SLOT` / `^SLOTMACHINE` — spin the slot machine (5 coins per spin; daily refill to 100 when at 0)
-	- `^SLOTSTATS` — show your coin balance, total spins, wins, and jackpots
+  - `<prefix>SLOT` / `<prefix>SLOTMACHINE` — spin the slot machine (5 coins per spin; daily refill to 100 when at 0) (default `^SLOT`)
+  - `<prefix>SLOTSTATS` — show your coin balance, total spins, wins, and jackpots (default `^SLOTSTATS`)
 - Persistent per‑player state under `data/slotmachine/players.json` with safe file locking
 - Jackpot and stats tracking (total_spins, total_wins, jackpots, last_spin, last_jackpot)
 - Runtime packaging skeleton includes `data/slotmachine/.keep`

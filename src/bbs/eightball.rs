@@ -1,9 +1,9 @@
-//! Magic 8-Ball mini-feature used by public channel command ^8BALL.
+//! Magic 8-Ball mini-feature used by public channel command <prefix>8BALL (default prefix `^`).
 //!
 //! Behavior:
 //! - Stateless: no persistence; just returns a random classic response
-//! - Delivery: public broadcast only (best-effort), same reliability posture as ^SLOT
-//! - Rate limit: handled by PublicState.allow_8ball (light per-node cooldown like ^SLOT)
+//! - Delivery: public broadcast only (best-effort), same reliability posture as `<prefix>SLOT`
+//! - Rate limit: handled by PublicState.allow_8ball (light per-node cooldown like `<prefix>SLOT`)
 
 use rand::Rng;
 

@@ -61,11 +61,11 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 ### 💬 **Communication & Messaging**
 - **📚 Message Boards**: Traditional BBS-style message topics and forums
 - **🎯 Dynamic Contextual Prompts**: Smart prompts showing current state (`unauth>`, `user@topic>`, `post@topic>`)
-- **📜 Enhanced Help System**: `^HELP` broadcasts all public commands for discovery, with BBS instructions via DM
+- **📜 Enhanced Help System**: `<prefix>HELP` (default `^HELP`) broadcasts all public commands for discovery, with BBS instructions via DM
 - **📏 Optimized Message Size**: 230-byte limit optimized for Meshtastic constraints
- - **🎰 Public Slot Machine**: Fun `^SLOT` mini‑game with daily coin refills and jackpots
- - **🎱 Magic 8‑Ball (public)**: Ask `^8BALL` for a classic, emoji‑prefixed response (broadcast‑only)
- - **🔮 Fortune Cookies (public)**: Use `^FORTUNE` to get random Unix wisdom, quotes, and humor (broadcast‑only)
+ - **🎰 Public Slot Machine**: Fun `<prefix>SLOT` mini‑game (default `^SLOT`) with daily coin refills and jackpots
+ - **🎱 Magic 8‑Ball (public)**: Ask `<prefix>8BALL` (default `^8BALL`) for a classic, emoji‑prefixed response (broadcast‑only)
+ - **🔮 Fortune Cookies (public)**: Use `<prefix>FORTUNE` (default `^FORTUNE`) to get random Unix wisdom, quotes, and humor (broadcast‑only)
  - **✅ Broadcast ACK Confirmation (optional)**: Broadcasts can now request an ACK and treat any single ACK as “at least one hop” success; lightweight tracking with short TTL and new metrics (see below)
 
 ### 👥 **User Management & Security**
@@ -264,14 +264,14 @@ meshbbs -vv start
 Meshbbs uses a **two-step interaction model** that keeps the shared mesh channel quiet while enabling rich private sessions.
 
 #### 🔍 **Step 1: Say Hello on the Public Channel**
-Commands require `^` prefix to address the BBS:
-- `^HELP` - Shows all public commands and BBS login info
-- `^LOGIN <username>` - Registers pending login for your node ID
-- `^WEATHER` - Get current weather information
- - `^SLOT` / `^SLOTMACHINE` - Spin the emoji slot machine (costs 5 coins; daily refill to 100 when at 0)
- - `^SLOTSTATS` - Show your slot coin balance, wins, and jackpots
-- `^8BALL <question>` - Magic 8-Ball oracle for life's mysteries
-- `^FORTUNE` - Receive random wisdom and inspiration
+Commands require a prefix to address the BBS. The default is `^`, but your sysop can set a different one in `bbs.public_command_prefix`:
+- `<prefix>HELP` - Shows all public commands and BBS login info (default `^HELP`)
+- `<prefix>LOGIN <username>` - Registers pending login for your node ID (default `^LOGIN`)
+- `<prefix>WEATHER` - Get current weather information (default `^WEATHER`)
+ - `<prefix>SLOT` / `<prefix>SLOTMACHINE` - Spin the emoji slot machine (costs 5 coins; daily refill to 100 when at 0) (default `^SLOT`)
+ - `<prefix>SLOTSTATS` - Show your slot coin balance, wins, and jackpots (default `^SLOTSTATS`)
+- `<prefix>8BALL <question>` - Magic 8-Ball oracle for life's mysteries (default `^8BALL`)
+- `<prefix>FORTUNE` - Receive random wisdom and inspiration (default `^FORTUNE`)
 
 #### 💬 **Step 2: Start Your Private Conversation**
 After public `LOGIN`, open a private message to the BBS node to start your authenticated session.

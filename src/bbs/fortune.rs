@@ -1,4 +1,4 @@
-//! Unix fortune cookie mini-feature used by public channel command ^FORTUNE.
+//! Unix fortune cookie mini-feature used by public channel command <prefix>FORTUNE (default prefix `^`).
 //!
 //! This module provides a stateless fortune cookie system inspired by the classic Unix
 //! `fortune` command. It contains a curated database of 400 mixed fortunes: witty,
@@ -8,7 +8,7 @@
 //! # Behavior
 //!
 //! - **Stateless**: No persistence required; pure function calls
-//! - **Delivery**: Public broadcast only (best-effort), same reliability posture as ^SLOT
+//! - **Delivery**: Public broadcast only (best-effort), same reliability posture as `<prefix>SLOT`
 //! - **Rate limiting**: Handled by `PublicState.allow_fortune` (5-second per-node cooldown)
 //! - **Mesh-optimized**: All entries under 200 characters for efficient transmission
 //!
@@ -23,11 +23,11 @@
 //!
 //! # Usage
 //!
-//! Users send `^FORTUNE` on the public channel to receive a random fortune:
+//! Users send `<prefix>FORTUNE` on the public channel to receive a random fortune (default `^FORTUNE`):
 //!
 //! ```text
-//! User: ^FORTUNE
-//! BBS:  ^FORTUNE ⟶ The only true wisdom is in knowing you know nothing. — Socrates
+//! User: <prefix>FORTUNE
+//! BBS:  <prefix>FORTUNE ⟶ The only true wisdom is in knowing you know nothing. — Socrates
 //! ```
 //!
 //! # Thread Safety

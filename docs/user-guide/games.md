@@ -4,7 +4,7 @@ Meshbbs includes optional, lightweight games you can access from the public chan
 
 ## 🎰 Slot Machine (public channel)
 
-- Commands:
+- Commands (use your configured prefix; default shown):
   - `^SLOT` / `^SLOTMACHINE` — spin once; the BBS broadcasts the result on the public channel (best‑effort)
   - `^SLOTSTATS` — show your coins, spins, wins, and jackpots
 - Economy:
@@ -19,14 +19,14 @@ Meshbbs includes optional, lightweight games you can access from the public chan
   - Broadcasts may request an ACK and are considered successful when at least one ACK is received within a short window (no retries)
 - Persistence: Player balances and stats are stored under `data/slotmachine/players.json`
 
-Tip: If you see “Out of coins… Next refill in ~Hh Mm”, check back later or run `^SLOTSTATS` to see your current balance and stats.
+Tip: If you see “Out of coins… Next refill in ~Hh Mm”, check back later or run `<prefix>SLOTSTATS` (default `^SLOTSTATS`) to see your current balance and stats.
 
 ---
 
 ## 🎱 Magic 8‑Ball (public channel)
 
 - Command:
-  - `^8BALL` — ask a yes/no question and receive a classic Magic 8‑Ball response
+  - `<prefix>8BALL` (default `^8BALL`) — ask a yes/no question and receive a classic Magic 8‑Ball response
 - Behavior:
   - Stateless and lightweight; no persistence
   - Broadcast-only on the public channel (best‑effort)
@@ -38,7 +38,7 @@ Tip: If you see “Out of coins… Next refill in ~Hh Mm”, check back later or
 ## 🔮 Fortune Cookies (public channel)
 
 - Command:
-  - `^FORTUNE` — receive a random fortune from classic Unix wisdom databases
+  - `<prefix>FORTUNE` (default `^FORTUNE`) — receive a random fortune from classic Unix wisdom databases
 - Behavior:
   - Stateless; draws from 140 curated fortunes including programming quotes, philosophy, literature, and humor
   - All fortunes under 200 characters for mesh-friendly transmission

@@ -32,6 +32,8 @@ On the public channel, send:
 ^LOGIN yourname
 ```
 
+Note: Public commands use a configurable prefix. The default is `^`. If you've changed the prefix in `config.toml` (bbs.public_command_prefix), use your configured prefix here.
+
 Then open a direct message to the BBS node and log in:
 
 ```

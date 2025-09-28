@@ -1,4 +1,4 @@
-//! Slot machine mini‑game used by public channel commands ^SLOT and ^SLOTMACHINE.
+//! Slot machine mini‑game used by public channel commands <prefix>SLOT and <prefix>SLOTMACHINE (default prefix `^`).
 //!
 //! Overview
 //! - Emoji reels with fixed distributions and deterministic payout table
@@ -8,8 +8,8 @@
 //! - Stats: total spins, wins, jackpots, last spin and last jackpot timestamps
 //!
 //! Public commands (handled by `bbs::server`):
-//! - `^SLOT` / `^SLOTMACHINE` — spin once and broadcast the result (broadcast-only; no DM fallback)
-//! - `^SLOTSTATS` — show per‑player stats and current coin balance
+//! - `<prefix>SLOT` / `<prefix>SLOTMACHINE` — spin once and broadcast the result (broadcast-only; no DM fallback)
+//! - `<prefix>SLOTSTATS` — show per‑player stats and current coin balance
 //!
 //! Payouts:
 //! - 7️⃣7️⃣7️⃣ = JACKPOT — pays the progressive pot (minimum 500 coins; grows by the bet amount (5 coins) for every losing spin across all players)
@@ -383,7 +383,7 @@ pub fn next_refill_eta(base_dir: &str, player_id: &str) -> Option<(i64, i64)> {
     if remaining <= ChronoDuration::zero() { Some((0,0)) } else { Some((remaining.num_hours(), (remaining.num_minutes() % 60))) }
 }
 
-/// Public summary used by `^SLOTSTATS` to report a user's stats.
+/// Public summary used by `<prefix>SLOTSTATS` to report a user's stats (default prefix `^`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerSummary {
     pub coins: u32,

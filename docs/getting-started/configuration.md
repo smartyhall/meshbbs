@@ -17,7 +17,7 @@ frequency = "15min"
 ```
 
 Behavior:
-- Message format: `[IDENT] <BBS name> (<short node id>) - <YYYY-MM-DD HH:MM:SS> UTC - Type ^HELP for commands`
+- Message format: `[IDENT] <BBS name> (<short node id>) - <YYYY-MM-DD HH:MM:SS> UTC - Type <prefix>HELP for commands` (default prefix `^`)
 - Short node id is 24-bit hex (e.g., 0x1A2B3C); falls back to config value or "Unknown".
 - Scheduling is in UTC and respects the selected boundary (e.g., every 5 minutes at :00/:05/:10/...).
 - Startup gating:

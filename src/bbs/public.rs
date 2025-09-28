@@ -1,8 +1,8 @@
 //! Public channel utilities: lightweight state and a tiny command parser.
 //!
 //! This module implements rate‑limiting and simple prefix‑based commands that can be
-//! used from a shared public chat (e.g. `^HELP`, `^LOGIN alice`, `^SLOT`, `^8BALL`,
-//! `^FORTUNE`, `^WEATHER`). The [PublicState] tracks per‑node cooldowns to avoid spam
+//! used from a shared public chat (e.g. `<prefix>HELP`, `<prefix>LOGIN alice`, `<prefix>SLOT`, `<prefix>8BALL`,
+//! `<prefix>FORTUNE`, `<prefix>WEATHER`; default prefix is `^` and is configurable). The [PublicState] tracks per‑node cooldowns to avoid spam
 //! while keeping logic extremely small and fast.
 //!
 //! The [PublicCommandParser] recognizes commands only when prefixed with one of the configured
@@ -29,13 +29,13 @@ pub struct PublicState {
     pub last_public_reply: HashMap<String, Instant>, // rate limit map
     pub reply_cooldown: Duration,
     pub pending_timeout: Duration,
-    // Separate, lighter cooldown for high-churn public commands like ^SLOT
+    // Separate, lighter cooldown for high-churn public commands like <prefix>SLOT
     pub slot_last_spin: HashMap<String, Instant>, // node_id -> last spin time
     pub slot_cooldown: Duration,
-    // Lightweight cooldown for ^8BALL
+    // Lightweight cooldown for <prefix>8BALL
     pub eightball_last: HashMap<String, Instant>,
     pub eightball_cooldown: Duration,
-    // Lightweight cooldown for ^FORTUNE
+    // Lightweight cooldown for <prefix>FORTUNE
     pub fortune_last: HashMap<String, Instant>,
     pub fortune_cooldown: Duration,
 }
@@ -84,7 +84,7 @@ impl PublicState {
         }
     }
 
-    /// Lightweight, per-node rate limit for ^SLOT. Defaults to 3s between spins.
+    /// Lightweight, per-node rate limit for <prefix>SLOT. Defaults to 3s between spins.
     pub fn allow_slot(&mut self, node_id: &str) -> bool {
         let now = Instant::now();
         match self.slot_last_spin.get(node_id) {
@@ -93,7 +93,7 @@ impl PublicState {
         }
     }
 
-    /// Lightweight, per-node rate limit for ^8BALL. Defaults to 2s between questions.
+    /// Lightweight, per-node rate limit for <prefix>8BALL. Defaults to 2s between questions.
     pub fn allow_8ball(&mut self, node_id: &str) -> bool {
         let now = Instant::now();
         match self.eightball_last.get(node_id) {
@@ -102,7 +102,7 @@ impl PublicState {
         }
     }
 
-    /// Lightweight, per-node rate limit for ^FORTUNE. Defaults to 5s between fortunes.
+    /// Lightweight, per-node rate limit for <prefix>FORTUNE. Defaults to 5s between fortunes.
     pub fn allow_fortune(&mut self, node_id: &str) -> bool {
         let now = Instant::now();
         match self.fortune_last.get(node_id) {
@@ -148,22 +148,22 @@ impl PublicCommandParser {
         trace!("Parsed WEATHER from '{}' (args ignored)", raw);
         return PublicCommand::Weather;
     }
-        // SLOT machine command: ^SLOTMACHINE or ^SLOT
+    // SLOT machine command: <prefix>SLOTMACHINE or <prefix>SLOT
         if body.eq_ignore_ascii_case("SLOTMACHINE") || body.eq_ignore_ascii_case("SLOT") {
             trace!("Parsed SLOTMACHINE from '{}'", raw);
             return PublicCommand::SlotMachine;
         }
-        // Magic 8-Ball: ^8BALL
+    // Magic 8-Ball: <prefix>8BALL
         if body.eq_ignore_ascii_case("8BALL") {
             trace!("Parsed 8BALL from '{}'", raw);
             return PublicCommand::EightBall;
         }
-        // Fortune cookies: ^FORTUNE
+    // Fortune cookies: <prefix>FORTUNE
         if body.eq_ignore_ascii_case("FORTUNE") {
             trace!("Parsed FORTUNE from '{}'", raw);
             return PublicCommand::Fortune;
         }
-        // Slot stats: ^SLOTSTATS
+    // Slot stats: <prefix>SLOTSTATS
         if body.eq_ignore_ascii_case("SLOTSTATS") {
             trace!("Parsed SLOTSTATS from '{}'", raw);
             return PublicCommand::SlotStats;

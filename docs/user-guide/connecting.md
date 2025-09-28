@@ -7,14 +7,14 @@ There are two channels of communication with the BBS:
 
 ## Public Channel
 
-Anyone on the mesh can send caret-prefixed commands:
+Anyone on the mesh can send prefixed commands (default prefix `^`; your sysop can configure this):
 
-- `^HELP` — shows public commands and triggers a DM with setup tips
-- `^LOGIN <username>` — request a private session
+- `<prefix>HELP` — shows public commands and triggers a DM with setup tips (default `^HELP`)
+- `<prefix>LOGIN <username>` — request a private session (default `^LOGIN`)
 
 ## Direct Message Session
 
-After `^LOGIN`, open a DM to the BBS node and authenticate:
+After `<prefix>LOGIN` (default `^LOGIN`), open a DM to the BBS node and authenticate:
 
 ```
 LOGIN <username> <password>

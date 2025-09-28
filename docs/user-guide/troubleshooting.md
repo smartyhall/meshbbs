@@ -13,6 +13,8 @@ Common issues and fixes.
 - Mesh can be congested; try `^HELP` to re-engage
 - Ensure your node can reach the BBS node (mesh connectivity)
 
+Note: Public commands use a configurable prefix. The default is `^`. If you've changed it, use your configured prefix for `LOGIN` and `HELP`.
+
 ## Session logs out unexpectedly
 
 - The BBS enforces inactivity timeouts; interact periodically

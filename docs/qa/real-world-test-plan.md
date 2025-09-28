@@ -32,6 +32,8 @@ Note: For any problem found, capture the exact command, what happened, and relev
 
 ## Public channel (shared mesh) sanity
 
+Note: Public commands use a configurable prefix. The default is `^`. In the examples below, replace `^` with your configured prefix if different.
+
 ### `^HELP` (from your Meshtastic client)
 
 Expect:

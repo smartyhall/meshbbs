@@ -506,11 +506,13 @@ impl BbsServer {
             if let Some(id) = nid { format!("0x{:04X}", id & 0xFFFF) } else { "Unknown".to_string() }
         };
         
+        let ident_prefix = self.public_parser.primary_prefix_char();
         let ident_msg = format!(
-            "[IDENT] {} ({}) - {} UTC - Type ^HELP for commands",
+            "[IDENT] {} ({}) - {} UTC - Type {}HELP for commands",
             self.config.bbs.name,
             id_display,
-            now.format("%Y-%m-%d %H:%M:%S")
+            now.format("%Y-%m-%d %H:%M:%S"),
+            ident_prefix
         );
         
         // Send to public channel
@@ -1808,23 +1810,24 @@ impl BbsServer {
                     // Broadcast-only: do not DM slot results.
                     if self.public_state.allow_slot(&node_key) {
                         let base = self.storage.base_dir().to_string();
+                        let p = self.public_parser.primary_prefix_char();
                         let (outcome, coins) = crate::bbs::slotmachine::perform_spin(&base, &node_key);
                         let msg = if outcome.r1 == "⛔" {
                             let eta = crate::bbs::slotmachine::next_refill_eta(&base, &node_key)
                                 .map(|(h,m)| format!(" Next refill in ~{}h {}m.", h.max(0), m.max(0)))
                                 .unwrap_or_default();
                             format!(
-                                "^SLOT ⟶ {} | {} | {}  — {}{}",
+                                "{p}SLOT ⟶ {} | {} | {}  — {}{}",
                                 outcome.r1, outcome.r2, outcome.r3, outcome.description, eta
                             )
                         } else if outcome.multiplier > 0 {
                             format!(
-                                "^SLOT ⟶ {} | {} | {}  — WIN x{} (+{} coins). Balance: {}",
+                                "{p}SLOT ⟶ {} | {} | {}  — WIN x{} (+{} coins). Balance: {}",
                                 outcome.r1, outcome.r2, outcome.r3, outcome.multiplier, outcome.winnings, coins
                             )
                         } else {
                             format!(
-                                "^SLOT ⟶ {} | {} | {}  — Loss (-{} coins). Balance: {}",
+                                "{p}SLOT ⟶ {} | {} | {}  — Loss (-{} coins). Balance: {}",
                                 outcome.r1, outcome.r2, outcome.r3, crate::bbs::slotmachine::BET_COINS, coins
                             )
                         };
@@ -1836,10 +1839,11 @@ impl BbsServer {
                     }
                 }
                 PublicCommand::EightBall => {
-                    // Lightweight per-node cooldown similar to ^SLOT; broadcast-only.
+                    // Lightweight per-node cooldown similar to <prefix>SLOT; broadcast-only.
                     if self.public_state.allow_8ball(&node_key) {
                         let answer = crate::bbs::eightball::ask();
-                        let msg = format!("^8BALL ⟶ {}", answer);
+                        let p = self.public_parser.primary_prefix_char();
+                        let msg = format!("{p}8BALL ⟶ {}", answer);
                         #[cfg(feature = "meshtastic-proto")]
                         {
                             if let Err(e) = self.send_broadcast(&msg).await { warn!("8BALL broadcast failed (best-effort): {e:?}"); }
@@ -1850,7 +1854,8 @@ impl BbsServer {
                     // Lightweight per-node cooldown; broadcast-only like other games.
                     if self.public_state.allow_fortune(&node_key) {
                         let fortune = crate::bbs::fortune::get_fortune();
-                        let msg = format!("^FORTUNE ⟶ {}", fortune);
+                        let p = self.public_parser.primary_prefix_char();
+                        let msg = format!("{p}FORTUNE ⟶ {}", fortune);
                         #[cfg(feature = "meshtastic-proto")]
                         {
                             if let Err(e) = self.send_broadcast(&msg).await { warn!("FORTUNE broadcast failed (best-effort): {e:?}"); }
@@ -1867,14 +1872,15 @@ impl BbsServer {
                             self.lookup_short_name_from_cache(id_str.parse().ok().unwrap_or(0))
                                 .unwrap_or_else(|| id_str.to_string())
                         } else { "—".to_string() };
+                        let p = self.public_parser.primary_prefix_char();
                         let msg = if let Some(s) = summary {
                             let rate = if s.total_spins > 0 { (s.total_wins as f32) * 100.0 / (s.total_spins as f32) } else { 0.0 };
                             format!(
-                                "^SLOTSTATS ⟶ Coins: {} | Spins: {} | Wins: {} ({:.1}%) | Jackpots: {} | Pot: {} | Last Win: {} by {}",
+                                "{p}SLOTSTATS ⟶ Coins: {} | Spins: {} | Wins: {} ({:.1}%) | Jackpots: {} | Pot: {} | Last Win: {} by {}",
                                 s.coins, s.total_spins, s.total_wins, rate, s.jackpots, j.amount, jdate, jwinner_short
                             )
                         } else {
-                            format!("^SLOTSTATS ⟶ No stats yet. Spin with ^SLOT to begin! | Pot: {} | Last Win: {} by {}", j.amount, jdate, jwinner_short)
+                            format!("{p}SLOTSTATS ⟶ No stats yet. Spin with {p}SLOT to begin! | Pot: {} | Last Win: {} by {}", j.amount, jdate, jwinner_short)
                         };
                         let mut broadcasted = false;
                         #[cfg(feature = "meshtastic-proto")]
