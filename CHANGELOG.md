@@ -9,6 +9,17 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.21] - 2025-09-27
+
+### Fixed
+- Ident beacon could fire twice within the same scheduled minute (e.g., at :00 and :56) due to an elapsed-time-only duplicate guard.
+  - Implemented robust per-minute boundary deduplication using epoch-minute key; guarantees at most one ident per boundary.
+
+### Internal
+- Restored test data files inadvertently modified by local runs.
+
+---
+
 ## [1.0.18] - 2025-09-28
 
 ### Added
