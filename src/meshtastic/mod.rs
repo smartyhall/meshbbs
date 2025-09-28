@@ -384,6 +384,8 @@ pub struct MeshtasticReader {
     text_event_tx: mpsc::UnboundedSender<TextEvent>,
     control_rx: mpsc::UnboundedReceiver<ControlMessage>,
     writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
+    // Notify the server of our node ID once known (for ident beacons)
+    node_id_tx: mpsc::UnboundedSender<u32>,
     node_cache: NodeCache,
     cache_file_path: String,
     nodes: std::collections::HashMap<u32, proto::NodeInfo>,
@@ -1170,6 +1172,7 @@ impl MeshtasticReader {
         text_event_tx: mpsc::UnboundedSender<TextEvent>,
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
+        node_id_tx: mpsc::UnboundedSender<u32>,
     ) -> Result<Self> {
     debug!("Initializing Meshtastic reader with shared port");
         
@@ -1181,6 +1184,7 @@ impl MeshtasticReader {
             text_event_tx,
             control_rx,
             writer_control_tx,
+            node_id_tx,
             node_cache: NodeCache::new(),
             cache_file_path: "data/node_cache.json".to_string(),
             nodes: std::collections::HashMap::new(),
@@ -1195,6 +1199,7 @@ impl MeshtasticReader {
         text_event_tx: mpsc::UnboundedSender<TextEvent>,
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
+        node_id_tx: mpsc::UnboundedSender<u32>,
     ) -> Result<Self> {
         info!("Initializing mock Meshtastic reader");
         
@@ -1204,6 +1209,7 @@ impl MeshtasticReader {
             text_event_tx,
             control_rx,
             writer_control_tx,
+            node_id_tx,
             node_cache: NodeCache::new(),
             cache_file_path: "data/node_cache.json".to_string(),
             nodes: std::collections::HashMap::new(),
@@ -1486,6 +1492,11 @@ impl MeshtasticReader {
                             warn!("Failed to send node ID to writer: {}", e);
                         } else {
                             debug!("Sent node ID {} to writer", info.my_node_num);
+                        }
+
+                        // Also notify the server so ident messages can include the short ID
+                        if let Err(e) = self.node_id_tx.send(info.my_node_num) {
+                            debug!("Failed to send node ID to server: {}", e);
                         }
                     } else {
                         // We already know our node ID, no need to spam the writer
@@ -2263,6 +2274,7 @@ pub async fn create_reader_writer_system(
     mpsc::UnboundedSender<OutgoingMessage>,
     mpsc::UnboundedSender<ControlMessage>,
     mpsc::UnboundedSender<ControlMessage>,
+    mpsc::UnboundedReceiver<u32>,
 )> {
     // Create shared serial port
     #[cfg(feature = "serial")]
@@ -2273,10 +2285,11 @@ pub async fn create_reader_writer_system(
     let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel::<OutgoingMessage>();
     let (reader_control_tx, reader_control_rx) = mpsc::unbounded_channel::<ControlMessage>();
     let (writer_control_tx, writer_control_rx) = mpsc::unbounded_channel::<ControlMessage>();
+    let (node_id_tx, node_id_rx) = mpsc::unbounded_channel::<u32>();
 
     // Create reader and writer with shared port
     #[cfg(feature = "serial")]
-    let reader = MeshtasticReader::new(shared_port.clone(), text_event_tx, reader_control_rx, writer_control_tx.clone()).await?;
+    let reader = MeshtasticReader::new(shared_port.clone(), text_event_tx, reader_control_rx, writer_control_tx.clone(), node_id_tx.clone()).await?;
     #[cfg(feature = "serial")]
     let writer = MeshtasticWriter::new(shared_port, outgoing_rx, writer_control_rx, tuning.clone()).await?;
 
@@ -2284,10 +2297,10 @@ pub async fn create_reader_writer_system(
     let (reader, writer) = {
         warn!("Serial not available, using mock reader/writer");
         (
-            MeshtasticReader::new_mock(text_event_tx, reader_control_rx, writer_control_tx.clone()).await?,
+            MeshtasticReader::new_mock(text_event_tx, reader_control_rx, writer_control_tx.clone(), node_id_tx.clone()).await?,
             MeshtasticWriter::new_mock(outgoing_rx, writer_control_rx, tuning).await?,
         )
     };
 
-    Ok((reader, writer, text_event_rx, outgoing_tx, reader_control_tx, writer_control_tx))
+    Ok((reader, writer, text_event_rx, outgoing_tx, reader_control_tx, writer_control_tx, node_id_rx))
 }

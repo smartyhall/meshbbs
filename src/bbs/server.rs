@@ -104,6 +104,8 @@ pub struct BbsServer {
     reader_control_tx: Option<mpsc::UnboundedSender<ControlMessage>>,
     #[cfg(feature = "meshtastic-proto")]
     writer_control_tx: Option<mpsc::UnboundedSender<ControlMessage>>,
+    #[cfg(feature = "meshtastic-proto")]
+    node_id_rx: Option<mpsc::UnboundedReceiver<u32>>, // reader-provided node ID notifications
     public_state: PublicState,
     public_parser: PublicCommandParser,
     #[cfg(feature = "weather")]
@@ -297,6 +299,8 @@ impl BbsServer {
             reader_control_tx: None,
             #[cfg(feature = "meshtastic-proto")]
             writer_control_tx: None,
+            #[cfg(feature = "meshtastic-proto")]
+            node_id_rx: None,
             public_state: PublicState::new(
                 std::time::Duration::from_secs(20),
                 std::time::Duration::from_secs(300)
@@ -353,7 +357,7 @@ impl BbsServer {
 
         // Create the reader/writer system
         let tuning_clone = tuning.clone();
-        let (reader, writer, text_event_rx, outgoing_tx, reader_control_tx, writer_control_tx) = 
+        let (reader, writer, text_event_rx, outgoing_tx, reader_control_tx, writer_control_tx, node_id_rx) = 
             crate::meshtastic::create_reader_writer_system(port, self.config.meshtastic.baud_rate, tuning_clone).await?;
         
         // Store the channels in the server
@@ -373,6 +377,7 @@ impl BbsServer {
         self.outgoing_tx = Some(outgoing_tx);
         self.reader_control_tx = Some(reader_control_tx);
         self.writer_control_tx = Some(writer_control_tx);
+    self.node_id_rx = Some(node_id_rx);
 
         // Provide scheduler handle to writer for retry scheduling (best-effort)
         if let (Some(sched), Some(ctrl)) = (&self.scheduler, &self.writer_control_tx) {
@@ -558,31 +563,36 @@ impl BbsServer {
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.message_tx = Some(tx);
         
+        // Periodic tick to drive housekeeping even without incoming events
+        #[cfg(feature = "meshtastic-proto")]
+        let mut periodic = tokio::time::interval(Duration::from_secs(1));
+        #[cfg(feature = "meshtastic-proto")]
+        periodic.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
         // Main message processing loop
         loop {
-            // Proactive weather refresh every 5 minutes
-            #[cfg(feature = "weather")]
-            if self.weather_last_poll.elapsed() >= Duration::from_secs(300) {
-                let _ = self.fetch_weather().await;
-                self.weather_last_poll = Instant::now();
-            }
-
-            // Node cache cleanup every hour - remove nodes not seen for 7 days
-            #[cfg(feature = "meshtastic-proto")]
-            if self.node_cache_last_cleanup.elapsed() >= Duration::from_secs(3600) {
-                // Note: node cache cleanup is now handled by the reader task
-                self.node_cache_last_cleanup = Instant::now();
-            }
-
-            // Ident beacon at configured intervals (if enabled)
-            #[cfg(feature = "meshtastic-proto")]
-            if let Err(e) = self.check_and_send_ident().await {
-                debug!("Ident beacon error: {}", e);
-            }
-
             #[cfg(feature = "meshtastic-proto")]
             {
                 tokio::select! {
+                    // Housekeeping tick
+                    _ = periodic.tick() => {
+                        #[cfg(feature = "weather")]
+                        if self.weather_last_poll.elapsed() >= Duration::from_secs(300) {
+                            let _ = self.fetch_weather().await;
+                            self.weather_last_poll = Instant::now();
+                        }
+                        if self.node_cache_last_cleanup.elapsed() >= Duration::from_secs(3600) {
+                            self.node_cache_last_cleanup = Instant::now();
+                        }
+                        if let Err(e) = self.check_and_send_ident().await {
+                            debug!("Ident beacon error: {}", e);
+                        }
+                    },
+
+                    // Receive our node id from reader (so ident shows actual ID)
+                    node_id = async { if let Some(ref mut rx) = self.node_id_rx { rx.recv().await } else { std::future::pending().await } } => {
+                        if let Some(id) = node_id { self.our_node_id = Some(id); debug!("Server received our node ID: {}", id); }
+                    },
                     // Receive TextEvents from the reader task
                     text_event = async {
                         if let Some(ref mut rx) = self.text_event_rx {
