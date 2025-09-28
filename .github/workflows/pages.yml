@@ -48,8 +48,9 @@ jobs:
           # Copy Jekyll build into final site (without preserving owner/group)
           rsync -rltD _site_jekyll/ _site/
           
-          # Merge cargo doc output but exclude the top-level index.html to preserve Jekyll homepage
-          rsync -rltD --exclude 'index.html' target/doc/ _site/
+          # Merge cargo doc output but exclude ONLY the top-level index.html to preserve Jekyll homepage.
+          # The leading slash anchors the pattern at the rsync source root so crate indexes remain intact.
+          rsync -rltD --exclude '/index.html' target/doc/ _site/
           
           # Ensure GitHub Pages does not run Jekyll on the artifact (rustdoc needs raw files)
           touch _site/.nojekyll
