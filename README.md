@@ -12,7 +12,7 @@
   
   *Bringing the classic BBS experience to modern mesh networks*
   
-  [🚀 Quick Start](#quick-start) • [📖 User Guide](#usage) • [📚 Documentation](docs/) • [🔧 API Reference](https://martinbogo.github.io/meshbbs/meshbbs/) • [🤝 Contributing](#contributing) • [💬 Support](#support)
+   [🚀 Quick Start](#quick-start) • [📖 User Guide](#usage) • [📚 Documentation](docs/) • [🔧 API Reference](https://martinbogo.github.io/meshbbs/api/) • [🤝 Contributing](#contributing) • [💬 Support](#support)
 </div>
 
 ---
@@ -35,7 +35,7 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory and h
 
 - **[Installation Guide](docs/getting-started/installation.md)** - Complete setup instructions
 - **[Command Reference](docs/user-guide/commands.md)** - All available commands and usage
-- **[API Documentation](https://martinbogo.github.io/meshbbs/meshbbs/)** - Generated Rust API docs
+- **[API Documentation](https://martinbogo.github.io/meshbbs/api/)** - Generated Rust API docs
 - **[Administration Guide](docs/administration/)** - BBS setup and management
 - **[Hardware Compatibility](docs/hardware/)** - Supported devices and setup
 

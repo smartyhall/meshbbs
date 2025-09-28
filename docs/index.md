@@ -29,7 +29,7 @@ Welcome! Choose a section below.
 - [Device Setup](hardware/device-setup.md)
 
 ## Development
-- [API Reference](https://martinbogo.github.io/meshbbs/meshbbs/)
+- [API Reference](https://martinbogo.github.io/meshbbs/api/)
 - [Fortune Module Guide](development/fortune-module.md)
 - [Architecture Overview](development/architecture.md)
 - [Building from Source](development/building.md)
