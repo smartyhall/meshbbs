@@ -49,10 +49,11 @@ fn test_weather_suffix_not_match() {
 }
 
 #[test]
-fn test_alternate_prefixes_exclamation_and_slash() {
-    let parser = PublicCommandParser::new_with_prefixes(Some("!/^".to_string()));
+fn test_alternate_prefix_exclamation() {
+    let parser = PublicCommandParser::new_with_prefix(Some("!".to_string()));
     match parser.parse("!HELP") { PublicCommand::Help => {}, other => panic!("Expected Help with '!' prefix, got {:?}", other) }
-    match parser.parse("/LOGIN Bob") { PublicCommand::Login(u) => assert_eq!(u, "Bob"), other => panic!("Expected Login with '/' prefix, got {:?}", other) }
-    // Non-allowed prefix should not parse
+    // Non-configured but allowed set character should not parse when not selected
+    match parser.parse("/LOGIN Bob") { PublicCommand::Unknown => {}, other => panic!("Expected Unknown with '/' since prefix is '!'") }
+    // Non-allowed character should not parse
     match parser.parse("#SLOT") { PublicCommand::Unknown => {}, other => panic!("Expected Unknown for '#' prefix, got {:?}", other) }
 }

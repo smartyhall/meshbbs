@@ -115,31 +115,31 @@ impl PublicState {
 /// Minimal public channel command parser
 #[derive(Clone)]
 pub struct PublicCommandParser {
-    allowed_prefixes: String,
+    prefix: char,
 }
 
 impl PublicCommandParser {
-    /// Create a parser. If `allowed_prefixes` is None or empty, defaults to "^".
-    pub fn new_with_prefixes(allowed_prefixes: Option<String>) -> Self {
-        let s = allowed_prefixes.unwrap_or_else(|| "^".to_string());
-        let trimmed = s.trim().to_string();
-        let final_set = if trimmed.is_empty() { "^".to_string() } else { trimmed };
-        Self { allowed_prefixes: final_set }
+    /// Create a parser with a single prefix. If `prefix_opt` is None or invalid, defaults to '^'.
+    pub fn new_with_prefix(prefix_opt: Option<String>) -> Self {
+        let default = '^';
+        let allowed: &[char] = &['^','!','+','$','/','>'];
+        let p = prefix_opt
+            .and_then(|s| s.chars().next())
+            .filter(|c| allowed.contains(c))
+            .unwrap_or(default);
+        Self { prefix: p }
     }
-    pub fn new() -> Self { Self::new_with_prefixes(None) }
+    pub fn new() -> Self { Self::new_with_prefix(None) }
 
-    /// Returns the first character of the allowed prefixes string for use in help text.
-    /// Defaults to '^' if configuration is empty for any reason.
-    pub fn primary_prefix_char(&self) -> char {
-        self.allowed_prefixes.chars().next().unwrap_or('^')
-    }
+    /// Returns the configured prefix for use in help text and parsing.
+    pub fn primary_prefix_char(&self) -> char { self.prefix }
 
     pub fn parse(&self, raw: &str) -> PublicCommand {
     let trimmed = raw.trim();
-    // Require prefix from allowed set for public commands to reduce accidental noise
+    // Require configured prefix for public commands to reduce accidental noise
     let mut chars = trimmed.chars();
     let Some(first) = chars.next() else { return PublicCommand::Unknown };
-    if !self.allowed_prefixes.chars().any(|c| c == first) { return PublicCommand::Unknown; }
+    if first != self.prefix { return PublicCommand::Unknown; }
     let body: String = chars.collect();
     if body.eq_ignore_ascii_case("HELP") || body == "?" { trace!("Parsed HELP from '{}'" , raw); return PublicCommand::Help; }
     // WEATHER command: accept optional trailing arguments (ignored for now)

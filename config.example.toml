@@ -9,11 +9,10 @@ description = "Describe what your BBS is for here in one line"
 max_users = 100
 session_timeout = 10 # minutes of inactivity before automatic logout
 welcome_message = "Welcome to this Mesh BBS"
-# Allowed public command prefixes for public channel commands.
-# The first character is used when rendering help examples.
-# Choose from easy-to-type characters on your devices, e.g. "!/^+".
-# Default is "^" if omitted.
-public_command_prefixes = "^!+$/"
+# Public command prefix (single character).
+# Must be one of: ^ ! + $ / >
+# Choose something easy-to-type on your device; default is "^" if omitted.
+public_command_prefix = "^"
 
 [meshtastic]
 # Serial port for Meshtastic device (Linux/macOS: /dev/ttyUSB0, Windows: COM3)

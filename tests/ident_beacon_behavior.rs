@@ -15,7 +15,7 @@ async fn test_config_with_beacon(enabled: bool, frequency: &str) -> Config {
             session_timeout: 10,
             welcome_message: "Welcome".into(),
                 sysop_password_hash: None,
-                public_command_prefixes: None,
+                public_command_prefix: None,
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

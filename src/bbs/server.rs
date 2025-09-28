@@ -312,7 +312,7 @@ impl BbsServer {
                 std::time::Duration::from_secs(20),
                 std::time::Duration::from_secs(300)
             ),
-            public_parser: PublicCommandParser::new_with_prefixes(config.bbs.public_command_prefixes.clone()),
+            public_parser: PublicCommandParser::new_with_prefix(config.bbs.public_command_prefix.clone()),
             #[cfg(feature = "weather")]
             weather_service: WeatherService::new(config.weather.clone()),
             #[cfg(feature = "weather")]
