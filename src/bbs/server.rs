@@ -122,6 +122,8 @@ pub struct BbsServer {
     startup_instant: Instant, // grace period start for ident when using reader/writer
     #[cfg(feature = "meshtastic-proto")]
     last_ident_time: Instant, // track when we last sent an ident beacon
+    #[cfg(feature = "meshtastic-proto")]
+    last_ident_boundary_minute: Option<i64>, // dedupe key: unix-minute of last ident send
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String,String)>, // collected outbound messages (testing)
@@ -320,6 +322,8 @@ impl BbsServer {
             startup_instant: Instant::now(),
             #[cfg(feature = "meshtastic-proto")]
             last_ident_time: Instant::now() - Duration::from_secs(901), // Start ready to send
+            #[cfg(feature = "meshtastic-proto")]
+            last_ident_boundary_minute: None,
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -451,7 +455,7 @@ impl BbsServer {
         
         use chrono::{Utc, Timelike};
         
-        let now = Utc::now();
+    let now = Utc::now();
         let minutes = now.minute();
         let frequency_minutes = self.config.ident_beacon.frequency_minutes();
         
@@ -469,10 +473,14 @@ impl BbsServer {
         if !should_send {
             return Ok(());
         }
-        
-        // Prevent sending multiple idents in the same minute
-        if self.last_ident_time.elapsed() < Duration::from_secs(55) {
-            return Ok(());
+
+        // Compute boundary minute key (Unix epoch minutes) for dedupe within the same scheduled minute
+        let boundary_minute = now.timestamp() / 60; // i64 minutes since epoch
+        if let Some(last_min) = self.last_ident_boundary_minute {
+            if last_min == boundary_minute {
+                // Already sent an ident in this minute boundary; skip duplicate
+                return Ok(());
+            }
         }
         
         // Determine identifier display: prefer short name, fallback to 4-hex-digit short ID
@@ -506,6 +514,7 @@ impl BbsServer {
         } else {
             info!("Sent ident beacon: {}", ident_msg);
             self.last_ident_time = Instant::now();
+            self.last_ident_boundary_minute = Some(boundary_minute);
         }
         
         Ok(())
