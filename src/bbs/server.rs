@@ -117,6 +117,8 @@ pub struct BbsServer {
     #[cfg(feature = "meshtastic-proto")]
     our_node_id: Option<u32>, // our node ID for ident broadcasts
     #[cfg(feature = "meshtastic-proto")]
+    startup_instant: Instant, // grace period start for ident when using reader/writer
+    #[cfg(feature = "meshtastic-proto")]
     last_ident_time: Instant, // track when we last sent an ident beacon
     #[allow(dead_code)]
     #[doc(hidden)]
@@ -311,6 +313,8 @@ impl BbsServer {
             #[cfg(feature = "meshtastic-proto")]
             our_node_id: None,
             #[cfg(feature = "meshtastic-proto")]
+            startup_instant: Instant::now(),
+            #[cfg(feature = "meshtastic-proto")]
             last_ident_time: Instant::now() - Duration::from_secs(901), // Start ready to send
             test_messages: Vec::new(),
         };
@@ -405,7 +409,14 @@ impl BbsServer {
     #[allow(dead_code)] // Used only by integration tests (help_broadcast_delay) to inject an outgoing channel
     pub fn test_set_outgoing(&mut self, tx: tokio::sync::mpsc::UnboundedSender<crate::meshtastic::OutgoingMessage>) { self.outgoing_tx = Some(tx); }
 
-    /// Check if it's time to send an ident beacon and send it if so
+    /// Check if it's time to send an ident beacon and send it if so.
+    ///
+    /// Behavior:
+    /// - Respects `[ident_beacon]` configuration (`enabled`, `frequency`).
+    /// - Scheduling occurs on UTC boundaries for the configured cadence (5/15/30 minutes, 1/2/4 hours).
+    /// - If a device instance is present, waits for initial radio sync to complete before sending.
+    /// - If using the reader/writer pattern with no device instance, applies a short startup grace period,
+    ///   then proceeds to send on the next UTC boundary. Prevents duplicate sends within the same minute.
     #[cfg(feature = "meshtastic-proto")]
     async fn check_and_send_ident(&mut self) -> Result<()> {
         // Check if ident beacon is enabled
@@ -413,16 +424,20 @@ impl BbsServer {
             return Ok(());
         }
         
-        // Check if initial radio configuration is complete
+        // Check if initial radio configuration is complete (or allow a short startup grace period)
         if let Some(ref device) = self.device {
             if !device.initial_sync_complete() {
                 debug!("Ident beacon waiting for initial radio config to complete");
                 return Ok(());
             }
         } else {
-            // No device available yet, wait
-            debug!("Ident beacon waiting for device initialization");
-            return Ok(());
+            // In reader/writer mode, BbsServer.device is not used for sending. Allow ident after a brief grace period.
+            let since_start = self.startup_instant.elapsed();
+            if since_start < Duration::from_secs(120) {
+                debug!("Ident beacon waiting for device initialization");
+                return Ok(());
+            }
+            // Past grace period: proceed based on time boundary so idents don't get stuck forever.
         }
         
         use chrono::{Utc, Timelike};
@@ -433,6 +448,7 @@ impl BbsServer {
         
         // Check if we're at the right time boundary based on configured frequency
         let should_send = match frequency_minutes {
+            5 => minutes % 5 == 0,    // Every 5 minutes (:00, :05, :10, ...)
             15 => minutes % 15 == 0,  // Every 15 minutes (0, 15, 30, 45)
             30 => minutes % 30 == 0,  // Every 30 minutes (0, 30)
             60 => minutes == 0,       // Every hour (0)

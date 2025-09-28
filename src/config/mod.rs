@@ -182,6 +182,10 @@ pub struct SecurityConfig {
     pub argon2: Option<Argon2Config>,
 }
 
+/// Configuration for the periodic station identification beacon.
+///
+/// The ident beacon broadcasts a message to the public channel on a UTC schedule.
+/// Supported frequencies: "5min", "15min" (default), "30min", "1hour", "2hours", "4hours".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IdentBeaconConfig {
     pub enabled: bool,
@@ -198,9 +202,12 @@ impl Default for IdentBeaconConfig {
 }
 
 impl IdentBeaconConfig {
-    /// Convert frequency string to minutes
+    /// Convert frequency string to minutes.
+    ///
+    /// Returns one of: 5, 15, 30, 60, 120, 240. Invalid values default to 15.
     pub fn frequency_minutes(&self) -> u32 {
         match self.frequency.as_str() {
+            "5min" => 5,
             "15min" => 15,
             "30min" => 30,
             "1hour" => 60,
@@ -352,6 +359,7 @@ mod tests {
     #[test]
     fn test_ident_beacon_frequency_minutes_valid() {
         let test_cases = vec![
+            ("5min", 5),
             ("15min", 15),
             ("30min", 30),
             ("1hour", 60),
@@ -378,7 +386,6 @@ mod tests {
     fn test_ident_beacon_frequency_minutes_invalid() {
         let invalid_frequencies = vec![
             "invalid",
-            "5min",
             "10hours",
             "",
             "60min",

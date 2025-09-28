@@ -55,7 +55,7 @@ security_file = "meshbbs-security.log"
 # Enable or disable the periodic ident beacon
 enabled = true
 # Frequency of ident beacon broadcasts
-# Options: "15min", "30min", "1hour", "2hours", "4hours"
+# Options: "5min", "15min", "30min", "1hour", "2hours", "4hours"
 frequency = "15min"
 
 [weather]

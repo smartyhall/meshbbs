@@ -1,6 +1,5 @@
 use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
 use meshbbs::bbs::server::BbsServer;
-use std::collections::HashMap;
 
 async fn base_config() -> Config {
     Config {

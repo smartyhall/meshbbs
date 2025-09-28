@@ -9,6 +9,27 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.18] - 2025-09-28
+
+### Added
+- Ident Beacon: New frequency option "5min" (in addition to 15min default, 30min, 1hour, 2hours, 4hours)
+
+### Fixed
+- Ident could stall in reader/writer mode when no device instance was present to report initialization.
+  - Added a startup grace period (~120s) that allows the first ident after boot if no device is detected,
+    while still waiting for `initial_sync_complete()` when a device is present.
+  - Preserves UTC boundary scheduling and duplicate suppression semantics.
+
+### Changed
+- Improved rustdoc around ident scheduling and startup gating behavior.
+- Updated configuration docs to include the new "5min" option and clarified behavior.
+
+### Tests & Docs
+- Expanded tests to cover 5‑minute frequency and boundary logic; cleaned warnings.
+- Added/updated documentation under `docs/getting-started/configuration.md`.
+
+---
+
 ## [1.0.17] - 2025-09-27
 
 ### Fixed

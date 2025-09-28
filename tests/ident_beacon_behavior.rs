@@ -64,7 +64,7 @@ async fn test_ident_beacon_disabled() {
 
 #[tokio::test]
 async fn test_ident_beacon_enabled_different_frequencies() {
-    let frequencies = vec!["15min", "30min", "1hour", "2hours", "4hours"];
+    let frequencies = vec!["5min", "15min", "30min", "1hour", "2hours", "4hours"];
     
     for freq in frequencies {
         let config = test_config_with_beacon(true, freq).await;
@@ -73,6 +73,7 @@ async fn test_ident_beacon_enabled_different_frequencies() {
         
         // Verify the frequency conversion works
         let expected_minutes = match freq {
+            "5min" => 5,
             "15min" => 15,
             "30min" => 30,
             "1hour" => 60,
