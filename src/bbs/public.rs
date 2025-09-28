@@ -124,8 +124,8 @@ impl PublicCommandParser {
         let body = &trimmed[1..];
     if body.eq_ignore_ascii_case("HELP") || body == "?" { trace!("Parsed HELP from '{}'" , raw); return PublicCommand::Help; }
     // WEATHER command: accept optional trailing arguments (ignored for now)
-    if body.len() >= 7 && body[..7].eq_ignore_ascii_case("WEATHER")
-        && (body.len() == 7 || body.chars().nth(7).map(|c| c.is_whitespace()).unwrap_or(false)) {
+    if body.len() >= 7 && body.get(..7).map(|s| s.eq_ignore_ascii_case("WEATHER")).unwrap_or(false)
+        && (body.len() == 7 || body.get(7..8).and_then(|_| body.chars().nth(7)).map(|c| c.is_whitespace()).unwrap_or(false)) {
         trace!("Parsed WEATHER from '{}' (args ignored)", raw);
         return PublicCommand::Weather;
     }
@@ -149,9 +149,9 @@ impl PublicCommandParser {
             trace!("Parsed SLOTSTATS from '{}'", raw);
             return PublicCommand::SlotStats;
         }
-        if body.len() >= 5 && body[..5].eq_ignore_ascii_case("LOGIN") {
+        if body.len() >= 5 && body.get(..5).map(|s| s.eq_ignore_ascii_case("LOGIN")).unwrap_or(false) {
             if body.len() == 5 { return PublicCommand::Invalid("Username required".into()); }
-            let after = &body[5..];
+            let after = body.get(5..).unwrap_or("");
             if after.chars().next().map(|c| c.is_whitespace()).unwrap_or(false) {
                 let user = after.trim();
                 if user.is_empty() { return PublicCommand::Invalid("Username required".into()); }

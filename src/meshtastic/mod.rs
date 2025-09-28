@@ -160,6 +160,22 @@ fn hex_snippet(data: &[u8], max: usize) -> String {
     data.iter().take(min(max, data.len())).map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join("")
 }
 
+// UTF-8 safe truncation for log display. Ensures we do not slice inside a multi-byte char.
+// If the input exceeds max_bytes, returns an escaped, truncated string with an ellipsis appended.
+// Otherwise returns the escaped original string.
+fn truncate_for_log(input: &str, max_bytes: usize) -> String {
+    if input.len() <= max_bytes { return escape_log(input); }
+    // Reserve 3 bytes for the ellipsis
+    let reserve = 3usize;
+    let cut_target = max_bytes.saturating_sub(reserve);
+    let mut cut = cut_target;
+    while cut > 0 && !input.is_char_boundary(cut) { cut -= 1; }
+    // Fallback: if for some reason cut became 0 (pathological), avoid empty add by using full escape of empty
+    let mut out = escape_log(&input[..cut]);
+    out.push_str("...");
+    out
+}
+
 #[cfg(feature = "meshtastic-proto")]
 fn fmt_percent(val: f32) -> String {
     if val.is_finite() {
@@ -1040,12 +1056,7 @@ impl MeshtasticDevice {
             // Add a small delay to allow the OS to flush the serial buffer.
             std::thread::sleep(std::time::Duration::from_millis(50));
 
-            let display_text = if text.len() > 80 { 
-                let truncated = &text[..77];
-                escape_log(truncated) + "..."
-            } else { 
-                escape_log(text)
-            };
+            let display_text = if text.len() > 80 { truncate_for_log(text, 80) } else { escape_log(text) };
             let msg_type = if is_dm { "DM (reliable)" } else { "broadcast" };
             debug!("Sent TextPacket ({}): from=0x{:08x} to=0x{:08x} channel={} id={} want_ack={} priority={} ({} bytes payload) text='{}'", 
                   msg_type, self.our_node_id.unwrap_or(0), dest, channel, packet_id, is_dm, 
@@ -1940,10 +1951,20 @@ impl MeshtasticWriter {
                     for id in expired {
                         if let Some(bp) = self.pending_broadcast.remove(&id) {
                             metrics::inc_broadcast_ack_expired();
-                            debug!(
-                                "Broadcast id={} expired without ack (channel={}, preview='{}')",
-                                id, bp.channel, escape_log(&bp.preview)
-                            );
+                            // If this looks like an IDENT beacon, surface at INFO per airtime policy.
+                            // We intentionally do not retry broadcasts; the radio may have already retried at the link layer.
+                            let is_ident = bp.preview.trim_start().starts_with("[IDENT]");
+                            if is_ident {
+                                info!(
+                                    "Ident broadcast id={} had no ACK within TTL (channel={}, preview='{}'); not retrying",
+                                    id, bp.channel, escape_log(&bp.preview)
+                                );
+                            } else {
+                                debug!(
+                                    "Broadcast id={} expired without ack (channel={}, preview='{}')",
+                                    id, bp.channel, escape_log(&bp.preview)
+                                );
+                            }
                         }
                     }
                 }
@@ -2056,12 +2077,7 @@ impl MeshtasticWriter {
             // Record the time of this text packet send for gating
             self.last_text_send = Some(std::time::Instant::now());
             
-            let display_text = if msg.content.len() > 80 {
-                let truncated = &msg.content[..77];
-                escape_log(truncated) + "..."
-            } else {
-                escape_log(&msg.content)
-            };
+            let display_text = if msg.content.len() > 80 { truncate_for_log(&msg.content, 80) } else { escape_log(&msg.content) };
             
             let msg_type = if is_dm { "DM (reliable)" } else if wants_ack_broadcast { "broadcast (want_ack)" } else { "broadcast" };
             debug!(
@@ -2079,7 +2095,7 @@ impl MeshtasticWriter {
             // For DMs, record pending and proactively send a heartbeat to nudge immediate radio TX
             if is_dm {
                 // capture a small preview for logging
-                let preview = if msg.content.len() > 40 { let t = &msg.content[..37]; format!("{}...", escape_log(t)) } else { escape_log(&msg.content) };
+                let preview = if msg.content.len() > 40 { truncate_for_log(&msg.content, 40) } else { escape_log(&msg.content) };
                 let now = std::time::Instant::now();
                 self.pending.insert(packet_id, PendingSend {
                     to: dest,
@@ -2121,7 +2137,7 @@ impl MeshtasticWriter {
                 self.last_high_priority_sent = Some(std::time::Instant::now());
             } else if wants_ack_broadcast {
                 // Track this broadcast awaiting at-least-one ack; no retries, short TTL
-                let preview = if msg.content.len() > 40 { let t = &msg.content[..37]; format!("{}...", escape_log(t)) } else { escape_log(&msg.content) };
+                let preview = if msg.content.len() > 40 { truncate_for_log(&msg.content, 40) } else { escape_log(&msg.content) };
                 let ttl = std::time::Duration::from_secs(10);
                 self.pending_broadcast.insert(packet_id, BroadcastPending { channel: msg.channel, preview, expires_at: std::time::Instant::now() + ttl });
             } else if priority == 0 {
