@@ -7,34 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This file records notable changes for meshbbs. Starting with the 1.0.0 BETA baseline, new entries will be added above this section over time (e.g., 1.0.1, 1.0.2).
 
-## [1.0.16-beta] - 2025-09-27
+# Changelog
 
-### Added
-- **Major Feature**: OpenWeatherMap API integration replacing wttr.in for weather services
-- Support for multiple location types: city names, ZIP codes, and city IDs
-- Comprehensive weather configuration with API key, location preferences, and country codes
-- Intelligent caching system with configurable TTL and stale data fallback
-- Enhanced error handling with graceful degradation when API unavailable
-- Real-time weather data with temperature, conditions, and location information
+## [1.0.17] - 2025-09-27
 
-### Enhanced
-- Improved weather service reliability with proper HTTP status handling
-- Added comprehensive unit and integration tests for weather functionality
-- Better weather response formatting with clear location and condition display
-- Configurable timeouts and cache behavior for optimal performance
-
-### Changed
-- **Breaking**: Weather service now requires OpenWeatherMap API key configuration
-- Migrated from wttr.in text-based API to OpenWeatherMap JSON API
-- Updated configuration format with new `[weather]` section parameters
-- Enhanced weather command output format for better readability
+### Fixed
+- **Ident Beacon Timing Issue**: Fixed critical timing bug where ident beacons were sent before radio initialization completed
+  - Added proper check for `device.initial_sync_complete()` before sending ident beacons
+  - Prevents beacons from transmitting during "Requesting initial config from radio" phase
+  - Added debug logging to track initialization status
+  - Ensures ident beacons only start after Meshtastic device is fully ready
 
 ### Technical
-- New `WeatherService` struct with async API integration
-- Added `urlencoding` dependency for proper URL parameter encoding
-- Enhanced reqwest features with JSON parsing support
-- Updated example configurations with weather setup instructions
-- Removed hard-coded API keys from examples for better security
+- Enhanced ident beacon logic with radio initialization state validation
+- Improved test configuration compatibility
+- Added comprehensive debug logging for initialization sequence
+
+---
+
+## [1.0.16] - 2025-01-28
+
+### Added
+- **OpenWeatherMap Integration**: Complete replacement of wttr.in weather service with OpenWeatherMap API
+  - Support for city names, ZIP codes, and OpenWeatherMap city IDs
+  - Configurable API key and cache TTL settings
+  - Comprehensive error handling and graceful fallbacks
+  - Real-time weather data with temperature, conditions, and humidity
+- **Enhanced Weather Configuration**: New `[weather]` section in config with `api_key` and `cache_ttl_minutes` settings
+- **Weather Service Testing**: Comprehensive test suite including integration tests with real API validation
+
+### Changed
+- **Weather Command Improvements**: Better error messages and more reliable weather data retrieval
+- **Configuration Validation**: Enhanced validation for weather service configuration
+- **Documentation Updates**: Updated README and configuration examples for OpenWeatherMap setup
+
+### Technical
+- Migrated from wttr.in HTTP scraping to OpenWeatherMap REST API
+- Added proper HTTP client with timeout and retry logic
+- Implemented structured weather data parsing and caching
+- Enhanced test coverage for weather functionality
+
+---
 
 ### Security
 - API keys properly excluded from git repository via .gitignore
