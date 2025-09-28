@@ -67,7 +67,6 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
  - **🎰 Public Slot Machine**: Fun `<prefix>SLOT` mini‑game (default `^SLOT`) with daily coin refills and jackpots
  - **🎱 Magic 8‑Ball (public)**: Ask `<prefix>8BALL` (default `^8BALL`) for a classic, emoji‑prefixed response (broadcast‑only)
  - **🔮 Fortune Cookies (public)**: Use `<prefix>FORTUNE` (default `^FORTUNE`) to get random Unix wisdom, quotes, and humor (broadcast‑only)
- - **✅ Broadcast ACK Confirmation (optional)**: Broadcasts can now request an ACK and treat any single ACK as “at least one hop” success; lightweight tracking with short TTL and new metrics (see below)
 
 ### 👥 **User Management & Security**
 - **🔐 Robust Security**: Argon2id password hashing with configurable parameters
@@ -77,9 +76,8 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 
 ### 🛠️ **Administration & Moderation**
 - **🧷 Persistent Topic Locks**: Moderators can LOCK/UNLOCK topics; state survives restarts
-- **📊 Deletion Audit Log**: `DELLOG` command for accountability tracking
+- **📊 Deletion Audit Log**: `DELLOG` command for accountability tracking using immutable audit logs
 - **📈 Network Statistics**: Usage and performance monitoring
-- **🌤️ Weather Integration**: Real-time weather via OpenWeatherMap API with intelligent caching
 
 ## 🚀 Quick Start
 

@@ -37,11 +37,11 @@ jobs:
           source: ./docs
           destination: ./_site
 
-      - name: Add rustdoc into site
+      - name: Add rustdoc into site (without overwriting Jekyll index)
         run: |
           mkdir -p _site
-          # Copy entire cargo doc output so crate folder and shared assets are preserved
-          cp -a target/doc/. _site/
+          # Copy cargo doc output but exclude the top-level index.html to preserve Jekyll homepage
+          rsync -a --exclude 'index.html' target/doc/ _site/
           # Ensure GitHub Pages does not run Jekyll on the artifact (rustdoc needs raw files)
           touch _site/.nojekyll
 
