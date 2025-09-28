@@ -7,8 +7,8 @@
   
    [![Version](https://img.shields.io/badge/version-1.0.21-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
-  [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
-  [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
+   [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
+   [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
   
   *Bringing the classic BBS experience to modern mesh networks*
   
@@ -48,7 +48,7 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 ## ✨ Features
 
 ### � **Connectivity & Integration**
-- **📡 Meshtastic Integration**: Direct communication via serial or Bluetooth
+- **📡 Meshtastic Integration**: Direct communication via serial (USB/UART)
 - **🛎️ Public Discovery + DM Sessions**: Low-noise public channel handshake leading to authenticated Direct Message sessions
 - **📨 Broadcast Semantics**: Broadcasts are best‑effort; we can request an ACK and consider any single ACK as basic delivery confirmation (no retries). DMs remain reliable with ACK tracking and retries.
 - **⚡ Async Design**: Built with Tokio for high performance
@@ -77,7 +77,7 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 
 ## 🚀 Quick Start
 
-> **Prerequisites**: Rust 1.82+, Meshtastic device, USB cable or Bluetooth connection
+> **Prerequisites**: Rust 1.82+, Meshtastic device, USB cable
 
 ### 📦 Installation
 
@@ -370,7 +370,7 @@ Meshbbs is built with a clean, modular architecture in Rust:
 ```mermaid
 flowchart TD
    M[Meshtastic Device]
-   SIO[Serial / Bluetooth]
+   SIO[Serial (USB/UART)]
    R[Meshtastic Reader Task]
    W[Meshtastic Writer Task]
    SV[BBS Server]

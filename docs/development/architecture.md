@@ -7,7 +7,7 @@ This document provides a high-level overview of MeshBBS components and their int
 ```mermaid
 flowchart TD
     M[Meshtastic Device]
-    SIO[Serial / Bluetooth]
+  SIO[Serial (USB/UART)]
     R[Meshtastic Reader Task]
     W[Meshtastic Writer Task]
     SV[BBS Server]
