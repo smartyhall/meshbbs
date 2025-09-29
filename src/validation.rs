@@ -334,9 +334,14 @@ where
     if content.len() > max_bytes {
         return Err(SecurityError::FileSizeExceeded { limit: max_bytes });
     }
-    
+
+    // Normalize content to guard against accidental leading NULs or similar corruption
+    // observed in rare cases of interrupted writes. We conservatively strip only leading
+    // NUL characters; valid JSON cannot start with a NUL byte.
+    let normalized = content.trim_start_matches('\0');
+
     // Attempt to parse the JSON
-    serde_json::from_str(content)
+    serde_json::from_str(normalized)
         .map_err(|_| SecurityError::InvalidFormat)
 }
 

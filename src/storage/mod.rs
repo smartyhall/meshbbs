@@ -264,7 +264,9 @@ impl Storage {
         let path = Path::new(data_dir).join("locked_topics.json");
         match fs::read_to_string(&path).await {
             Ok(data) => {
-                let v: Vec<String> = serde_json::from_str(&data).unwrap_or_default();
+                // Guard against any accidental leading NULs
+                let cleaned = data.trim_start_matches('\0');
+                let v: Vec<String> = serde_json::from_str(cleaned).unwrap_or_default();
                 Ok(v.into_iter().collect())
             }
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(HashSet::new()),
@@ -277,7 +279,9 @@ impl Storage {
         let path = Path::new(data_dir).join("topics.json");
         match fs::read_to_string(&path).await {
             Ok(data) => {
-                let config: RuntimeTopicsConfig = serde_json::from_str(&data)
+                // Guard against any accidental leading NULs
+                let cleaned = data.trim_start_matches('\0');
+                let config: RuntimeTopicsConfig = serde_json::from_str(cleaned)
                     .map_err(|e| anyhow!("Failed to parse topics.json: {}", e))?;
                 Ok(config)
             }
@@ -296,45 +300,92 @@ impl Storage {
 
     /// Helper function to write content to a file with exclusive locking
     async fn write_file_locked(path: &Path, content: &str) -> Result<()> {
-        use std::fs::OpenOptions;
+        use std::fs::{self, OpenOptions, File};
         use std::io::Write;
         
         // Use synchronous I/O for file locking since fs2 doesn't support async
-        let mut file = OpenOptions::new()
+        // Step 1: Open (or create) the destination file to acquire an exclusive lock
+        let lock_file = OpenOptions::new()
             .create(true)
+            .read(true)
             .write(true)
-            .truncate(true)
             .open(path)?;
-            
-        // Acquire exclusive lock
-        file.lock_exclusive()?;
-        
-        // Write content
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
-        
-        // Lock is automatically released when file is dropped
+
+        lock_file.lock_exclusive()?;
+
+        // Step 2: Create a unique temp file in the same directory
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let base = path.file_name().and_then(|s| s.to_str()).unwrap_or("data.json");
+        let mut counter = 0u32;
+        let tmp_path = loop {
+            let candidate = dir.join(format!(".{}.tmp-{}-{}", base, std::process::id(), counter));
+            match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+                Ok(mut tmp) => {
+                    // Write all content to temp file and fsync
+                    tmp.write_all(content.as_bytes())?;
+                    tmp.flush()?;
+                    let _ = tmp.sync_all();
+                    break candidate;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    counter = counter.saturating_add(1);
+                    continue;
+                }
+                Err(e) => return Err(anyhow!("Failed to create temp file for atomic write: {}", e)),
+            }
+        };
+
+        // Step 3: Atomically replace the destination with the temp file
+        fs::rename(&tmp_path, path)?;
+
+        // Step 4: Fsync the directory to persist the rename (best-effort)
+        if let Ok(dir_file) = File::open(dir) { let _ = dir_file.sync_all(); }
+
+        // Step 5: Unlock by dropping the lock file
+        drop(lock_file);
+
         Ok(())
     }
 
     /// Helper function to append content to a file with exclusive locking
     async fn append_file_locked(path: &Path, content: &str) -> Result<()> {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        
-        let mut file = OpenOptions::new()
+        use std::fs::{self, OpenOptions, File};
+        use std::io::{Read, Write};
+
+        // Open or create the file to take an exclusive lock
+        let lock_file = OpenOptions::new()
             .create(true)
-            .append(true)
+            .read(true)
+            .write(true)
             .open(path)?;
-            
-        // Acquire exclusive lock
-        file.lock_exclusive()?;
-        
-        // Write content
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
-        
-        // Lock is automatically released when file is dropped
+
+        lock_file.lock_exclusive()?;
+
+        // Read existing content (if any)
+        let mut existing = String::new();
+        let _ = lock_file.read_to_string(&mut existing);
+        existing.push_str(content);
+
+        // Write to a temp file and atomically replace
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let base = path.file_name().and_then(|s| s.to_str()).unwrap_or("data.log");
+        let mut counter = 0u32;
+        let tmp_path = loop {
+            let candidate = dir.join(format!(".{}.tmp-{}-{}", base, std::process::id(), counter));
+            match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+                Ok(mut tmp) => {
+                    tmp.write_all(existing.as_bytes())?;
+                    tmp.flush()?;
+                    let _ = tmp.sync_all();
+                    break candidate;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => { counter = counter.saturating_add(1); continue; }
+                Err(e) => return Err(anyhow!("Failed to create temp file for append: {}", e)),
+            }
+        };
+        fs::rename(&tmp_path, path)?;
+        if let Ok(dir_file) = File::open(dir) { let _ = dir_file.sync_all(); }
+        drop(lock_file);
         Ok(())
     }
 

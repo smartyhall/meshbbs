@@ -113,7 +113,8 @@ fn load_players(base_dir: &str) -> PlayersFile {
             log::warn!("slotmachine: failed reading players.json: {}", e);
             return PlayersFile::default();
         }
-        serde_json::from_str(&s).unwrap_or_default()
+        let cleaned = s.trim_start_matches('\0');
+        serde_json::from_str(cleaned).unwrap_or_default()
     } else {
         PlayersFile::default()
     }
@@ -132,6 +133,7 @@ fn save_players(base_dir: &str, players: &PlayersFile) {
                 if f.lock_exclusive().is_ok() {
                     let _ = f.write_all(data.as_bytes());
                     let _ = f.flush();
+                    let _ = f.sync_all();
                     let _ = f.unlock();
                 }
             }
@@ -167,7 +169,8 @@ fn jackpot_payout_and_reset(base_dir: &str, now: DateTime<Utc>, winner: &str) ->
         let mut s = String::new();
         let _ = f.read_to_string(&mut s);
         if !s.is_empty() {
-            jackpot = serde_json::from_str(&s).unwrap_or_default();
+            let cleaned = s.trim_start_matches('\0');
+            jackpot = serde_json::from_str(cleaned).unwrap_or_default();
         }
     // Compute payout: 500 base + losses * BET_COINS
     let mut payout_u64 = 500u64 + jackpot.losses.saturating_mul(BET_COINS as u64);
@@ -199,7 +202,8 @@ fn jackpot_record_loss(base_dir: &str) {
         let _ = f.lock_exclusive();
         let mut s = String::new();
         let _ = f.read_to_string(&mut s);
-        let mut jackpot: GlobalJackpot = if s.is_empty() { GlobalJackpot::default() } else { serde_json::from_str(&s).unwrap_or_default() };
+        let cleaned = s.trim_start_matches('\0');
+        let mut jackpot: GlobalJackpot = if cleaned.is_empty() { GlobalJackpot::default() } else { serde_json::from_str(cleaned).unwrap_or_default() };
         jackpot.losses = jackpot.losses.saturating_add(1);
         let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
         // Ensure writes start at beginning to avoid sparse/invalid files
@@ -232,7 +236,8 @@ pub fn get_jackpot_summary(base_dir: &str) -> JackpotSummary {
         let mut s = String::new();
         let _ = f.read_to_string(&mut s);
         if !s.is_empty() {
-            jackpot = serde_json::from_str(&s).unwrap_or_default();
+            let cleaned = s.trim_start_matches('\0');
+            jackpot = serde_json::from_str(cleaned).unwrap_or_default();
         }
         let _ = f.unlock();
     }
