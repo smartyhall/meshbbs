@@ -92,7 +92,7 @@ use std::io::ErrorKind;
 use tokio::fs;
 use uuid::Uuid;
 use crate::bbs::roles;
-use crate::validation::{validate_user_name, safe_filename, validate_topic_name, sanitize_message_content, secure_message_path, secure_topic_path, secure_json_parse, validate_file_size};
+use crate::validation::{validate_user_name, validate_sysop_name, safe_filename, validate_topic_name, sanitize_message_content, secure_message_path, secure_topic_path, secure_json_parse, validate_file_size};
 use password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::{Argon2, Params, Algorithm, Version};
 use log::warn;
@@ -349,8 +349,8 @@ impl Storage {
 
     /// Helper function to append content to a file with exclusive locking
     async fn append_file_locked(path: &Path, content: &str) -> Result<()> {
-        use std::fs::{self, OpenOptions, File};
-        use std::io::{Read, Write};
+    use std::fs::{self, OpenOptions, File};
+    use std::io::Write;
 
         // Open or create the file to take an exclusive lock
         let lock_file = OpenOptions::new()
@@ -361,9 +361,11 @@ impl Storage {
 
         lock_file.lock_exclusive()?;
 
-        // Read existing content (if any)
-        let mut existing = String::new();
-        let _ = lock_file.read_to_string(&mut existing);
+        // Read existing content (if any) using a separate handle while holding the lock
+        let mut existing = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => String::new(),
+        };
         existing.push_str(content);
 
         // Write to a temp file and atomically replace
@@ -438,6 +440,53 @@ impl Storage {
         let json_content = serde_json::to_string_pretty(&user)?;
         Self::write_file_locked(&user_file, &json_content).await?;
         Ok(())
+    }
+
+    /// Create or update a user using a precomputed password hash and explicit level.
+    /// This is primarily used for seeding the sysop account from configuration.
+    /// When the user does not exist, it will be created with sensible defaults and
+    /// welcome flags pre-marked as shown. When the user exists, only the level and
+    /// password hash are updated (other fields are preserved).
+    pub async fn upsert_user_with_hash(&mut self, username: &str, password_hash: &str, level: u8) -> Result<User> {
+        // Validate username and resolve path (allow reserved sysop name)
+        let validated_username = validate_sysop_name(username)
+            .map_err(|e| anyhow!("Invalid username: {}", e))?;
+        let users_dir = Path::new(&self.data_dir).join("users");
+        fs::create_dir_all(&users_dir).await?;
+        let safe_name = safe_filename(&validated_username);
+        let user_file = users_dir.join(format!("{}.json", safe_name));
+
+        let user = if user_file.exists() {
+            // Load, update fields, and persist atomically
+            let content = fs::read_to_string(&user_file).await?;
+            let mut existing: User = secure_json_parse(&content, 100_000)
+                .map_err(|_| anyhow!("Failed to parse existing user record"))?;
+            if existing.user_level != level { existing.user_level = level; }
+            existing.password_hash = Some(password_hash.to_string());
+            let json_content = serde_json::to_string_pretty(&existing)?;
+            Self::write_file_locked(&user_file, &json_content).await?;
+            existing
+        } else {
+            // Create new user with defaults
+            let now = Utc::now();
+            let new_user = User {
+                username: validated_username,
+                node_id: None,
+                user_level: level,
+                password_hash: Some(password_hash.to_string()),
+                first_login: now,
+                last_login: now,
+                total_messages: 0,
+                // For seeded users (sysop), suppress welcome flows
+                welcome_shown_on_registration: true,
+                welcome_shown_on_first_login: true,
+            };
+            let json_content = serde_json::to_string_pretty(&new_user)?;
+            Self::write_file_locked(&user_file, &json_content).await?;
+            new_user
+        };
+
+        Ok(user)
     }
 
     /// Verify user password; returns (user, bool match)

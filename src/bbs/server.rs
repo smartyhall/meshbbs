@@ -199,8 +199,9 @@ impl BbsServer {
         #[derive(serde::Deserialize)]
         struct NodeCache { nodes: std::collections::HashMap<u32, CachedNodeInfo> }
         let path = "data/node_cache.json";
-        let content = std::fs::read_to_string(path).ok()?;
-        let cache: NodeCache = serde_json::from_str(&content).ok()?;
+    let content = std::fs::read_to_string(path).ok()?;
+    let cleaned = content.trim_start_matches('\0');
+    let cache: NodeCache = serde_json::from_str(cleaned).ok()?;
         cache.nodes.get(&id)
             .and_then(|n| { let sn = n.short_name.trim(); if sn.is_empty() { None } else { Some(sn.to_string()) } })
     }
@@ -809,40 +810,8 @@ impl BbsServer {
     pub async fn seed_sysop(&mut self) -> Result<()> {
         if let Some(hash) = &self.config.bbs.sysop_password_hash {
             let sysop_name = self.config.bbs.sysop.clone();
-            match self.storage.get_user(&sysop_name).await? {
-                Some(mut u) => {
-                    let mut needs_write = false;
-                    if u.user_level < 10 { u.user_level = 10; needs_write = true; }
-                    if u.password_hash.as_deref() != Some(hash.as_str()) { u.password_hash = Some(hash.clone()); needs_write = true; }
-                    if needs_write {
-                        let users_dir = std::path::Path::new(self.storage.base_dir()).join("users");
-                        let user_file = users_dir.join(format!("{}.json", sysop_name));
-                        let json_content = serde_json::to_string_pretty(&u)?;
-                        tokio::fs::write(user_file, json_content).await?;
-                        info!("Sysop user '{}' synchronized from config.", sysop_name);
-                    }
-                }
-                None => {
-                    let now = chrono::Utc::now();
-                    let user = crate::storage::User {
-                        username: sysop_name.clone(),
-                        node_id: None,
-                        user_level: 10,
-                        password_hash: Some(hash.clone()),
-                        first_login: now,
-                        last_login: now,
-                        total_messages: 0,
-                        welcome_shown_on_registration: true,  // Sysop doesn't need welcome messages
-                        welcome_shown_on_first_login: true,
-                    };
-                    let users_dir = std::path::Path::new(self.storage.base_dir()).join("users");
-                    tokio::fs::create_dir_all(&users_dir).await?;
-                    let user_file = users_dir.join(format!("{}.json", sysop_name));
-                    let json_content = serde_json::to_string_pretty(&user)?;
-                    tokio::fs::write(user_file, json_content).await?;
-                    info!("Sysop user '{}' created from config.", sysop_name);
-                }
-            }
+            let _ = self.storage.upsert_user_with_hash(&sysop_name, hash, 10).await?;
+            info!("Sysop user '{}' ensured from config.", sysop_name);
         }
         Ok(())
     }

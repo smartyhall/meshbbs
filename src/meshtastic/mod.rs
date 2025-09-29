@@ -327,13 +327,42 @@ impl NodeCache {
 
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        let cache: NodeCache = serde_json::from_str(&content)?;
+        // Guard against accidental leading NULs from previous partial writes
+        let cleaned = content.trim_start_matches('\0');
+        let cache: NodeCache = serde_json::from_str(cleaned)?;
         Ok(cache)
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
+        use std::fs::{OpenOptions, self as sfs, File};
+        use std::io::Write;
+        let path_ref = path.as_ref();
         let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
+
+        // Create parent directories if needed
+        if let Some(parent) = path_ref.parent() { let _ = sfs::create_dir_all(parent); }
+
+        // Create a unique temp file in the same directory
+        let dir = path_ref.parent().unwrap_or_else(|| Path::new("."));
+        let base = path_ref.file_name().and_then(|s| s.to_str()).unwrap_or("node_cache.json");
+        let mut counter = 0u32;
+        let tmp_path = loop {
+            let candidate = dir.join(format!(".{}.tmp-{}-{}", base, std::process::id(), counter));
+            match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+                Ok(mut tmp) => {
+                    tmp.write_all(content.as_bytes())?;
+                    tmp.flush()?;
+                    let _ = tmp.sync_all();
+                    break candidate;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => { counter = counter.saturating_add(1); continue; }
+                Err(e) => return Err(anyhow::anyhow!("Failed to create temp file for atomic write: {}", e)),
+            }
+        };
+
+        // Atomically replace destination and fsync directory
+        sfs::rename(&tmp_path, path_ref)?;
+        if let Ok(dir_file) = File::open(dir) { let _ = dir_file.sync_all(); }
         Ok(())
     }
 
