@@ -1,0 +1,476 @@
+//! TinyHack v1 — a compact, ASCII-only roguelike mini-game designed for ~230-char messages.
+//!
+//! This module implements a small turn-based dungeon crawler with per-user save files.
+//! It renders a complete snapshot each turn and accepts terse one/two-token commands.
+//!
+//! Persistence: JSON at `<data_dir>/tinyhack/<username>.json` using atomic write+rename.
+//!
+//! Notes:
+//! - ASCII only (no emoji). Keep all lines well under 230 chars; final render is trimmed.
+//! - Deterministic procgen using a stored seed per-save; grid defaults to 6x6.
+//! - Designed to be called by BBS command processor while in SessionState::TinyHack.
+
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
+use serde::{Serialize, Deserialize};
+use std::fs::{OpenOptions, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use fs2::FileExt;
+
+/// Maximum outgoing message bytes. All renderings are trimmed to this size.
+const MAX_MSG: usize = 230;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum RoomKind {
+    Empty,
+    Monster(MonsterKind),
+    Chest,
+    LockedDoor,
+    Trap,
+    Vendor,
+    Shrine,
+    Fountain,
+    Stairs,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MonsterKind { Rat, Goblin, Slime, Skeleton, Orc, Mimic, Boss }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Room {
+    pub kind: RoomKind,
+    /// Remaining monster HP if present; None if cleared
+    pub mon_hp: Option<i32>,
+    /// One-shot markers: trap sprung, shrine used, fountain used, chest looted, door opened
+    pub used: bool,
+}
+
+impl Default for Room {
+    fn default() -> Self { Room { kind: RoomKind::Empty, mon_hp: None, used: false } }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Player {
+    pub hp: i32,
+    pub max_hp: i32,
+    pub atk: i32,
+    pub defn: i32,
+    pub lvl: u8,
+    pub xp: i32,
+    pub gold: i32,
+    pub x: usize,
+    pub y: usize,
+    pub keys: i32,
+    pub potions: i32,
+    pub bombs: i32,
+    pub scrolls: i32,
+    pub weapon_lvl: i32,
+    pub armor_lvl: i32,
+}
+
+impl Player {
+    fn new() -> Self {
+        Player { hp: 10, max_hp: 10, atk: 2, defn: 1, lvl: 1, xp: 0, gold: 0, x: 0, y: 0,
+            keys: 0, potions: 1, bombs: 0, scrolls: 0, weapon_lvl: 0, armor_lvl: 0 }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameState {
+    pub gid: u32,
+    pub turn: u32,
+    pub seed: u64,
+    pub w: usize,
+    pub h: usize,
+    pub player: Player,
+    pub map: Vec<Room>, // row-major h*w
+}
+
+impl GameState {
+    pub fn idx(&self, x: usize, y: usize) -> usize { y * self.w + x }
+    pub fn room(&self, x: usize, y: usize) -> &Room { &self.map[self.idx(x,y)] }
+    pub fn room_mut(&mut self, x: usize, y: usize) -> &mut Room { let i=self.idx(x,y); &mut self.map[i] }
+}
+
+fn d6(rng: &mut StdRng) -> i32 { (rng.gen_range(1..=6)) as i32 }
+
+fn monster_stats(k: MonsterKind) -> (i32,i32,i32,i32) {
+    match k {
+        MonsterKind::Rat => (4, 1, 0, 1),
+        MonsterKind::Goblin => (6, 2, 1, 2),
+        MonsterKind::Slime => (8, 1, 2, 2),
+        MonsterKind::Skeleton => (7, 3, 1, 3),
+        MonsterKind::Orc => (10, 4, 2, 4),
+        MonsterKind::Mimic => (8, 3, 2, 4),
+        MonsterKind::Boss => (14, 5, 3, 6),
+    }
+}
+
+fn clamp_ascii(mut s: String) -> String {
+    if s.len() > MAX_MSG { s.truncate(MAX_MSG); }
+    s
+}
+
+fn ensure_dir(path: &Path) { let _ = std::fs::create_dir_all(path); }
+
+fn save_path(base_dir: &str, username: &str) -> PathBuf {
+    Path::new(base_dir).join("tinyhack").join(format!("{}.json", crate::validation::safe_filename(username)))
+}
+
+fn write_json_atomic(path: &Path, content: &str) -> std::io::Result<()> {
+    ensure_dir(path.parent().unwrap_or(Path::new(".")));
+    // Take an exclusive lock on the target path (create if missing)
+    let lock_file = OpenOptions::new().create(true).read(true).write(true).open(path)?;
+    lock_file.lock_exclusive()?;
+    // Create temp file
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let base = path.file_name().and_then(|s| s.to_str()).unwrap_or("save.json");
+    let mut counter = 0u32;
+    let tmp_path = loop {
+        let cand = dir.join(format!(".{}.tmp-{}-{}", base, std::process::id(), counter));
+        match OpenOptions::new().write(true).create_new(true).open(&cand) {
+            Ok(mut tmp) => { tmp.write_all(content.as_bytes())?; let _ = tmp.flush(); let _ = tmp.sync_all(); break cand; }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => { counter = counter.saturating_add(1); continue; }
+            Err(e) => { return Err(e); }
+        }
+    };
+    std::fs::rename(&tmp_path, path)?;
+    if let Ok(dirf) = File::open(dir) { let _ = dirf.sync_all(); }
+    drop(lock_file);
+    Ok(())
+}
+
+fn read_json(path: &Path) -> std::io::Result<String> { std::fs::read_to_string(path) }
+
+fn farthest_from_start(w: usize, h: usize, sx: usize, sy: usize) -> (usize, usize) {
+    let mut best = (sx, sy);
+    let mut bestd: i32 = -1;
+    for y in 0..h { for x in 0..w { let d = (x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs(); if d > bestd { bestd = d; best = (x,y); } } }
+    best
+}
+
+fn place_world(rng: &mut StdRng, w: usize, h: usize, map: &mut [Room]) {
+    // Start at (0,0). Exit farthest.
+    let (sx, sy) = (0usize, 0usize);
+    let (ex, ey) = farthest_from_start(w, h, sx, sy);
+    map[ey*w + ex] = Room { kind: RoomKind::Stairs, mon_hp: None, used: false };
+    // Vendor, shrine, fountain somewhere near start (not (0,0) and not exit)
+    let mut placed = 0;
+    while placed < 3 { let x = rng.gen_range(0..w); let y = rng.gen_range(0..h); if (x,y)!=(sx,sy) && (x,y)!=(ex,ey) { let k = match placed { 0=>RoomKind::Vendor, 1=>RoomKind::Shrine, _=>RoomKind::Fountain }; map[y*w+x] = Room { kind: k, mon_hp: None, used: false }; placed+=1; } }
+    // Chests and traps scattered
+    for _ in 0..(w+h) { let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); if (x,y)!=(sx,sy) && !matches!(map[y*w+x].kind, RoomKind::Stairs|RoomKind::Vendor|RoomKind::Shrine|RoomKind::Fountain) { map[y*w+x] = Room { kind: RoomKind::Chest, mon_hp: None, used: false }; } }
+    for _ in 0..(w) { let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); if (x,y)!=(sx,sy) && !matches!(map[y*w+x].kind, RoomKind::Stairs) { map[y*w+x] = Room { kind: RoomKind::Trap, mon_hp: None, used: false }; } }
+    // Boss near exit: pick a neighbor if free, else overwrite a random non-exit
+    let mut bx = ex.saturating_sub(1); let mut by = ey;
+    if matches!(map[by*w+bx].kind, RoomKind::Stairs) { bx = ex; by = ey.saturating_sub(1); }
+    map[by*w+bx] = Room { kind: RoomKind::Monster(MonsterKind::Boss), mon_hp: Some(monster_stats(MonsterKind::Boss).0), used: false };
+    // Populate other monsters roughly by distance bands
+    for y in 0..h { for x in 0..w { if (x,y)==(sx,sy) || matches!(map[y*w+x].kind, RoomKind::Stairs|RoomKind::Vendor|RoomKind::Shrine|RoomKind::Fountain|RoomKind::Chest|RoomKind::Trap|RoomKind::Monster(_)) { continue; }
+        let d = ((x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs()) as i32;
+        let mk = if d <= 2 { if rng.gen_bool(0.4) { Some(MonsterKind::Rat) } else { None } }
+                 else if d <= 4 { Some(if rng.gen_bool(0.5) { MonsterKind::Goblin } else { MonsterKind::Slime }) }
+                 else { Some(if rng.gen_bool(0.5) { MonsterKind::Skeleton } else { MonsterKind::Orc }) };
+        if let Some(k) = mk { map[y*w+x] = Room { kind: RoomKind::Monster(k), mon_hp: Some(monster_stats(k).0), used: false }; }
+    } }
+    // Sprinkle a few locked doors as blocking rooms (simple model, not edges)
+    let mut ld = 0;
+    while ld < 3 { let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); if (x,y)!=(sx,sy) && !matches!(map[y*w+x].kind, RoomKind::Stairs|RoomKind::Vendor) { map[y*w+x] = Room { kind: RoomKind::LockedDoor, mon_hp: None, used: false }; ld+=1; } }
+}
+
+fn new_game(seed: u64, w: usize, h: usize) -> GameState {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut map = vec![Room::default(); w*h];
+    place_world(&mut rng, w, h, &mut map);
+    GameState { gid: rng.gen(), turn: 1, seed, w, h, player: Player::new(), map }
+}
+
+fn describe_room(gs: &GameState) -> String {
+    let r = gs.room(gs.player.x, gs.player.y);
+    match r.kind {
+        RoomKind::Empty => "Room: Empty. ".to_string(),
+        RoomKind::Monster(k) => {
+            let hp = r.mon_hp.unwrap_or(0);
+            let name = match k { MonsterKind::Rat=>"Rat", MonsterKind::Goblin=>"Goblin", MonsterKind::Slime=>"Slime", MonsterKind::Skeleton=>"Skeleton", MonsterKind::Orc=>"Orc", MonsterKind::Mimic=>"Mimic", MonsterKind::Boss=>"Boss" };
+            format!("Room: {} HP{}.", name, hp)
+        }
+        RoomKind::Chest => "Room: Chest.".to_string(),
+        RoomKind::LockedDoor => "Room: Locked door.".to_string(),
+        RoomKind::Trap => if r.used { "Room: Trap sprung.".to_string() } else { "Room: Trap.".to_string() },
+        RoomKind::Vendor => "Room: Vendor.".to_string(),
+        RoomKind::Shrine => if r.used { "Room: Used shrine.".to_string() } else { "Room: Shrine.".to_string() },
+        RoomKind::Fountain => if r.used { "Room: Dry fountain.".to_string() } else { "Room: Fountain.".to_string() },
+        RoomKind::Stairs => "Room: Stairs.".to_string(),
+    }
+}
+
+fn exits(gs: &GameState) -> (bool,bool,bool,bool) { // N,S,W,E
+    let (x,y) = (gs.player.x, gs.player.y);
+    (y>0, y+1<gs.h, x>0, x+1<gs.w)
+}
+
+fn compute_options(gs: &GameState) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    let r = gs.room(gs.player.x, gs.player.y);
+    // movement
+    let (n,s,w,e) = exits(gs);
+    if n { v.push("N".into()); }
+    if s { v.push("S".into()); }
+    if w { v.push("W".into()); }
+    if e { v.push("E".into()); }
+    // context
+    match r.kind {
+        RoomKind::Monster(_) => { v.push("A".into()); v.push("U P".into()); v.push("C F".into()); }
+        RoomKind::Chest => { v.push("T".into()); }
+        RoomKind::LockedDoor => { v.push("O".into()); v.push("U B".into()); }
+        RoomKind::Vendor => { v.push("BUY P".into()); v.push("BUY B".into()); v.push("BUY S".into()); v.push("LEAVE".into()); }
+        _ => {}
+    }
+    v.push("R".into()); v.push("I".into()); v.push("?".into()); v.push("Q".into());
+    v
+}
+
+fn hdr(gs: &GameState) -> String {
+    format!(
+        "TH g{} t{} L{},{} HP {}/{} ATK{} DEF{} XP{} G{} Inv:P{} K{} B{} S{}",
+        gs.gid, gs.turn, gs.player.x, gs.player.y, gs.player.hp, gs.player.max_hp,
+        gs.player.atk, gs.player.defn, gs.player.xp, gs.player.gold,
+        gs.player.potions, gs.player.keys, gs.player.bombs, gs.player.scrolls
+    )
+}
+
+fn help_line() -> &'static str {
+    "Cmds: N S E W, A, U P, U B, C F, T, O, R, I, Q\nGoal: find Stairs and escape."
+}
+
+pub fn render(gs: &GameState) -> String {
+    let mut msg = String::new();
+    msg.push_str(&hdr(gs));
+    msg.push('\n');
+    let mut room = describe_room(gs);
+    // Append exits summary
+    let (n,s,w,e) = exits(gs);
+    let mut ex: Vec<&str> = Vec::new(); if n { ex.push("N"); } if s { ex.push("S"); } if w { ex.push("W"); } if e { ex.push("E"); }
+    if !ex.is_empty() { room.push_str(" Exits "); room.push_str(&ex.join(",")); room.push('.'); }
+    msg.push_str(&room);
+    msg.push('\n');
+    let opts = compute_options(gs).join(" ");
+    msg.push_str("Opts: "); msg.push_str(&opts); msg.push('\n');
+    msg.push_str("Your move?\n");
+    clamp_ascii(msg)
+}
+
+fn level_threshold(lvl: u8) -> i32 { match lvl { 1=>5, 2=>12, 3=>20, 4=>30, _=>42 + ((lvl as i32 - 5) * 12) } }
+
+fn try_level_up(p: &mut Player, rng: &mut StdRng) {
+    let need = level_threshold(p.lvl);
+    if p.xp >= need { p.lvl += 1; p.max_hp += 2; p.hp = p.max_hp; if rng.gen_bool(0.5) { p.atk += 1; } else { p.defn += 1; } }
+}
+
+fn do_attack(gs: &mut GameState, rng: &mut StdRng) -> String {
+    let (x,y) = (gs.player.x, gs.player.y);
+    // Copy needed player stats before mutable borrow
+    let p_atk = gs.player.atk;
+    let p_def = gs.player.defn;
+    let r = gs.room_mut(x,y);
+    let (mk, mon_hp) = match r.kind { RoomKind::Monster(k) => (k, r.mon_hp.unwrap_or(0)), _ => { return "No target.\n".into(); } };
+    if mon_hp <= 0 { r.mon_hp=None; r.kind=RoomKind::Empty; return "No target.\n".into(); }
+    // Player hit
+    let (_, matk, mdef, _mxp) = monster_stats(mk);
+    let mut pd = (p_atk + d6(rng) - mdef).max(1);
+    if pd >= p_atk + 6 - mdef { pd += 2; } // simple crit on high roll
+    let mhp = mon_hp - pd; r.mon_hp = Some(mhp);
+    let mut out = format!("You hit {}. ", pd);
+    if mhp <= 0 {
+        r.mon_hp=None; r.kind=RoomKind::Empty; let xp = monster_stats(mk).3; gs.player.xp += xp; gs.player.gold += rng.gen_range(1..=3); try_level_up(&mut gs.player, rng); out.push_str("Foe falls. ");
+    } else {
+        // Monster retaliates
+        let mut md = (matk + d6(rng) - p_def).max(1);
+        if md >= matk + 6 - p_def { md += 2; }
+        gs.player.hp -= md; out.push_str(&format!("It hits {}. ", md));
+    }
+    if gs.player.hp <= 0 { return death_text(gs); }
+    out.push('\n'); out
+}
+
+fn use_potion(gs: &mut GameState) -> String {
+    if gs.player.potions <= 0 { return "No potions.\n".into(); }
+    gs.player.potions -= 1; gs.player.hp = (gs.player.hp + 6).min(gs.player.max_hp); "You drink a potion.\n".into()
+}
+
+fn use_bomb(gs: &mut GameState) -> String {
+    if gs.player.bombs <= 0 { return "No bombs.\n".into(); }
+    gs.player.bombs -= 1;
+    let x = gs.player.x; let y = gs.player.y;
+    let r = gs.room_mut(x, y);
+    match r.kind {
+        RoomKind::LockedDoor => { r.kind = RoomKind::Empty; r.used=true; "Bomb opens the way.\n".into() }
+        RoomKind::Monster(_) => { let hp = r.mon_hp.unwrap_or(0) - 6; if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "Bomb defeats the foe.\n".into() } else { r.mon_hp=Some(hp); "Bomb hurts the foe.\n".into() } }
+        _ => "Bomb fizzles.\n".into()
+    }
+}
+
+fn cast_fireball(gs: &mut GameState) -> String {
+    if gs.player.scrolls <= 0 { return "No scrolls.\n".into(); }
+    let x = gs.player.x; let y = gs.player.y;
+    // Inspect first without holding mutable borrow
+    let is_monster = matches!(gs.room(x,y).kind, RoomKind::Monster(_));
+    if !is_monster { return "Nothing to burn.\n".into(); }
+    gs.player.scrolls -= 1;
+    let r = gs.room_mut(x, y);
+    // Safe: r.kind is Monster
+    let hp = r.mon_hp.unwrap_or(0) - 5;
+    if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "Fireball! Foe falls.\n".into() } else { r.mon_hp=Some(hp); "Fireball scorches.\n".into() }
+}
+
+fn do_take(gs: &mut GameState, rng: &mut StdRng) -> String {
+    let r = gs.room_mut(gs.player.x, gs.player.y);
+    match r.kind {
+        RoomKind::Chest => { r.kind = RoomKind::Empty; let roll = rng.gen_range(0..6); match roll { 0|1 => { gs.player.gold += 4; "You find 4g.\n".into() }, 2 => { gs.player.keys += 1; "You find a key.\n".into() }, 3 => { gs.player.potions += 1; "You find a potion.\n".into() }, 4 => { gs.player.bombs += 1; "You find a bomb.\n".into() }, _ => { gs.player.scrolls += 1; "You find a scroll.\n".into() } } }
+        _ => "Nothing to take.\n".into()
+    }
+}
+
+fn do_open(gs: &mut GameState) -> String {
+    let x = gs.player.x; let y = gs.player.y;
+    let is_locked = matches!(gs.room(x,y).kind, RoomKind::LockedDoor);
+    if !is_locked { return "Nothing to open.\n".into(); }
+    if gs.player.keys <= 0 { return "No keys.\n".into(); }
+    gs.player.keys -= 1;
+    let r = gs.room_mut(x, y);
+    r.kind = RoomKind::Empty; r.used = true; "Door unlocked.\n".into()
+}
+
+fn do_rest(gs: &mut GameState, rng: &mut StdRng) -> String {
+    // 25% chance of ambush if a monster exists here (wander in)
+    let mut out = String::new();
+    gs.player.hp = (gs.player.hp + 3).min(gs.player.max_hp);
+    if rng.gen_bool(0.25) {
+        // Create a small rat ambush
+    let (mhp, matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
+        let mut md = (matk + d6(rng) - gs.player.defn).max(1);
+        if md >= matk + 6 - gs.player.defn { md += 2; }
+        gs.player.hp -= md; out.push_str(&format!("Ambush! Took {}. ", md));
+        if gs.player.hp <= 0 { return death_text(gs); }
+        // Place a rat in room
+        let r = gs.room_mut(gs.player.x, gs.player.y);
+        r.kind = RoomKind::Monster(MonsterKind::Rat); r.mon_hp = Some(mhp);
+    }
+    out.push_str("You rest.\n"); out
+}
+
+fn do_move(gs: &mut GameState, dir: char) -> String {
+    let (x,y) = (gs.player.x, gs.player.y);
+    match dir {
+        'N' if y>0 => { gs.player.y -= 1; },
+        'S' if y+1<gs.h => { gs.player.y += 1; },
+        'W' if x>0 => { gs.player.x -= 1; },
+        'E' if x+1<gs.w => { gs.player.x += 1; },
+        _ => { return "Can't move.\n".into(); }
+    }
+    String::new()
+}
+
+fn vendor_prices() -> (i32,i32,i32) { (6,8,10) } // P,B,S
+
+fn handle_vendor(gs: &mut GameState, cmd: &str) -> Option<String> {
+    if !matches!(gs.room(gs.player.x, gs.player.y).kind, RoomKind::Vendor) { return None; }
+    let up = cmd.trim().to_uppercase();
+    if up.starts_with("BUY ") {
+        let item = up.split_whitespace().nth(1).unwrap_or("");
+        let (pp,bp,sp) = vendor_prices();
+        match item { "P" => { if gs.player.gold>=pp { gs.player.gold-=pp; gs.player.potions+=1; return Some("Bought potion.\n".into()); } else { return Some("Not enough gold.\n".into()); } }, "B" => { if gs.player.gold>=bp { gs.player.gold-=bp; gs.player.bombs+=1; return Some("Bought bomb.\n".into()); } else { return Some("Not enough gold.\n".into()); } }, "S" => { if gs.player.gold>=sp { gs.player.gold-=sp; gs.player.scrolls+=1; return Some("Bought scroll.\n".into()); } else { return Some("Not enough gold.\n".into()); } }, _ => { return Some("Usage: BUY P|B|S\n".into()); } }
+    } else if up == "LEAVE" { return Some("You leave the vendor.\n".into()); }
+    None
+}
+
+fn win_text(gs: &GameState) -> String {
+    clamp_ascii(format!("TH g{} WIN t{} LVL{} XP{} G{}\nYou escape the Tiny Dungeon. Congrats!\n", gs.gid, gs.turn, gs.player.lvl, gs.player.xp, gs.player.gold))
+}
+
+fn death_text(gs: &GameState) -> String {
+    clamp_ascii(format!("TH g{} RIP t{} L{},{}\nYou fall in battle. Final LVL{} XP{} G{}.\n", gs.gid, gs.turn, gs.player.x, gs.player.y, gs.player.lvl, gs.player.xp, gs.player.gold))
+}
+
+fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
+    let (x,y) = (gs.player.x, gs.player.y);
+    let (kind, used) = { let r = gs.room(x,y); (r.kind, r.used) };
+    match (kind, used) {
+        (RoomKind::Trap, false) => {
+            let dmg = rng.gen_range(1..=4);
+            gs.player.hp -= dmg;
+            { let r = gs.room_mut(x,y); r.used = true; }
+            if gs.player.hp <= 0 { return Some(death_text(gs)); }
+            Some(format!("Trap! Took {}.\n", dmg))
+        }
+        (RoomKind::Shrine, false) => {
+            { let r = gs.room_mut(x,y); r.used = true; }
+            if rand::random::<bool>() { gs.player.atk += 1; Some("Blessing +1 ATK.\n".into()) } else { gs.player.defn += 1; Some("Blessing +1 DEF.\n".into()) }
+        }
+        (RoomKind::Fountain, false) => {
+            { let r = gs.room_mut(x,y); r.used = true; }
+            gs.player.hp = gs.player.max_hp; Some("You feel restored.\n".into())
+        }
+        (RoomKind::Stairs, _) => { Some(win_text(gs)) }
+        _ => None
+    }
+}
+
+fn parse_cmd(raw: &str) -> (String, String) {
+    let up = raw.trim().to_uppercase();
+    let mut it = up.split_whitespace();
+    let op = it.next().unwrap_or("").to_string();
+    let arg = it.next().unwrap_or("").to_string();
+    (op, arg)
+}
+
+pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
+    let mut rng = StdRng::seed_from_u64(gs.seed.wrapping_add(gs.turn as u64).wrapping_add((gs.player.x as u64)<<8).wrapping_add((gs.player.y as u64)<<16));
+    let (op,arg) = parse_cmd(cmd);
+    let mut out = String::new();
+    match op.as_str() {
+        "N"|"S"|"E"|"W" => { out.push_str(&do_move(&mut gs, op.chars().next().unwrap())); if let Some(extra) = on_enter_tile(&mut gs, &mut rng) { out.push_str(&extra); } },
+        "A" => { out.push_str(&do_attack(&mut gs, &mut rng)); },
+        "U" if arg=="P" => { out.push_str(&use_potion(&mut gs)); },
+        "U" if arg=="B" => { out.push_str(&use_bomb(&mut gs)); },
+        "C" if arg=="F" => { out.push_str(&cast_fireball(&mut gs)); },
+        "T" => { out.push_str(&do_take(&mut gs, &mut rng)); },
+        "O" => { out.push_str(&do_open(&mut gs)); },
+        "R" => { out.push_str(&do_rest(&mut gs, &mut rng)); },
+    "I" => { let view = clamp_ascii(format!("{}\n{}\nOpts: {}\nYour move?\n", hdr(&gs), describe_room(&gs), compute_options(&gs).join(" "))); return (gs, view); },
+    "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", hdr(&gs), describe_room(&gs), help_line())); return (gs, view); },
+        other if other.starts_with("BUY") || other=="LEAVE" => { if let Some(txt) = handle_vendor(&mut gs, &op) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
+        "Q" => { return (gs, "Quit.\n".into()); },
+        _ => { out.push_str("Bad cmd. Use ? for help.\n"); }
+    }
+    gs.turn = gs.turn.saturating_add(1);
+    let dead = gs.player.hp <= 0;
+    if dead { return (gs.clone(), death_text(&gs)); }
+    (gs.clone(), render(&gs))
+}
+
+/// Load or create a save for the given user; returns the state and the rendered snapshot.
+pub fn load_or_new_and_render(base_dir: &str, username: &str) -> (GameState, String) {
+    let path = save_path(base_dir, username);
+    if path.exists() {
+        if let Ok(s) = read_json(&path) {
+            if let Ok(mut gs) = serde_json::from_str::<GameState>(&s) {
+                // Clamp position within bounds if sizes changed
+                if gs.player.x >= gs.w { gs.player.x = gs.w.saturating_sub(1); }
+                if gs.player.y >= gs.h { gs.player.y = gs.h.saturating_sub(1); }
+                return (gs.clone(), render(&gs));
+            }
+        }
+    }
+    let seed = rand::thread_rng().gen::<u64>();
+    let gs = new_game(seed, 6, 6);
+    (gs.clone(), render(&gs))
+}
+
+/// Apply a command to the current save, persist, and return the new rendered snapshot.
+pub fn apply_and_save(base_dir: &str, username: &str, mut gs: GameState, cmd: &str) -> String {
+    let (ngs, out) = handle_turn(gs.clone(), cmd);
+    let path = save_path(base_dir, username);
+    if let Ok(json) = serde_json::to_string_pretty(&ngs) { let _ = write_json_atomic(&path, &json); }
+    out
+}

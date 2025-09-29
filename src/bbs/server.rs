@@ -1410,6 +1410,7 @@ impl BbsServer {
                                         super::session::SessionState::ReadingMessages => "Reading",
                                         super::session::SessionState::PostingMessage => "Posting",
                                         super::session::SessionState::UserMenu => "User Menu",
+                                        super::session::SessionState::TinyHack => "TinyHack",
                                         _ => "Other",
                                     };
                                     response.push_str(&format!("  {} ({}) - {} - {}m - {}\n", username, role, session.node_id, duration, state));
@@ -1471,6 +1472,7 @@ impl BbsServer {
                                     super::session::SessionState::ComposeReply => "Compose Reply",
                                     super::session::SessionState::ConfirmDelete => "Confirm Delete",
                                     super::session::SessionState::UserMenu => "User Menu",
+                                    super::session::SessionState::TinyHack => "TinyHack",
                                     super::session::SessionState::Disconnected => "Disconnected",
                                 };
                                 response.push_str(&format!("  {} ({}) | {} | {}m | Login: {} | {}\n", 

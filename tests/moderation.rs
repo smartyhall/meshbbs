@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig, GamesConfig};
 use meshbbs::{config::*, bbs::server::BbsServer};
 use std::collections::HashMap;
 
@@ -20,6 +20,7 @@ async fn base_config() -> Config {
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
+        games: GamesConfig::default(),
     }
 }
 

@@ -79,3 +79,8 @@ units = "imperial"
 cache_ttl = 300
 # Request timeout in seconds (default: 10)
 timeout = 10
+
+[games]
+# Optional mini‑games and doors
+# Show [T]inyHack in the main menu and enable the TinyHack DM door
+tinyhack_enabled = false

@@ -112,6 +112,9 @@ pub struct Config {
     pub ident_beacon: IdentBeaconConfig,
     #[serde(default)]
     pub weather: WeatherConfig,
+    /// Feature toggles for built-in mini-games and doors
+    #[serde(default)]
+    pub games: GamesConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,6 +172,13 @@ pub struct LoggingConfig {
     pub file: Option<String>,
     #[serde(default)]
     pub security_file: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GamesConfig {
+    /// Enable the TinyHack mini-game in the main menu (adds [T]inyHack)
+    #[serde(default)]
+    pub tinyhack_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -347,6 +357,7 @@ impl Default for Config {
             security: Some(SecurityConfig::default()),
             ident_beacon: IdentBeaconConfig::default(),
             weather: WeatherConfig::default(),
+            games: GamesConfig::default(),
         }
     }
 }

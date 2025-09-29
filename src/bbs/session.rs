@@ -103,6 +103,8 @@ pub enum SessionState {
     ComposeReply,    // Reply compose to current thread
     ConfirmDelete,   // Confirm delete of selected entity
     UserMenu,
+    /// TinyHack mini-game play loop
+    TinyHack,
     Disconnected,
 }
 
@@ -240,6 +242,10 @@ impl Session {
             }
             SessionState::ConfirmDelete => {
                 format!("confirm@{}>", self.current_topic.as_deref().unwrap_or("bbs"))
+            }
+            SessionState::TinyHack => {
+                // Keep prompt short in game mode
+                format!("{} (lvl{})>", self.display_name(), level)
             }
             SessionState::MainMenu | SessionState::UserMenu | SessionState::LoggingIn | SessionState::Connected => {
                 format!("{} (lvl{})>", self.display_name(), level)

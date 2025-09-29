@@ -121,6 +121,9 @@ impl CommandProcessor {
             }
             SessionState::ConfirmDelete => { parts.push("Confirm".into()); }
             SessionState::UserMenu => parts.push("User".into()),
+            SessionState::TinyHack => {
+                parts.push("TinyHack".into());
+            }
             SessionState::ReadingMessages => {
                 parts.push("Topics".into());
                 if let Some(t) = &session.current_topic { parts.push(t.clone()); }
@@ -150,6 +153,19 @@ impl CommandProcessor {
             SessionState::MainMenu => {
                 if let Some(resp) = self.try_inline_message_command(session, raw, &cmd_upper, storage, config).await? { return Ok(resp); }
                 self.handle_main_menu(session, &cmd_upper, storage, config).await
+            }
+            SessionState::TinyHack => {
+                // Special game loop: 'B' to return to main menu; otherwise forward to game engine
+                if cmd_upper == "B" || cmd_upper == "BACK" || cmd_upper == "MENU" {
+                    session.state = SessionState::MainMenu;
+                    let games_note = if config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
+                    return Ok(format!("Main Menu:\n[M]essages [U]ser{} [Q]uit\n", games_note));
+                }
+                let username = session.display_name();
+                // Load or use prior state from disk; forgiving of missing/malformed
+                let (gs0, _) = crate::bbs::tinyhack::load_or_new_and_render(&storage.base_dir(), &username);
+                let screen = crate::bbs::tinyhack::apply_and_save(&storage.base_dir(), &username, gs0, raw);
+                Ok(screen)
             }
             SessionState::Topics => self.handle_topics(session, raw, &cmd_upper, storage, config).await,
             SessionState::Subtopics => self.handle_subtopics(session, raw, &cmd_upper, storage, config).await,
@@ -262,10 +278,12 @@ impl CommandProcessor {
 
     async fn handle_initial_connection(&self, session: &mut Session, _cmd: &str, _storage: &mut Storage, config: &Config) -> Result<String> {
         session.state = SessionState::MainMenu;
+        let games_note = if config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
         Ok(format!(
-            "[{}]\nNode: {}\nAuth: REGISTER <user> <pass> or LOGIN <user> [pass]\nType HELP for commands\nMain Menu:\n[M]essages [U]ser [Q]uit\n",
+            "[{}]\nNode: {}\nAuth: REGISTER <user> <pass> or LOGIN <user> [pass]\nType HELP for commands\nMain Menu:\n[M]essages [U]ser{} [Q]uit\n",
             config.bbs.name,
-            session.node_id
+            session.node_id,
+            games_note
         ))
     }
 
@@ -293,7 +311,10 @@ impl CommandProcessor {
             
             session.login(username.clone(), 1).await?;
             storage.create_or_update_user(&username, &session.node_id).await?;
-            Ok(format!("Welcome {}!\nMain Menu:\n[M]essages [U]ser [Q]uit\n", username))
+            {
+                let games_note = if _config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
+                Ok(format!("Welcome {}!\nMain Menu:\n[M]essages [U]ser{} [Q]uit\n", username, games_note))
+            }
         } else {
             Ok("Please enter: LOGIN <username>\n".to_string())
         }
@@ -317,6 +338,16 @@ impl CommandProcessor {
                 ))
             }
             "Q" | "QUIT" | "GOODBYE" | "BYE" => { session.logout().await?; Ok("Goodbye! 73s".to_string()) }
+            "T" | "TINYHACK" if config.games.tinyhack_enabled => {
+                // Enter TinyHack loop and render current snapshot
+                session.state = SessionState::TinyHack;
+                let username = session.display_name();
+                let (gs, screen) = crate::bbs::tinyhack::load_or_new_and_render(&storage.base_dir(), &username);
+                // Cache minimal blob in session filter_text to avoid adding new fields; serialize small state id
+                // We will reload from disk on each turn for simplicity and resilience.
+                session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
+                Ok(screen)
+            }
             "H" | "HELP" | "?" => {
                 // Build compact contextual help to fit within 230 bytes
                 let mut out = String::new();

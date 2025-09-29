@@ -1,5 +1,5 @@
 //! Test ident beacon functionality and timing logic
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig, GamesConfig};
 use meshbbs::bbs::server::BbsServer;
 use std::collections::HashMap;
 use chrono::{Utc, Timelike};
@@ -47,6 +47,7 @@ async fn test_config_with_beacon(enabled: bool, frequency: &str) -> Config {
             frequency: frequency.to_string(),
         },
         weather: Default::default(),
+        games: GamesConfig::default(),
     }
 }
 

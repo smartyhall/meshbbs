@@ -1,5 +1,5 @@
 use meshbbs::bbs::BbsServer;
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig, IdentBeaconConfig, WeatherConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig, IdentBeaconConfig, WeatherConfig, GamesConfig};
 use std::collections::HashMap;
 use chrono::{Utc, Duration};
 
@@ -27,6 +27,7 @@ async fn unread_indicators_topics_and_threads() {
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: WeatherConfig::default(),
+        games: GamesConfig::default(),
     };
 
     let mut server = BbsServer::new(cfg.clone()).await.unwrap();

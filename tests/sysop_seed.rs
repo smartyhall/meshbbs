@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig, GamesConfig};
 use meshbbs::bbs::server::BbsServer;
 use tokio::runtime::Runtime;
 use password_hash::{PasswordHasher, SaltString};
@@ -23,6 +23,7 @@ fn sysop_user_seeded_with_hash() {
             security: None,
             ident_beacon: IdentBeaconConfig::default(),
             weather: Default::default(),
+            games: GamesConfig::default(),
         };
         let mut server = BbsServer::new(cfg).await.unwrap();
         server.seed_sysop().await.unwrap();

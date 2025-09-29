@@ -12,6 +12,7 @@ async fn base_config(dir: &str) -> Config {
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
+        games: GamesConfig::default(),
     }
 }
 

@@ -73,6 +73,7 @@ pub mod slotmachine;
 pub mod eightball;
 pub mod fortune;
 pub mod weather;
+pub mod tinyhack;
 
 pub use server::BbsServer;
 

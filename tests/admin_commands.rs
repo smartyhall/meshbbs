@@ -1,5 +1,5 @@
 //! Test administrative commands functionality
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig, GamesConfig};
 use meshbbs::bbs::server::BbsServer;
 use std::collections::HashMap;
 
@@ -13,6 +13,7 @@ async fn base_config() -> Config {
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
+        games: GamesConfig::default(),
     }
 }
 

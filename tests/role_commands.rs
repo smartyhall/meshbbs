@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig, GamesConfig};
 use meshbbs::bbs::server::BbsServer;
 
 async fn base_config() -> Config {
@@ -11,6 +11,7 @@ async fn base_config() -> Config {
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
+        games: GamesConfig::default(),
     }
 }
 

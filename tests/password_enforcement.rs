@@ -1,4 +1,4 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig};
+use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig, GamesConfig};
 use tempfile::tempdir;
 
 #[tokio::test]
@@ -15,6 +15,7 @@ async fn passwordless_user_prompt_and_set() {
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
+        games: GamesConfig::default(),
     };
     // Server instance not required for this test; we manipulate user file directly.
     // Use test helper to create passwordless legacy user via storage public method not exposed; mimic by writing file through create_or_update_user equivalent path: call internal method via public test_register? Not possible without password.
