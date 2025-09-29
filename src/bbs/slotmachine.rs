@@ -35,7 +35,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{Read, Write, Seek, SeekFrom};
 use fs2::FileExt;
 use std::path::{Path, PathBuf};
 
@@ -177,9 +177,11 @@ fn jackpot_payout_and_reset(base_dir: &str, now: DateTime<Utc>, winner: &str) ->
         jackpot.losses = 0;
         jackpot.last_win = Some(now);
     jackpot.last_win_node = Some(winner.to_string());
-        let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
-        let _ = f.set_len(0);
-        let _ = f.write_all(data.as_bytes());
+    let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
+    // Ensure writes start at beginning to avoid sparse/invalid files
+    let _ = f.seek(SeekFrom::Start(0));
+    let _ = f.set_len(0);
+    let _ = f.write_all(data.as_bytes());
         let _ = f.flush();
         let _ = f.unlock();
         payout
@@ -200,6 +202,8 @@ fn jackpot_record_loss(base_dir: &str) {
         let mut jackpot: GlobalJackpot = if s.is_empty() { GlobalJackpot::default() } else { serde_json::from_str(&s).unwrap_or_default() };
         jackpot.losses = jackpot.losses.saturating_add(1);
         let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
+        // Ensure writes start at beginning to avoid sparse/invalid files
+        let _ = f.seek(SeekFrom::Start(0));
         let _ = f.set_len(0);
         let _ = f.write_all(data.as_bytes());
         let _ = f.flush();
