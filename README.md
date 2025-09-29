@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.25-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.30-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,6 +25,7 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## � Release notes
 
+- 1.0.30 (2025-09-29): Fix rare jackpot.json reset when updating the progressive pot (seek to start before truncate/write). Switch several integration tests to use writable temp fixture copies to avoid mutating tracked fixture JSONs.
 - 1.0.25 (2025-09-28): Reflect configurable public command prefix across all user-facing runtime messages (IDENT hint and public broadcasts for SLOT/8BALL/FORTUNE/SLOTSTATS) and documentation (README, user guides, getting-started, QA plan, rustdoc). No functional changes beyond message formatting; default prefix remains `^`.
 - 1.0.22 (2025-09-28): Add unit tests to verify UTF‑8 safe truncation of log previews (em‑dash and emoji boundaries). Reinforces the 1.0.21 fix and prevents regressions.
 - 1.0.21 (2025-09-28): Critical hotfix for a crash when logging long messages containing multibyte characters (e.g., em dashes/emoji). We now truncate previews using a UTF-8 safe helper and hardened parser slices to avoid invalid byte-boundary slicing. If you saw a panic like "byte index N is not a char boundary", update immediately.

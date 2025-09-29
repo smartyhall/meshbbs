@@ -9,6 +9,14 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.30] - 2025-09-29
+
+### Fixed
+- Slot machine jackpot persistence: occasional jackpot.json reset due to non-seeked overwrite. We now seek to start before truncate/write to ensure atomic overwrite semantics across platforms.
+
+### Changed
+- Tests: updated integration tests to use writable temp copies of fixtures (alice.json, carol.json, etc.) to avoid mutating tracked files during test runs.
+
 ## [1.0.25] - 2025-09-28
 
 ### Changed
