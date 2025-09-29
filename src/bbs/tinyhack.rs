@@ -468,8 +468,9 @@ pub fn load_or_new_and_render(base_dir: &str, username: &str) -> (GameState, Str
 }
 
 /// Apply a command to the current save, persist, and return the new rendered snapshot.
-pub fn apply_and_save(base_dir: &str, username: &str, mut gs: GameState, cmd: &str) -> String {
-    let (ngs, out) = handle_turn(gs.clone(), cmd);
+pub fn apply_and_save(base_dir: &str, username: &str, gs: GameState, cmd: &str) -> String {
+    // Apply command to the provided state and persist atomically.
+    let (ngs, out) = handle_turn(gs, cmd);
     let path = save_path(base_dir, username);
     if let Ok(json) = serde_json::to_string_pretty(&ngs) { let _ = write_json_atomic(&path, &json); }
     out
