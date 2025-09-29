@@ -344,6 +344,13 @@ impl BbsServer {
         if !server.config.message_topics.is_empty() {
             Self::merge_toml_topics_to_runtime(&mut server.storage, &server.config).await?;
         }
+        // Announce enabled games at startup (TinyHack)
+        if server.config.games.tinyhack_enabled {
+            info!(
+                "[games] TinyHack enabled: DM door 'T' available; saves at {}/tinyhack",
+                server.storage.base_dir()
+            );
+        }
         Ok(server)
     }
 
