@@ -49,14 +49,14 @@
 //!
 //! Meshbbs implements a unique two-phase communication model optimized for mesh networks:
 //!
-//! 1. **Public Discovery**: Lightweight commands on shared channel (e.g., `<prefix>HELP`, `<prefix>LOGIN`; default prefix is `^` and is configurable)
+//! 1. **Public Discovery**: Lightweight commands on shared channel (e.g., `&lt;prefix&gt;HELP`, `&lt;prefix&gt;LOGIN`; default prefix is `^` and is configurable)
 //! 2. **Private Sessions**: Full BBS interaction via direct messages
 //!
 //! This design minimizes mesh network traffic while providing rich BBS functionality.
 //!
 //! ## Session Lifecycle
 //!
-//! 1. User sends `<prefix>LOGIN username` on public channel (default `^LOGIN username`)
+//! 1. User sends `&lt;prefix&gt;LOGIN username` on public channel (default `^LOGIN username`)
 //! 2. BBS registers pending login for the user's node ID
 //! 3. User opens direct message to BBS node
 //! 4. BBS creates authenticated session

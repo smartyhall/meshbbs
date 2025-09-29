@@ -1,4 +1,4 @@
-//! Magic 8-Ball mini-feature used by public channel command <prefix>8BALL (default prefix `^`).
+//! Magic 8-Ball mini-feature used by public channel command &lt;prefix&gt;8BALL (default prefix `^`).
 //!
 //! Behavior:
 //! - Stateless: no persistence; just returns a random classic response

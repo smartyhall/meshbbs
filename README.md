@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.31-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.32-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,6 +25,7 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## � Release notes
 
+- 1.0.32 (2025-09-29): Replace Fortune database with ~400 user‑provided fortunes (haiku, limericks, proverbs, jokes). Kept all entries mesh‑safe (<=200 chars) and updated tests to be count‑agnostic. Synced docs to describe the updated Fortune module.
 - 1.0.31 (2025-09-29): Robust persistence hardening: atomic write-then-rename with fsync for JSON data (users, runtime topics, NodeCache), plus read-side resilience that trims accidental leading NULs. Refactored sysop seeding to use centralized atomic storage helper; made NodeCache save/load fully atomic and resilient.
 - 1.0.30 (2025-09-29): Fix rare jackpot.json reset when updating the progressive pot (seek to start before truncate/write). Switch several integration tests to use writable temp fixture copies to avoid mutating tracked fixture JSONs.
 - 1.0.25 (2025-09-28): Reflect configurable public command prefix across all user-facing runtime messages (IDENT hint and public broadcasts for SLOT/8BALL/FORTUNE/SLOTSTATS) and documentation (README, user guides, getting-started, QA plan, rustdoc). No functional changes beyond message formatting; default prefix remains `^`.

@@ -9,6 +9,13 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.32] - 2025-09-29
+
+### Changed
+- Fortune module: replaced built‑in database with ~400 user‑provided fortunes (haiku, limericks, proverbs, jokes). Ensured every entry is <= 200 chars for mesh compatibility.
+- Tests: made fortune tests count‑agnostic and focused on invariants (non‑empty, <=200 chars, printable, randomness variety).
+- Docs: updated module docs and README release notes to reflect the new fortune set.
+
 ## [1.0.31] - 2025-09-29
 
 ### Changed

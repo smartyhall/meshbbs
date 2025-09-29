@@ -40,7 +40,7 @@ Tip: If you see “Out of coins… Next refill in ~Hh Mm”, check back later or
 - Command:
   - `<prefix>FORTUNE` (default `^FORTUNE`) — receive a random fortune from classic Unix wisdom databases
 - Behavior:
-  - Stateless; draws from 140 curated fortunes including programming quotes, philosophy, literature, and humor
+  - Stateless; draws from a curated set of fortunes including programming quotes, philosophy, literature, poetry, and humor
   - All fortunes under 200 characters for mesh-friendly transmission
   - Broadcast-only on the public channel (best‑effort)
   - 5-second cooldown per node to prevent spam

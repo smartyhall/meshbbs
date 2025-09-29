@@ -1,4 +1,4 @@
-//! Unix fortune cookie mini-feature used by public channel command <prefix>FORTUNE (default prefix `^`).
+//! Unix fortune cookie mini-feature used by public channel command &lt;prefix&gt;FORTUNE (default prefix `^`).
 //!
 //! This module provides a stateless fortune cookie system inspired by the classic Unix
 //! `fortune` command. It contains a curated database of user‑provided fortunes: witty,

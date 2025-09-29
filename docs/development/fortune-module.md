@@ -8,7 +8,7 @@ The Fortune module (`src/bbs/fortune.rs`) implements the `<prefix>FORTUNE` publi
 
 ### Core Components
 
-- **Fortune Database**: Static array of 140 curated fortune entries
+- **Fortune Database**: Static array of user‑provided fortune entries (~400)
 - **Random Selection**: Thread-safe random fortune picker using `rand::thread_rng()`
 - **Helper Functions**: Utility functions for testing and diagnostics
 
@@ -45,7 +45,7 @@ The Fortune module (`src/bbs/fortune.rs`) implements the `<prefix>FORTUNE` publi
 /// Returns a random fortune from the database
 pub fn get_fortune() -> &'static str
 
-/// Returns the total number of fortunes (140)
+/// Returns the total number of fortunes
 pub fn fortune_count() -> usize
 
 /// Returns the length of the longest fortune

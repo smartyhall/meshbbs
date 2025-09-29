@@ -1,4 +1,4 @@
-//! Slot machine mini‑game used by public channel commands <prefix>SLOT and <prefix>SLOTMACHINE (default prefix `^`).
+//! Slot machine mini‑game used by public channel commands &lt;prefix&gt;SLOT and &lt;prefix&gt;SLOTMACHINE (default prefix `^`).
 //!
 //! Overview
 //! - Emoji reels with fixed distributions and deterministic payout table

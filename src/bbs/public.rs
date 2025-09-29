@@ -1,8 +1,8 @@
 //! Public channel utilities: lightweight state and a tiny command parser.
 //!
 //! This module implements rate‑limiting and simple prefix‑based commands that can be
-//! used from a shared public chat (e.g. `<prefix>HELP`, `<prefix>LOGIN alice`, `<prefix>SLOT`, `<prefix>8BALL`,
-//! `<prefix>FORTUNE`, `<prefix>WEATHER`; default prefix is `^` and is configurable). The [PublicState] tracks per‑node cooldowns to avoid spam
+//! used from a shared public chat (e.g. `&lt;prefix&gt;HELP`, `&lt;prefix&gt;LOGIN alice`, `&lt;prefix&gt;SLOT`, `&lt;prefix&gt;8BALL`,
+//! `&lt;prefix&gt;FORTUNE`, `&lt;prefix&gt;WEATHER`; default prefix is `^` and is configurable). The [PublicState] tracks per‑node cooldowns to avoid spam
 //! while keeping logic extremely small and fast.
 //!
 //! The [PublicCommandParser] recognizes commands only when prefixed with one of the configured
@@ -84,7 +84,7 @@ impl PublicState {
         }
     }
 
-    /// Lightweight, per-node rate limit for <prefix>SLOT. Defaults to 3s between spins.
+    /// Lightweight, per-node rate limit for &lt;prefix&gt;SLOT. Defaults to 3s between spins.
     pub fn allow_slot(&mut self, node_id: &str) -> bool {
         let now = Instant::now();
         match self.slot_last_spin.get(node_id) {
@@ -93,7 +93,7 @@ impl PublicState {
         }
     }
 
-    /// Lightweight, per-node rate limit for <prefix>8BALL. Defaults to 2s between questions.
+    /// Lightweight, per-node rate limit for &lt;prefix&gt;8BALL. Defaults to 2s between questions.
     pub fn allow_8ball(&mut self, node_id: &str) -> bool {
         let now = Instant::now();
         match self.eightball_last.get(node_id) {
@@ -102,7 +102,7 @@ impl PublicState {
         }
     }
 
-    /// Lightweight, per-node rate limit for <prefix>FORTUNE. Defaults to 5s between fortunes.
+    /// Lightweight, per-node rate limit for &lt;prefix&gt;FORTUNE. Defaults to 5s between fortunes.
     pub fn allow_fortune(&mut self, node_id: &str) -> bool {
         let now = Instant::now();
         match self.fortune_last.get(node_id) {
