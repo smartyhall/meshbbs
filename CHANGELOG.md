@@ -9,6 +9,16 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.31] - 2025-09-29
+
+### Changed
+- Storage hardening: implement atomic write-then-rename with fsync for JSON writes across the storage layer (users, runtime topics, append logs), and add read-side resilience by stripping accidental leading NUL bytes before JSON parse.
+- Sysop seeding: replace direct file writes with a centralized atomic helper (upsert_user_with_hash), ensuring the sysop record is created/updated atomically.
+- Meshtastic NodeCache: atomic save (temp + fsync + rename + dir fsync) and resilient load (leading-NUL trim) to prevent partial write issues.
+
+### Notes
+- These changes reduce the risk of data corruption under crashes or power loss during writes, and guard reads against previously observed leading-NUL artifacts.
+
 ## [1.0.30] - 2025-09-29
 
 ### Fixed
