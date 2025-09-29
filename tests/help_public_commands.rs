@@ -6,7 +6,9 @@ use meshbbs::config::Config;
 #[tokio::test]
 async fn help_broadcasts_public_commands() {
     let mut config = Config::default();
-    config.storage.data_dir = crate::common::fixture_root().to_string_lossy().to_string();
+    // Use a writable temp copy of fixtures to avoid mutating tracked files
+    let tmp = crate::common::writable_fixture();
+    config.storage.data_dir = tmp.path().to_string_lossy().to_string();
     let mut server = BbsServer::new(config).await.expect("server");
 
     use meshbbs::meshtastic::TextEvent;
@@ -50,7 +52,9 @@ async fn help_broadcasts_public_commands() {
 #[tokio::test]
 async fn help_dm_and_broadcast_content() {
     let mut config = Config::default();
-    config.storage.data_dir = crate::common::fixture_root().to_string_lossy().to_string();
+    // Use a writable temp copy of fixtures to avoid mutating tracked files
+    let tmp = crate::common::writable_fixture();
+    config.storage.data_dir = tmp.path().to_string_lossy().to_string();
     let mut server = BbsServer::new(config).await.expect("server");
 
     use meshbbs::meshtastic::TextEvent;

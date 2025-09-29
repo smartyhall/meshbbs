@@ -9,7 +9,9 @@ use meshbbs::meshtastic::TextEvent;
 #[tokio::test]
 async fn help_after_login() {
     let mut cfg = Config::default();
-    cfg.storage.data_dir = crate::common::fixture_root().to_string_lossy().to_string();
+    // Use a writable temp copy of fixtures to avoid mutating tracked files
+    let tmp = crate::common::writable_fixture();
+    cfg.storage.data_dir = tmp.path().to_string_lossy().to_string();
     let mut server = BbsServer::new(cfg).await.expect("server");
 
     // Use a unique username each run to avoid collision with existing test data

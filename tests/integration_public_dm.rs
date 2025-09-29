@@ -12,8 +12,9 @@ async fn public_login_then_dm_session_inline_commands() {
     // Build a default config (assuming Config::default or similar). If not available, construct manually.
     // For now we assume a basic constructor exists; adapt if necessary.
     let mut config = Config::default();
-    // Use relocated fixture directory under tests/
-    config.storage.data_dir = crate::common::fixture_root().to_string_lossy().to_string();
+    // Use a writable temp copy of the fixture directory under tests/
+    let tmp = crate::common::writable_fixture();
+    config.storage.data_dir = tmp.path().to_string_lossy().to_string();
 
     // Initialize server (without actual device)
     let mut server = BbsServer::new(config).await.expect("server");

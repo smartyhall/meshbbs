@@ -10,7 +10,9 @@ use meshbbs::meshtastic::TextEvent;
 async fn max_users_enforced() {
     let mut cfg = Config::default();
     cfg.bbs.max_users = 1; // only one user allowed
-    cfg.storage.data_dir = crate::common::fixture_root().to_string_lossy().to_string();
+    // Use a writable temp copy of fixtures to avoid mutating tracked files
+    let tmp = crate::common::writable_fixture();
+    cfg.storage.data_dir = tmp.path().to_string_lossy().to_string();
     let mut server = BbsServer::new(cfg).await.expect("server");
 
     // First user login flow
@@ -36,7 +38,9 @@ async fn idle_logout_triggers() {
     let mut cfg = Config::default();
     cfg.bbs.session_timeout = 0; // treat as disabled? we interpret 0 as skip pruning above, so use 1 and manually adjust time
     cfg.bbs.session_timeout = 1; // 1 minute
-    cfg.storage.data_dir = crate::common::fixture_root().to_string_lossy().to_string();
+    // Use a writable temp copy of fixtures to avoid mutating tracked files
+    let tmp = crate::common::writable_fixture();
+    cfg.storage.data_dir = tmp.path().to_string_lossy().to_string();
     let mut server = BbsServer::new(cfg).await.expect("server");
 
     let public = TextEvent { source: 300, dest: None, is_direct: false, channel: None, content: "^LOGIN carol".into() };
