@@ -165,6 +165,12 @@ fn chunk_verbose_help_with_prefix(pfx: char) -> Vec<String> {
 }
 
 impl BbsServer {
+    #[inline]
+    fn primary_channel(&self) -> u32 {
+        self.config.meshtastic.channel as u32
+    }
+    
+    /// Return the configured primary Meshtastic channel (as u32).
     /// Chunk a UTF-8 string into <= max_bytes segments without splitting codepoints.
     /// Attempts to split on newline boundaries preferentially, then falls back to byte slicing.
     pub fn chunk_utf8(&self, text: &str, max_bytes: usize) -> Vec<String> {
@@ -1700,7 +1706,7 @@ impl BbsServer {
                                 debug!("Scheduling HELP public chunk {} in {}ms (text='{}')", i + 1, chunk_delay, escape_log(chunk));
                                 let outgoing = crate::meshtastic::OutgoingMessage { 
                                     to_node: None, 
-                                    channel: 0, 
+                                    channel: self.primary_channel(), 
                                     content: chunk.clone(), 
                                     priority: crate::meshtastic::MessagePriority::Normal, 
                                     kind: crate::meshtastic::OutgoingKind::Normal, 
@@ -1717,6 +1723,8 @@ impl BbsServer {
                         } else {
                             // Fallback legacy path - ensure tx is properly cloned for each spawn
                             if let Some(base_tx) = self.outgoing_tx.clone() {
+                                // Avoid capturing &self inside spawned tasks; compute channel once.
+                                let channel = self.primary_channel();
                                 for (i, chunk) in chunks.iter().enumerate() {
                                     let chunk_content = chunk.clone();
                                     let tx_clone = base_tx.clone();
@@ -1726,7 +1734,7 @@ impl BbsServer {
                                         tokio::time::sleep(std::time::Duration::from_millis(chunk_delay)).await;
                                         let outgoing = crate::meshtastic::OutgoingMessage { 
                                             to_node: None, 
-                                            channel: 0, 
+                                            channel, 
                                             content: chunk_content, 
                                             priority: crate::meshtastic::MessagePriority::Normal, 
                                             kind: crate::meshtastic::OutgoingKind::Normal, 
@@ -1881,7 +1889,7 @@ impl BbsServer {
             if let Some(scheduler) = &self.scheduler {
                 let node_id = if let Some(hex) = to_node.strip_prefix("0x").or_else(|| to_node.strip_prefix("0X")) { u32::from_str_radix(hex, 16).ok() } else { to_node.parse::<u32>().ok() };
                 if let Some(id) = node_id {
-                    let outgoing = OutgoingMessage { to_node: Some(id), channel: 0, content: message.to_string(), priority: MessagePriority::High, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: false };
+                    let outgoing = OutgoingMessage { to_node: Some(id), channel: self.primary_channel(), content: message.to_string(), priority: MessagePriority::High, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: false };
                     let env = crate::bbs::dispatch::MessageEnvelope::new(
                         crate::bbs::dispatch::MessageCategory::Direct,
                         crate::bbs::dispatch::Priority::High,
@@ -1897,7 +1905,7 @@ impl BbsServer {
                 let node_id = if let Some(hex) = to_node.strip_prefix("0x").or_else(|| to_node.strip_prefix("0X")) { u32::from_str_radix(hex, 16).ok() } else { to_node.parse::<u32>().ok() };
 
                 if let Some(id) = node_id {
-                    let outgoing = OutgoingMessage { to_node: Some(id), channel: 0, content: message.to_string(), priority: MessagePriority::High, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: false };
+                    let outgoing = OutgoingMessage { to_node: Some(id), channel: self.primary_channel(), content: message.to_string(), priority: MessagePriority::High, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: false };
 
                     match tx.send(outgoing) {
                         Ok(_) => {
@@ -1938,7 +1946,7 @@ impl BbsServer {
     #[cfg(feature = "meshtastic-proto")]
     pub async fn send_broadcast(&mut self, message: &str) -> Result<()> {
         if let Some(scheduler) = &self.scheduler {
-            let outgoing = OutgoingMessage { to_node: None, channel: 0, content: message.to_string(), priority: MessagePriority::Normal, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: true };
+            let outgoing = OutgoingMessage { to_node: None, channel: self.primary_channel(), content: message.to_string(), priority: MessagePriority::Normal, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: true };
             let env = crate::bbs::dispatch::MessageEnvelope::new(
                 crate::bbs::dispatch::MessageCategory::Broadcast,
                 crate::bbs::dispatch::Priority::Low,
@@ -1948,7 +1956,7 @@ impl BbsServer {
             scheduler.enqueue(env);
             Ok(())
         } else {
-            let outgoing = OutgoingMessage { to_node: None, channel: 0, content: message.to_string(), priority: MessagePriority::Normal, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: true };
+            let outgoing = OutgoingMessage { to_node: None, channel: self.primary_channel(), content: message.to_string(), priority: MessagePriority::Normal, kind: crate::meshtastic::OutgoingKind::Normal, request_ack: true };
             if let Some(ref tx) = self.outgoing_tx {
                 match tx.send(outgoing) { Ok(_) => { debug!("Queued broadcast message: {}", escape_log(message)); Ok(()) }, Err(e) => { warn!("Failed to queue broadcast message: {}", e); Err(anyhow!("Failed to queue broadcast: {}", e)) } }
             } else {
