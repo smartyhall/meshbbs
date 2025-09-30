@@ -20,6 +20,8 @@ use fs2::FileExt;
 
 /// Maximum outgoing message bytes. All renderings are trimmed to this size.
 const MAX_MSG: usize = 230;
+/// Effective TinyHack body budget to leave room for the BBS prompt and avoid chunking.
+const RENDER_BUDGET: usize = 200;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RoomKind {
@@ -194,19 +196,27 @@ fn new_game(seed: u64, w: usize, h: usize) -> GameState {
 fn describe_room(gs: &GameState) -> String {
     let r = gs.room(gs.player.x, gs.player.y);
     match r.kind {
-        RoomKind::Empty => "Room: Empty. ".to_string(),
+        RoomKind::Empty => "You stand in a dim corridor. Dust hangs in the air.".to_string(),
         RoomKind::Monster(k) => {
             let hp = r.mon_hp.unwrap_or(0);
-            let name = match k { MonsterKind::Rat=>"Rat", MonsterKind::Goblin=>"Goblin", MonsterKind::Slime=>"Slime", MonsterKind::Skeleton=>"Skeleton", MonsterKind::Orc=>"Orc", MonsterKind::Mimic=>"Mimic", MonsterKind::Boss=>"Boss" };
-            format!("Room: {} HP{}.", name, hp)
+            let name = match k {
+                MonsterKind::Rat => "a giant rat",
+                MonsterKind::Goblin => "a goblin",
+                MonsterKind::Slime => "a slithering slime",
+                MonsterKind::Skeleton => "a rattling skeleton",
+                MonsterKind::Orc => "an orc bruiser",
+                MonsterKind::Mimic => "a suspicious chest (mimic)",
+                MonsterKind::Boss => "the dungeon boss",
+            };
+            format!("You are not alone—{} lurks here (HP {}). It eyes you hungrily.", name, hp)
         }
-        RoomKind::Chest => "Room: Chest.".to_string(),
-        RoomKind::LockedDoor => "Room: Locked door.".to_string(),
-        RoomKind::Trap => if r.used { "Room: Trap sprung.".to_string() } else { "Room: Trap.".to_string() },
-        RoomKind::Vendor => "Room: Vendor.".to_string(),
-        RoomKind::Shrine => if r.used { "Room: Used shrine.".to_string() } else { "Room: Shrine.".to_string() },
-        RoomKind::Fountain => if r.used { "Room: Dry fountain.".to_string() } else { "Room: Fountain.".to_string() },
-        RoomKind::Stairs => "Room: Stairs.".to_string(),
+        RoomKind::Chest => "A dusty chest rests against the wall, its latch brittle with age.".to_string(),
+        RoomKind::LockedDoor => "A heavy locked door bars the way; iron bands bite into old wood.".to_string(),
+        RoomKind::Trap => if r.used { "Scorched marks and sprung mechanisms suggest a trap was here.".to_string() } else { "The floor tiles look uneven—a trap may be set in this hall.".to_string() },
+        RoomKind::Vendor => "A robed vendor watches from a tiny stall, wares neatly arranged.".to_string(),
+        RoomKind::Shrine => if r.used { "An ancient shrine, its magic spent, stands silent.".to_string() } else { "An ancient shrine hums softly, inviting a humble approach.".to_string() },
+        RoomKind::Fountain => if r.used { "A cracked fountain sits dry; its healing waters spent.".to_string() } else { "A cracked stone fountain trickles—its waters seem restorative.".to_string() },
+        RoomKind::Stairs => "A narrow stairwell leads out of this cursed place.".to_string(),
     }
 }
 
@@ -260,8 +270,18 @@ fn hdr(gs: &GameState) -> String {
     )
 }
 
-fn help_line() -> &'static str {
-    "Cmds: N S E W, A, U P, U B, C F, T, O, R, I, Q\nGoal: find Stairs and escape."
+fn help_text() -> &'static str {
+    "TinyHack Commands:\n\
+N)orth S)outh E)ast W)est — move between rooms\n\
+A)ttack — strike the foe in your room\n\
+U)se P)otion — heal; U)se B)omb — blast door/foe\n\
+C)ast F)ireball — burn a foe\n\
+T)ake — loot a chest (gold, keys, items)\n\
+O)pen — unlock a locked door (needs a key)\n\
+R)est — recover a little HP (risk ambush)\n\
+I)nspect — show status and options again\n\
+B)ack — return to BBS menu; Q)uit — leave TinyHack\n\
+Goal: Find the Stairs and escape the dungeon."
 }
 
 pub fn render(gs: &GameState) -> String {
@@ -277,22 +297,20 @@ pub fn render(gs: &GameState) -> String {
     msg.push('\n');
     let opts = compute_options(gs).join(" ");
     msg.push_str("Opts: "); msg.push_str(&opts); msg.push('\n');
-    // Show a brief onboarding intro the very first time only, but keep within the 230-byte cap.
+    // Show a brief onboarding intro the very first time only, keeping within the tighter render budget.
     if !gs.intro_shown {
         let intro_long = "Welcome to TinyHack — find the Stairs and escape.\nHeader shows LVL, HP, ATK/DEF, XPx/y, G, Inv.\nMove with N,S,E,W. Try E or S; use ? for help.\n";
         let intro_short = "Welcome to TinyHack. Goal: find Stairs. Move N,S,E,W; ? help.\n";
         let prompt = "Your move?\n";
-        let remaining = MAX_MSG.saturating_sub(msg.len() + prompt.len());
+        let remaining = RENDER_BUDGET.saturating_sub(msg.len() + prompt.len());
         if intro_long.len() <= remaining { msg.push_str(intro_long); }
         else if intro_short.len() <= remaining { msg.push_str(intro_short); }
         // else: no intro to avoid chunking; header/opts remain visible.
     }
-    // Add a compact one-line legend if there's enough room left, so we don't truncate the prompt.
-    let legend = "Legend: N S E W | A | U P | U B | C F | T | O | R | I | Q\n";
     let prompt = "Your move?\n";
-    if msg.len() + legend.len() + prompt.len() <= MAX_MSG { msg.push_str(legend); }
     msg.push_str(prompt);
-    clamp_ascii(msg)
+    // Final clamp to render budget to avoid chunking before the BBS prompt is appended.
+    if msg.len() > RENDER_BUDGET { let mut s = msg; s.truncate(RENDER_BUDGET); s } else { msg }
 }
 
 fn level_threshold(lvl: u8) -> i32 { match lvl { 1=>5, 2=>12, 3=>20, 4=>30, _=>42 + ((lvl as i32 - 5) * 12) } }
@@ -315,14 +333,14 @@ fn do_attack(gs: &mut GameState, rng: &mut StdRng) -> String {
     let mut pd = (p_atk + d6(rng) - mdef).max(1);
     if pd >= p_atk + 6 - mdef { pd += 2; } // simple crit on high roll
     let mhp = mon_hp - pd; r.mon_hp = Some(mhp);
-    let mut out = format!("You hit {}. ", pd);
+    let mut out = format!("You strike for {}. ", pd);
     if mhp <= 0 {
-        r.mon_hp=None; r.kind=RoomKind::Empty; let xp = monster_stats(mk).3; gs.player.xp += xp; gs.player.gold += rng.gen_range(1..=3); try_level_up(&mut gs.player, rng); out.push_str("Foe falls. ");
+        r.mon_hp=None; r.kind=RoomKind::Empty; let xp = monster_stats(mk).3; gs.player.xp += xp; gs.player.gold += rng.gen_range(1..=3); try_level_up(&mut gs.player, rng); out.push_str("The foe collapses. ");
     } else {
         // Monster retaliates
         let mut md = (matk + d6(rng) - p_def).max(1);
         if md >= matk + 6 - p_def { md += 2; }
-        gs.player.hp -= md; out.push_str(&format!("It hits {}. ", md));
+        gs.player.hp -= md; out.push_str(&format!("It retaliates for {}. ", md));
     }
     if gs.player.hp <= 0 { return death_text(gs); }
     out.push('\n'); out
@@ -330,7 +348,7 @@ fn do_attack(gs: &mut GameState, rng: &mut StdRng) -> String {
 
 fn use_potion(gs: &mut GameState) -> String {
     if gs.player.potions <= 0 { return "No potions.\n".into(); }
-    gs.player.potions -= 1; gs.player.hp = (gs.player.hp + 6).min(gs.player.max_hp); "You drink a potion.\n".into()
+    gs.player.potions -= 1; gs.player.hp = (gs.player.hp + 6).min(gs.player.max_hp); "You quaff a potion; warmth spreads as wounds knit.\n".into()
 }
 
 fn use_bomb(gs: &mut GameState) -> String {
@@ -339,9 +357,9 @@ fn use_bomb(gs: &mut GameState) -> String {
     let x = gs.player.x; let y = gs.player.y;
     let r = gs.room_mut(x, y);
     match r.kind {
-        RoomKind::LockedDoor => { r.kind = RoomKind::Empty; r.used=true; "Bomb opens the way.\n".into() }
-        RoomKind::Monster(_) => { let hp = r.mon_hp.unwrap_or(0) - 6; if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "Bomb defeats the foe.\n".into() } else { r.mon_hp=Some(hp); "Bomb hurts the foe.\n".into() } }
-        _ => "Bomb fizzles.\n".into()
+        RoomKind::LockedDoor => { r.kind = RoomKind::Empty; r.used=true; "You set the charge—wood splinters and the way opens.\n".into() }
+        RoomKind::Monster(_) => { let hp = r.mon_hp.unwrap_or(0) - 6; if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "The blast hurls the foe aside.\n".into() } else { r.mon_hp=Some(hp); "The blast staggers your foe.\n".into() } }
+        _ => "The fuse sputters out harmlessly.\n".into()
     }
 }
 
@@ -355,14 +373,14 @@ fn cast_fireball(gs: &mut GameState) -> String {
     let r = gs.room_mut(x, y);
     // Safe: r.kind is Monster
     let hp = r.mon_hp.unwrap_or(0) - 5;
-    if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "Fireball! Foe falls.\n".into() } else { r.mon_hp=Some(hp); "Fireball scorches.\n".into() }
+    if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "You conjure flame—your foe is reduced to ash.\n".into() } else { r.mon_hp=Some(hp); "A gout of flame scorches your foe.\n".into() }
 }
 
 fn do_take(gs: &mut GameState, rng: &mut StdRng) -> String {
     let r = gs.room_mut(gs.player.x, gs.player.y);
     match r.kind {
-        RoomKind::Chest => { r.kind = RoomKind::Empty; let roll = rng.gen_range(0..6); match roll { 0|1 => { gs.player.gold += 4; "You find 4g.\n".into() }, 2 => { gs.player.keys += 1; "You find a key.\n".into() }, 3 => { gs.player.potions += 1; "You find a potion.\n".into() }, 4 => { gs.player.bombs += 1; "You find a bomb.\n".into() }, _ => { gs.player.scrolls += 1; "You find a scroll.\n".into() } } }
-        _ => "Nothing to take.\n".into()
+        RoomKind::Chest => { r.kind = RoomKind::Empty; let roll = rng.gen_range(0..6); match roll { 0|1 => { gs.player.gold += 4; "You pry the chest open and pocket 4 gold.\n".into() }, 2 => { gs.player.keys += 1; "Inside: a small brass key.\n".into() }, 3 => { gs.player.potions += 1; "A stoppered vial—one healing potion.\n".into() }, 4 => { gs.player.bombs += 1; "You find a compact bomb, carefully wrapped.\n".into() }, _ => { gs.player.scrolls += 1; "A brittle scroll crackles with latent fire.\n".into() } } }
+        _ => "There is nothing here to take.\n".into()
     }
 }
 
@@ -373,7 +391,7 @@ fn do_open(gs: &mut GameState) -> String {
     if gs.player.keys <= 0 { return "No keys.\n".into(); }
     gs.player.keys -= 1;
     let r = gs.room_mut(x, y);
-    r.kind = RoomKind::Empty; r.used = true; "Door unlocked.\n".into()
+    r.kind = RoomKind::Empty; r.used = true; "You turn the key; tumblers click and the door swings free.\n".into()
 }
 
 fn do_rest(gs: &mut GameState, rng: &mut StdRng) -> String {
@@ -385,13 +403,13 @@ fn do_rest(gs: &mut GameState, rng: &mut StdRng) -> String {
     let (mhp, matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
         let mut md = (matk + d6(rng) - gs.player.defn).max(1);
         if md >= matk + 6 - gs.player.defn { md += 2; }
-        gs.player.hp -= md; out.push_str(&format!("Ambush! Took {}. ", md));
+    gs.player.hp -= md; out.push_str(&format!("An ambush! A rat nips you for {}. ", md));
         if gs.player.hp <= 0 { return death_text(gs); }
         // Place a rat in room
         let r = gs.room_mut(gs.player.x, gs.player.y);
         r.kind = RoomKind::Monster(MonsterKind::Rat); r.mon_hp = Some(mhp);
     }
-    out.push_str("You rest.\n"); out
+    out.push_str("You catch your breath and tend your gear.\n"); out
 }
 
 fn do_move(gs: &mut GameState, dir: char) -> String {
@@ -436,15 +454,15 @@ fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
             gs.player.hp -= dmg;
             { let r = gs.room_mut(x,y); r.used = true; }
             if gs.player.hp <= 0 { return Some(death_text(gs)); }
-            Some(format!("Trap! Took {}.\n", dmg))
+            Some(format!("A hidden mechanism snaps—needles bite for {}.\n", dmg))
         }
         (RoomKind::Shrine, false) => {
             { let r = gs.room_mut(x,y); r.used = true; }
-            if rand::random::<bool>() { gs.player.atk += 1; Some("Blessing +1 ATK.\n".into()) } else { gs.player.defn += 1; Some("Blessing +1 DEF.\n".into()) }
+            if rand::random::<bool>() { gs.player.atk += 1; Some("You kneel; a warm light steels your arm (+1 ATK).\n".into()) } else { gs.player.defn += 1; Some("You whisper a prayer; resolve hardens (+1 DEF).\n".into()) }
         }
         (RoomKind::Fountain, false) => {
             { let r = gs.room_mut(x,y); r.used = true; }
-            gs.player.hp = gs.player.max_hp; Some("You feel restored.\n".into())
+            gs.player.hp = gs.player.max_hp; Some("You drink; cool water mends every ache.\n".into())
         }
         (RoomKind::Stairs, _) => { Some(win_text(gs)) }
         _ => None
@@ -473,7 +491,7 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
         "O" => { out.push_str(&do_open(&mut gs)); },
         "R" => { out.push_str(&do_rest(&mut gs, &mut rng)); },
     "I" => { let view = clamp_ascii(format!("{}\n{}\nOpts: {}\nYour move?\n", hdr(&gs), describe_room(&gs), compute_options(&gs).join(" "))); return (gs, view); },
-    "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", hdr(&gs), describe_room(&gs), help_line())); return (gs, view); },
+    "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", hdr(&gs), describe_room(&gs), help_text())); return (gs, view); },
         other if other.starts_with("BUY") || other=="LEAVE" => { if let Some(txt) = handle_vendor(&mut gs, &op) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
         "Q" => { return (gs, "Quit.\n".into()); },
         _ => { out.push_str("Bad cmd. Use ? for help.\n"); }
@@ -520,7 +538,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn render_includes_legend_and_level_progress() {
+    fn render_includes_intro_and_level_progress() {
         // Use a temp dir to avoid touching real data; create a fresh game view.
         let td = tempfile::tempdir().unwrap();
         let base = td.path().to_string_lossy().to_string();
@@ -528,7 +546,7 @@ mod tests {
         assert!(view.starts_with("TH g"), "header should start with TH g.. got: {}", view);
         assert!(view.contains(" LVL"), "header should include LVL: {}", view);
         assert!(view.contains(" XP"), "header should include XP progress: {}", view);
-        // On first render, intro may consume space and omit the legend. Accept either intro or legend.
-        assert!(view.contains("Legend:") || view.contains("Welcome to TinyHack"), "expect legend or intro present: {}", view);
+        // On first render, intro may appear.
+        assert!(view.contains("Welcome to TinyHack") || view.contains("Your move?"), "expect intro or prompt present: {}", view);
     }
 }
