@@ -53,7 +53,7 @@ fn test_alternate_prefix_exclamation() {
     let parser = PublicCommandParser::new_with_prefix(Some("!".to_string()));
     match parser.parse("!HELP") { PublicCommand::Help => {}, other => panic!("Expected Help with '!' prefix, got {:?}", other) }
     // Non-configured but allowed set character should not parse when not selected
-    match parser.parse("/LOGIN Bob") { PublicCommand::Unknown => {}, other => panic!("Expected Unknown with '/' since prefix is '!'") }
+    match parser.parse("/LOGIN Bob") { PublicCommand::Unknown => {}, other => panic!("Expected Unknown with '/' since prefix is '!', got {:?}", other) }
     // Non-allowed character should not parse
     match parser.parse("#SLOT") { PublicCommand::Unknown => {}, other => panic!("Expected Unknown for '#' prefix, got {:?}", other) }
 }

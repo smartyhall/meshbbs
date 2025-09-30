@@ -231,11 +231,26 @@ fn compute_options(gs: &GameState) -> Vec<String> {
 }
 
 fn hdr(gs: &GameState) -> String {
+    // Include player level and a simple XP progress hint to next level.
+    let need = level_threshold(gs.player.lvl);
     format!(
-        "TH g{} t{} L{},{} HP {}/{} ATK{} DEF{} XP{} G{} Inv:P{} K{} B{} S{}",
-        gs.gid, gs.turn, gs.player.x, gs.player.y, gs.player.hp, gs.player.max_hp,
-        gs.player.atk, gs.player.defn, gs.player.xp, gs.player.gold,
-        gs.player.potions, gs.player.keys, gs.player.bombs, gs.player.scrolls
+        "TH g{} t{} L{},{} LVL{} HP {}/{} ATK{} DEF{} XP{}/{} G{} Inv:P{} K{} B{} S{}",
+        gs.gid,
+        gs.turn,
+        gs.player.x,
+        gs.player.y,
+        gs.player.lvl,
+        gs.player.hp,
+        gs.player.max_hp,
+        gs.player.atk,
+        gs.player.defn,
+        gs.player.xp,
+        need,
+        gs.player.gold,
+        gs.player.potions,
+        gs.player.keys,
+        gs.player.bombs,
+        gs.player.scrolls
     )
 }
 
@@ -256,7 +271,11 @@ pub fn render(gs: &GameState) -> String {
     msg.push('\n');
     let opts = compute_options(gs).join(" ");
     msg.push_str("Opts: "); msg.push_str(&opts); msg.push('\n');
-    msg.push_str("Your move?\n");
+    // Add a compact one-line legend if there's enough room left, so we don't truncate the prompt.
+    let legend = "Legend: N S E W | A | U P | U B | C F | T | O | R | I | Q\n";
+    let prompt = "Your move?\n";
+    if msg.len() + legend.len() + prompt.len() <= MAX_MSG { msg.push_str(legend); }
+    msg.push_str(prompt);
     clamp_ascii(msg)
 }
 
@@ -474,4 +493,21 @@ pub fn apply_and_save(base_dir: &str, username: &str, gs: GameState, cmd: &str) 
     let path = save_path(base_dir, username);
     if let Ok(json) = serde_json::to_string_pretty(&ngs) { let _ = write_json_atomic(&path, &json); }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_includes_legend_and_level_progress() {
+        // Use a temp dir to avoid touching real data; create a fresh game view.
+        let td = tempfile::tempdir().unwrap();
+        let base = td.path().to_string_lossy().to_string();
+        let (_gs, view) = load_or_new_and_render(&base, "legend_tester");
+        assert!(view.starts_with("TH g"), "header should start with TH g.. got: {}", view);
+        assert!(view.contains(" LVL"), "header should include LVL: {}", view);
+        assert!(view.contains(" XP"), "header should include XP progress: {}", view);
+        assert!(view.contains("Legend:"), "inline legend should be present when space allows: {}", view);
+    }
 }

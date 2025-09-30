@@ -78,6 +78,8 @@ tinyhack_enabled = true
 
 - Enter via main menu: press `T` (shown as [T]inyHack when enabled)
 - Controls: `N,S,E,W` move; `A` attack; `U P` drink potion; `U B` use bomb; `C F` cast Fireball; `T` take loot; `O` open locked door (needs a key); `R` rest; `I` inspect; `?` help; `B` back to BBS menu
+ - Controls: `N,S,E,W` move; `A` attack; `U P` drink potion; `U B` use bomb; `C F` cast Fireball; `T` take loot; `O` open locked door (needs a key); `R` rest; `I` inspect; `?` help; `B` back to BBS menu
+ - UI: Each turn shows a compact command legend when space allows, plus LVL and XP progress in the header (e.g., `XP7/12`)
 - Goal: Find the Stairs and escape the Tiny Dungeon
 - Save files: `data/tinyhack/<username>.json` (atomic write‑then‑rename; fsync)
 - Output is ASCII‑only and capped at ~230 bytes per turn
