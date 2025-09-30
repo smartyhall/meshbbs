@@ -332,6 +332,8 @@ R)est — recover a little HP (risk ambush)\n\
 I)nspect — show status and options again\n\
 B)ack — return to BBS menu; Q)uit — leave TinyHack\n\
 Vendor (at stall): BUY P/B/S/K/H/L, UPG W/A, MYST, LEAVE\n\
+Tip: 'U P'/'UP' uses a potion; 'U B'/'UB' uses a bomb; 'C F'/'CF' casts Fireball.\n\
+Also accepted: USE POTION/BOMB and CAST FIREBALL.\n\
 Goal: Find the Stairs and escape the dungeon."
 }
 
@@ -615,6 +617,32 @@ fn parse_cmd(raw: &str) -> (String, String) {
     if up == "?" { return ("?".into(), String::new()); }
     // Some clients might send stray punctuation; accept a single '?' token even if surrounded by spaces
     if up.contains('?') && up.chars().all(|c| c=='?' || c.is_whitespace()) { return ("?".into(), String::new()); }
+
+    // Tokenize by whitespace, but also support compact forms (e.g., "UP", "UB", "CF") and common full words
+    let tokens: Vec<&str> = up.split_whitespace().collect();
+    let merged = tokens.join("");
+
+    // Compact and full-word aliases for common two-letter commands
+    match merged.as_str() {
+        // Use Potion
+        "UP" | "USEPOTION" | "POTION" | "DRINK" => return ("U".into(), "P".into()),
+        // Use Bomb
+        "UB" | "USEBOMB" | "BOMB" => return ("U".into(), "B".into()),
+        // Cast Fireball
+        "CF" | "CASTF" | "CASTFIREBALL" | "FIREBALL" => return ("C".into(), "F".into()),
+        _ => {}
+    }
+
+    // Two-token variants like "USE POTION", "USE BOMB", "CAST FIREBALL"
+    if tokens.len() >= 2 {
+        let t0 = tokens[0];
+        let t1 = tokens[1];
+        if (t0 == "U" || t0 == "USE") && (t1 == "P" || t1 == "POTION") { return ("U".into(), "P".into()); }
+        if (t0 == "U" || t0 == "USE") && (t1 == "B" || t1 == "BOMB") { return ("U".into(), "B".into()); }
+        if (t0 == "C" || t0 == "CAST") && (t1 == "F" || t1 == "FIREBALL") { return ("C".into(), "F".into()); }
+    }
+
+    // Default: first token is op, second token (if any) is arg
     let mut it = up.split_whitespace();
     let op = it.next().unwrap_or("").to_string();
     let arg = it.next().unwrap_or("").to_string();
