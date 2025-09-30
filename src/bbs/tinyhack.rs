@@ -69,12 +69,15 @@ pub struct Player {
     pub scrolls: i32,
     pub weapon_lvl: i32,
     pub armor_lvl: i32,
+    /// Lockpicks improve chances to pick locked doors. Backward-compatible default: 0.
+    #[serde(default)]
+    pub lockpicks: i32,
 }
 
 impl Player {
     fn new() -> Self {
         Player { hp: 10, max_hp: 10, atk: 2, defn: 1, lvl: 1, xp: 0, gold: 0, x: 0, y: 0,
-            keys: 0, potions: 1, bombs: 0, scrolls: 0, weapon_lvl: 0, armor_lvl: 0 }
+            keys: 0, potions: 1, bombs: 0, scrolls: 0, weapon_lvl: 0, armor_lvl: 0, lockpicks: 0 }
     }
 }
 
@@ -91,6 +94,12 @@ pub struct GameState {
     /// Defaults to true for backward compatibility with old saves; new games set false.
     #[serde(default = "intro_shown_default_true")] 
     pub intro_shown: bool,
+    /// First-encounter hint flags (one-time). Backward-compatible defaults: false.
+    #[serde(default)] pub seen_monster: bool,
+    #[serde(default)] pub seen_chest: bool,
+    #[serde(default)] pub seen_vendor: bool,
+    #[serde(default)] pub seen_door: bool,
+    #[serde(default)] pub seen_trap: bool,
 }
 
 fn intro_shown_default_true() -> bool { true }
@@ -158,21 +167,45 @@ fn farthest_from_start(w: usize, h: usize, sx: usize, sy: usize) -> (usize, usiz
     best
 }
 
+fn is_occupied_for_special(kind: &RoomKind) -> bool {
+    // A special can only be placed on truly empty tiles (not start/exit; enforced by caller)
+    !matches!(kind, RoomKind::Empty)
+}
+
 fn place_world(rng: &mut StdRng, w: usize, h: usize, map: &mut [Room]) {
     // Start at (0,0). Exit farthest.
     let (sx, sy) = (0usize, 0usize);
     let (ex, ey) = farthest_from_start(w, h, sx, sy);
     map[ey*w + ex] = Room { kind: RoomKind::Stairs, mon_hp: None, used: false };
-    // Vendor, shrine, fountain somewhere near start (not (0,0) and not exit)
+    // Vendor, shrine, fountain somewhere near start (not (0,0), not exit), don't overwrite each other or other content
     let mut placed = 0;
-    while placed < 3 { let x = rng.gen_range(0..w); let y = rng.gen_range(0..h); if (x,y)!=(sx,sy) && (x,y)!=(ex,ey) { let k = match placed { 0=>RoomKind::Vendor, 1=>RoomKind::Shrine, _=>RoomKind::Fountain }; map[y*w+x] = Room { kind: k, mon_hp: None, used: false }; placed+=1; } }
+    while placed < 3 {
+        let x = rng.gen_range(0..w); let y = rng.gen_range(0..h); let idx = y*w + x;
+        if (x,y)!=(sx,sy) && (x,y)!=(ex,ey) && !is_occupied_for_special(&map[idx].kind) {
+            let k = match placed { 0=>RoomKind::Vendor, 1=>RoomKind::Shrine, _=>RoomKind::Fountain };
+            map[idx] = Room { kind: k, mon_hp: None, used: false }; placed+=1;
+        }
+    }
     // Chests and traps scattered
-    for _ in 0..(w+h) { let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); if (x,y)!=(sx,sy) && !matches!(map[y*w+x].kind, RoomKind::Stairs|RoomKind::Vendor|RoomKind::Shrine|RoomKind::Fountain) { map[y*w+x] = Room { kind: RoomKind::Chest, mon_hp: None, used: false }; } }
-    for _ in 0..(w) { let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); if (x,y)!=(sx,sy) && !matches!(map[y*w+x].kind, RoomKind::Stairs) { map[y*w+x] = Room { kind: RoomKind::Trap, mon_hp: None, used: false }; } }
-    // Boss near exit: pick a neighbor if free, else overwrite a random non-exit
-    let mut bx = ex.saturating_sub(1); let mut by = ey;
-    if matches!(map[by*w+bx].kind, RoomKind::Stairs) { bx = ex; by = ey.saturating_sub(1); }
-    map[by*w+bx] = Room { kind: RoomKind::Monster(MonsterKind::Boss), mon_hp: Some(monster_stats(MonsterKind::Boss).0), used: false };
+    for _ in 0..(w+h) {
+        let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); let idx = y*w + x;
+        if (x,y)!=(sx,sy) && matches!(map[idx].kind, RoomKind::Empty) { map[idx] = Room { kind: RoomKind::Chest, mon_hp: None, used: false }; }
+    }
+    for _ in 0..(w) {
+        let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); let idx = y*w + x;
+        // Traps should not overwrite specials, chests, or any non-empty tile
+        if (x,y)!=(sx,sy) && matches!(map[idx].kind, RoomKind::Empty) {
+            map[idx] = Room { kind: RoomKind::Trap, mon_hp: None, used: false };
+        }
+    }
+    // Boss near exit: prefer an empty neighbor; else pick any empty non-start/non-exit
+    if let Some((bx,by)) = [
+        (ex.wrapping_sub(1), ey), (ex+1, ey), (ex, ey.wrapping_sub(1)), (ex, ey+1)
+    ].into_iter().filter_map(|(x,y)| if x<w && y<h { Some((x,y)) } else { None }).find(|(x,y)| matches!(map[y*w+x].kind, RoomKind::Empty)) {
+        map[by*w+bx] = Room { kind: RoomKind::Monster(MonsterKind::Boss), mon_hp: Some(monster_stats(MonsterKind::Boss).0), used: false };
+    } else {
+        for y in 0..h { for x in 0..w { if (x,y)!=(sx,sy) && (x,y)!=(ex,ey) && matches!(map[y*w+x].kind, RoomKind::Empty) { map[y*w+x] = Room { kind: RoomKind::Monster(MonsterKind::Boss), mon_hp: Some(monster_stats(MonsterKind::Boss).0), used: false }; break; } } }
+    }
     // Populate other monsters roughly by distance bands
     for y in 0..h { for x in 0..w { if (x,y)==(sx,sy) || matches!(map[y*w+x].kind, RoomKind::Stairs|RoomKind::Vendor|RoomKind::Shrine|RoomKind::Fountain|RoomKind::Chest|RoomKind::Trap|RoomKind::Monster(_)) { continue; }
         let d = ((x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs()) as i32;
@@ -181,16 +214,24 @@ fn place_world(rng: &mut StdRng, w: usize, h: usize, map: &mut [Room]) {
                  else { Some(if rng.gen_bool(0.5) { MonsterKind::Skeleton } else { MonsterKind::Orc }) };
         if let Some(k) = mk { map[y*w+x] = Room { kind: RoomKind::Monster(k), mon_hp: Some(monster_stats(k).0), used: false }; }
     } }
-    // Sprinkle a few locked doors as blocking rooms (simple model, not edges)
+    // Sprinkle a few locked doors only on empty tiles; bounded attempts to avoid infinite loops
     let mut ld = 0;
-    while ld < 3 { let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); if (x,y)!=(sx,sy) && !matches!(map[y*w+x].kind, RoomKind::Stairs|RoomKind::Vendor) { map[y*w+x] = Room { kind: RoomKind::LockedDoor, mon_hp: None, used: false }; ld+=1; } }
+    let mut attempts = w*h*4;
+    while ld < 3 && attempts > 0 {
+        attempts -= 1;
+        let x=rng.gen_range(0..w); let y=rng.gen_range(0..h); let idx = y*w + x;
+        if (x,y)!=(sx,sy) && matches!(map[idx].kind, RoomKind::Empty) {
+            map[idx] = Room { kind: RoomKind::LockedDoor, mon_hp: None, used: false }; ld+=1;
+        }
+    }
 }
 
 fn new_game(seed: u64, w: usize, h: usize) -> GameState {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut map = vec![Room::default(); w*h];
     place_world(&mut rng, w, h, &mut map);
-    GameState { gid: rng.gen(), turn: 1, seed, w, h, player: Player::new(), map, intro_shown: false }
+    GameState { gid: rng.gen(), turn: 1, seed, w, h, player: Player::new(), map, intro_shown: false,
+        seen_monster: false, seen_chest: false, seen_vendor: false, seen_door: false, seen_trap: false }
 }
 
 fn describe_room(gs: &GameState) -> String {
@@ -211,7 +252,7 @@ fn describe_room(gs: &GameState) -> String {
             format!("You are not alone—{} lurks here (HP {}). It eyes you hungrily.", name, hp)
         }
         RoomKind::Chest => "A dusty chest rests against the wall, its latch brittle with age.".to_string(),
-        RoomKind::LockedDoor => "A heavy locked door bars the way; iron bands bite into old wood.".to_string(),
+    RoomKind::LockedDoor => "A heavy locked door bars the way; something valuable may lie beyond.".to_string(),
         RoomKind::Trap => if r.used { "Scorched marks and sprung mechanisms suggest a trap was here.".to_string() } else { "The floor tiles look uneven—a trap may be set in this hall.".to_string() },
         RoomKind::Vendor => "A robed vendor watches from a tiny stall, wares neatly arranged.".to_string(),
         RoomKind::Shrine => if r.used { "An ancient shrine, its magic spent, stands silent.".to_string() } else { "An ancient shrine hums softly, inviting a humble approach.".to_string() },
@@ -238,8 +279,8 @@ fn compute_options(gs: &GameState) -> Vec<String> {
     match r.kind {
         RoomKind::Monster(_) => { v.push("A".into()); v.push("U P".into()); v.push("C F".into()); }
         RoomKind::Chest => { v.push("T".into()); }
-        RoomKind::LockedDoor => { v.push("O".into()); v.push("U B".into()); }
-        RoomKind::Vendor => { v.push("BUY P".into()); v.push("BUY B".into()); v.push("BUY S".into()); v.push("LEAVE".into()); }
+        RoomKind::LockedDoor => { v.push("O".into()); v.push("PICK".into()); v.push("U B".into()); }
+        RoomKind::Vendor => { v.push("BUY P".into()); v.push("BUY B".into()); v.push("BUY S".into()); v.push("BUY K".into()); v.push("BUY H".into()); v.push("BUY L".into()); v.push("UPG W".into()); v.push("UPG A".into()); v.push("MYST".into()); v.push("LEAVE".into()); }
         _ => {}
     }
     v.push("R".into()); v.push("I".into()); v.push("?".into()); v.push("Q".into());
@@ -278,9 +319,11 @@ U)se P)otion — heal; U)se B)omb — blast door/foe\n\
 C)ast F)ireball — burn a foe\n\
 T)ake — loot a chest (gold, keys, items)\n\
 O)pen — unlock a locked door (needs a key)\n\
+PICK — attempt to pick a locked door (chance; lockpicks help; risk)\n\
 R)est — recover a little HP (risk ambush)\n\
 I)nspect — show status and options again\n\
 B)ack — return to BBS menu; Q)uit — leave TinyHack\n\
+Vendor (at stall): BUY P/B/S/K/H/L, UPG W/A, MYST, LEAVE\n\
 Goal: Find the Stairs and escape the dungeon."
 }
 
@@ -357,7 +400,7 @@ fn use_bomb(gs: &mut GameState) -> String {
     let x = gs.player.x; let y = gs.player.y;
     let r = gs.room_mut(x, y);
     match r.kind {
-        RoomKind::LockedDoor => { r.kind = RoomKind::Empty; r.used=true; "You set the charge—wood splinters and the way opens.\n".into() }
+        RoomKind::LockedDoor => { r.kind = RoomKind::Empty; r.used=true; gs.player.gold += 3; gs.player.xp += 1; "You set the charge—wood splinters; behind it, a small stash (+3g, +1 XP).\n".into() }
         RoomKind::Monster(_) => { let hp = r.mon_hp.unwrap_or(0) - 6; if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "The blast hurls the foe aside.\n".into() } else { r.mon_hp=Some(hp); "The blast staggers your foe.\n".into() } }
         _ => "The fuse sputters out harmlessly.\n".into()
     }
@@ -391,7 +434,7 @@ fn do_open(gs: &mut GameState) -> String {
     if gs.player.keys <= 0 { return "No keys.\n".into(); }
     gs.player.keys -= 1;
     let r = gs.room_mut(x, y);
-    r.kind = RoomKind::Empty; r.used = true; "You turn the key; tumblers click and the door swings free.\n".into()
+    r.kind = RoomKind::Empty; r.used = true; gs.player.xp += 1; gs.player.gold += 3; "You turn the key; the door swings free. Behind it, a small stash (+3g, +1 XP).\n".into()
 }
 
 fn do_rest(gs: &mut GameState, rng: &mut StdRng) -> String {
@@ -412,16 +455,43 @@ fn do_rest(gs: &mut GameState, rng: &mut StdRng) -> String {
     out.push_str("You catch your breath and tend your gear.\n"); out
 }
 
+fn do_pick_lock(gs: &mut GameState, rng: &mut StdRng) -> String {
+    let x = gs.player.x; let y = gs.player.y;
+    let is_locked = matches!(gs.room(x,y).kind, RoomKind::LockedDoor);
+    if !is_locked { return "Nothing to pick.\n".into(); }
+    // Base 40% + level*5% + lockpicks*10%, capped at 90%
+    let mut chance = 0.40 + (gs.player.lvl as f64)*0.05 + (gs.player.lockpicks as f64)*0.10;
+    if chance > 0.90 { chance = 0.90; }
+    let roll: f64 = rng.gen();
+    if gs.player.lockpicks > 0 { gs.player.lockpicks -= 1; }
+    if roll < chance {
+        let r = gs.room_mut(x,y); r.kind = RoomKind::Empty; r.used = true; gs.player.gold += 2; gs.player.xp += 1;
+        "You finesse the tumblers—click. The door yields (+2g, +1 XP).\n".into()
+    } else {
+        if rng.gen_bool(0.5) {
+            let dmg = rng.gen_range(1..=3); gs.player.hp -= dmg; if gs.player.hp <= 0 { return death_text(gs); }
+            format!("A needle trap snaps! You take {}.\n", dmg)
+        } else {
+            let (mhp, _matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
+            let r = gs.room_mut(x,y); r.kind = RoomKind::Monster(MonsterKind::Rat); r.mon_hp = Some(mhp);
+            "Your clumsy attempt draws a rat.\n".into()
+        }
+    }
+}
+
 fn do_move(gs: &mut GameState, dir: char) -> String {
     let (x,y) = (gs.player.x, gs.player.y);
-    match dir {
-        'N' if y>0 => { gs.player.y -= 1; },
-        'S' if y+1<gs.h => { gs.player.y += 1; },
-        'W' if x>0 => { gs.player.x -= 1; },
-        'E' if x+1<gs.w => { gs.player.x += 1; },
+    let (nx, ny) = match dir {
+        'N' if y>0 => (x, y-1),
+        'S' if y+1<gs.h => (x, y+1),
+        'W' if x>0 => (x-1, y),
+        'E' if x+1<gs.w => (x+1, y),
         _ => { return "Can't move.\n".into(); }
+    };
+    if matches!(gs.room(nx, ny).kind, RoomKind::LockedDoor) {
+        return "A locked door bars your way. Try O (key), PICK, or U B.\n".into();
     }
-    String::new()
+    gs.player.x = nx; gs.player.y = ny; String::new()
 }
 
 fn vendor_prices() -> (i32,i32,i32) { (6,8,10) } // P,B,S
@@ -432,7 +502,37 @@ fn handle_vendor(gs: &mut GameState, cmd: &str) -> Option<String> {
     if up.starts_with("BUY ") {
         let item = up.split_whitespace().nth(1).unwrap_or("");
         let (pp,bp,sp) = vendor_prices();
-        match item { "P" => { if gs.player.gold>=pp { gs.player.gold-=pp; gs.player.potions+=1; return Some("Bought potion.\n".into()); } else { return Some("Not enough gold.\n".into()); } }, "B" => { if gs.player.gold>=bp { gs.player.gold-=bp; gs.player.bombs+=1; return Some("Bought bomb.\n".into()); } else { return Some("Not enough gold.\n".into()); } }, "S" => { if gs.player.gold>=sp { gs.player.gold-=sp; gs.player.scrolls+=1; return Some("Bought scroll.\n".into()); } else { return Some("Not enough gold.\n".into()); } }, _ => { return Some("Usage: BUY P|B|S\n".into()); } }
+        match item {
+            "P" => { if gs.player.gold>=pp { gs.player.gold-=pp; gs.player.potions+=1; return Some("Bought potion.\n".into()); } else { return Some("Not enough gold.\n".into()); } },
+            "B" => { if gs.player.gold>=bp { gs.player.gold-=bp; gs.player.bombs+=1; return Some("Bought bomb.\n".into()); } else { return Some("Not enough gold.\n".into()); } },
+            "S" => { if gs.player.gold>=sp { gs.player.gold-=sp; gs.player.scrolls+=1; return Some("Bought scroll.\n".into()); } else { return Some("Not enough gold.\n".into()); } },
+            "K" => { let cost = 6; if gs.player.gold>=cost { gs.player.gold-=cost; gs.player.keys+=1; return Some("Bought key.\n".into()); } else { return Some("Not enough gold.\n".into()); } },
+            "H" => { let cost = 6; if gs.player.gold>=cost { gs.player.gold-=cost; gs.player.hp = gs.player.max_hp; return Some("Bought bandages; you feel restored.\n".into()); } else { return Some("Not enough gold.\n".into()); } },
+            "L" => { let cost = 5; if gs.player.gold>=cost { gs.player.gold-=cost; gs.player.lockpicks+=1; return Some("Bought lockpick.\n".into()); } else { return Some("Not enough gold.\n".into()); } },
+            _ => { return Some("Usage: BUY P|B|S|K|H|L\n".into()); }
+        }
+    } else if up.starts_with("UPG ") {
+        let what = up.split_whitespace().nth(1).unwrap_or("");
+        match what {
+            "W" => { let cost = 10 + gs.player.weapon_lvl*4; if gs.player.gold>=cost { gs.player.gold-=cost; gs.player.weapon_lvl+=1; gs.player.atk+=1; return Some(format!("Upgraded weapon to +{} (+1 ATK) for {}g.\n", gs.player.weapon_lvl, cost)); } else { return Some("Not enough gold.\n".into()); } },
+            "A" => { let cost = 10 + gs.player.armor_lvl*4; if gs.player.gold>=cost { gs.player.gold-=cost; gs.player.armor_lvl+=1; gs.player.defn+=1; return Some(format!("Upgraded armor to +{} (+1 DEF) for {}g.\n", gs.player.armor_lvl, cost)); } else { return Some("Not enough gold.\n".into()); } },
+            _ => { return Some("Usage: UPG W|A\n".into()); }
+        }
+    } else if up == "MYST" {
+        let cost = 8; if gs.player.gold < cost { return Some("Not enough gold.\n".into()); }
+        gs.player.gold -= cost;
+        // Mystery grab bag
+        let roll = rand::random::<u8>() % 7;
+        let msg = match roll {
+            0 => { gs.player.potions += 1; "Mystery: a potion!\n" }
+            1 => { gs.player.scrolls += 1; "Mystery: a scroll!\n" }
+            2 => { gs.player.bombs += 1; "Mystery: a bomb!\n" }
+            3 => { gs.player.keys += 1; "Mystery: a small brass key!\n" }
+            4 => { gs.player.lockpicks += 1; "Mystery: a lockpick!\n" }
+            5 => { gs.player.xp += 1; "Mystery: a training tip (+1 XP).\n" }
+            _ => { gs.player.gold += 5; "Mystery: a handful of coins (+5g).\n" }
+        };
+        return Some(msg.into());
     } else if up == "LEAVE" { return Some("You leave the vendor.\n".into()); }
     None
 }
@@ -448,13 +548,24 @@ fn death_text(gs: &GameState) -> String {
 fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
     let (x,y) = (gs.player.x, gs.player.y);
     let (kind, used) = { let r = gs.room(x,y); (r.kind, r.used) };
+    let mut hint: Option<String> = None;
+    match kind {
+        RoomKind::Monster(_) if !gs.seen_monster => { gs.seen_monster = true; hint = Some("Hint: A)ttack, U P potion, C F fireball.\n".into()); },
+        RoomKind::Chest if !gs.seen_chest => { gs.seen_chest = true; hint = Some("Hint: T)ake to loot chests—keys, gear, or gold.\n".into()); },
+        RoomKind::Vendor if !gs.seen_vendor => { gs.seen_vendor = true; hint = Some("Hint: At vendor: BUY P|B|S|K|H|L, UPG W|A, MYST.\n".into()); },
+        RoomKind::LockedDoor if !gs.seen_door => { gs.seen_door = true; hint = Some("Hint: Doors: O)pen with key, PICK to lockpick (risk), or U B bomb.\n".into()); },
+        RoomKind::Trap if !gs.seen_trap && !used => { /* will hint after trigger */ },
+        _ => {}
+    }
     match (kind, used) {
         (RoomKind::Trap, false) => {
             let dmg = rng.gen_range(1..=4);
             gs.player.hp -= dmg;
             { let r = gs.room_mut(x,y); r.used = true; }
             if gs.player.hp <= 0 { return Some(death_text(gs)); }
-            Some(format!("A hidden mechanism snaps—needles bite for {}.\n", dmg))
+            let mut s = format!("A hidden mechanism snaps—needles bite for {}.\n", dmg);
+            if !gs.seen_trap { gs.seen_trap = true; s.push_str("Hint: Watch for uneven tiles; R)est to recover a bit.\n"); }
+            Some(s)
         }
         (RoomKind::Shrine, false) => {
             { let r = gs.room_mut(x,y); r.used = true; }
@@ -465,7 +576,7 @@ fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
             gs.player.hp = gs.player.max_hp; Some("You drink; cool water mends every ache.\n".into())
         }
         (RoomKind::Stairs, _) => { Some(win_text(gs)) }
-        _ => None
+        _ => hint
     }
 }
 
@@ -489,17 +600,36 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
         "C" if arg=="F" => { out.push_str(&cast_fireball(&mut gs)); },
         "T" => { out.push_str(&do_take(&mut gs, &mut rng)); },
         "O" => { out.push_str(&do_open(&mut gs)); },
+        "PICK" => { out.push_str(&do_pick_lock(&mut gs, &mut rng)); },
         "R" => { out.push_str(&do_rest(&mut gs, &mut rng)); },
     "I" => { let view = clamp_ascii(format!("{}\n{}\nOpts: {}\nYour move?\n", hdr(&gs), describe_room(&gs), compute_options(&gs).join(" "))); return (gs, view); },
     "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", hdr(&gs), describe_room(&gs), help_text())); return (gs, view); },
-        other if other.starts_with("BUY") || other=="LEAVE" => { if let Some(txt) = handle_vendor(&mut gs, &op) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
+    other if other.starts_with("BUY") || other=="LEAVE" || other=="UPG" || other=="MYST" => { if let Some(txt) = handle_vendor(&mut gs, cmd) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
         "Q" => { return (gs, "Quit.\n".into()); },
         _ => { out.push_str("Bad cmd. Use ? for help.\n"); }
     }
     gs.turn = gs.turn.saturating_add(1);
     let dead = gs.player.hp <= 0;
     if dead { return (gs.clone(), death_text(&gs)); }
-    (gs.clone(), render(&gs))
+    // If an event produced a full-screen message (e.g., WIN/RIP), return it directly
+    let trimmed = out.trim_start();
+    if trimmed.starts_with("TH g") { return (gs.clone(), clamp_ascii(out)); }
+    // Otherwise, compose the normal view and append the action/hint text if it fits
+    let mut view = String::new();
+    view.push_str(&hdr(&gs)); view.push('\n');
+    let mut room = describe_room(&gs);
+    let (n,s,w,e) = exits(&gs); let mut ex: Vec<&str> = Vec::new(); if n { ex.push("N"); } if s { ex.push("S"); } if w { ex.push("W"); } if e { ex.push("E"); }
+    if !ex.is_empty() { room.push_str(" Exits "); room.push_str(&ex.join(",")); room.push('.'); }
+    view.push_str(&room); view.push('\n');
+    view.push_str("Opts: "); view.push_str(&compute_options(&gs).join(" ")); view.push('\n');
+    let prompt = "Your move?\n";
+    let remaining = RENDER_BUDGET.saturating_sub(view.len() + prompt.len());
+    if !out.is_empty() {
+        let extra = out.as_str();
+        if extra.len() <= remaining { view.push_str(extra); if !extra.ends_with('\n') { view.push('\n'); } }
+    }
+    view.push_str(prompt);
+    if view.len() > RENDER_BUDGET { let mut s = view; s.truncate(RENDER_BUDGET); (gs.clone(), s) } else { (gs.clone(), view) }
 }
 
 /// Load or create a save for the given user; returns the state and the rendered snapshot.
