@@ -118,6 +118,7 @@ pub struct Config {
 pub struct MeshtasticConfig {
     pub port: String,
     pub baud_rate: u32,
+    #[serde(default)]
     pub node_id: String,
     pub channel: u8,
     /// Minimum gap between consecutive text sends (ms). Must be >= 2000ms.

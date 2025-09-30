@@ -62,7 +62,7 @@
 //! [meshtastic]
 //! port = "/dev/ttyUSB0"
 //! baud_rate = 115200
-//! node_id = ""
+//! # node_id = "0x1234ABCD"  # optional; decimal or 0xHEX; used only as a display fallback
 //! channel = 0
 //! ```
 

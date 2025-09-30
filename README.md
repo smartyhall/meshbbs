@@ -185,7 +185,7 @@ welcome_message = "Welcome to Meshbbs! Type HELP for commands."
 [meshtastic]
 port = "/dev/ttyUSB0"
 baud_rate = 115200
-node_id = ""
+# node_id = "0x1234ABCD"   # optional; used only as display fallback before radio reports its ID
 channel = 0
 min_send_gap_ms = 2000                  # Enforced minimum between sends (ms)
 dm_resend_backoff_seconds = [4, 8, 16]  # Reliable DM retry schedule (s)

@@ -18,8 +18,9 @@ public_command_prefix = "^"
 # Serial port for Meshtastic device (Linux/macOS: /dev/ttyUSB0, Windows: COM3)
 port = "/dev/ttyUSB0"
 baud_rate = 115200
-# Your Meshtastic node ID (will be auto-detected if not specified)
-node_id = ""
+# Optional: Your Meshtastic node ID (used only as a display fallback before the radio reports its ID)
+# If omitted, the server will auto-detect the node ID when the radio connects.
+# node_id = "0x1234ABCD"  # can be decimal or 0xHEX
 # Channel to monitor (0 = primary channel)
 channel = 0
 
