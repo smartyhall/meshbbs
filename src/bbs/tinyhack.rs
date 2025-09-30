@@ -85,7 +85,13 @@ pub struct GameState {
     pub h: usize,
     pub player: Player,
     pub map: Vec<Room>, // row-major h*w
+    /// Whether the one-time intro has been shown to this player.
+    /// Defaults to true for backward compatibility with old saves; new games set false.
+    #[serde(default = "intro_shown_default_true")] 
+    pub intro_shown: bool,
 }
+
+fn intro_shown_default_true() -> bool { true }
 
 impl GameState {
     pub fn idx(&self, x: usize, y: usize) -> usize { y * self.w + x }
@@ -182,7 +188,7 @@ fn new_game(seed: u64, w: usize, h: usize) -> GameState {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut map = vec![Room::default(); w*h];
     place_world(&mut rng, w, h, &mut map);
-    GameState { gid: rng.gen(), turn: 1, seed, w, h, player: Player::new(), map }
+    GameState { gid: rng.gen(), turn: 1, seed, w, h, player: Player::new(), map, intro_shown: false }
 }
 
 fn describe_room(gs: &GameState) -> String {
@@ -271,6 +277,16 @@ pub fn render(gs: &GameState) -> String {
     msg.push('\n');
     let opts = compute_options(gs).join(" ");
     msg.push_str("Opts: "); msg.push_str(&opts); msg.push('\n');
+    // Show a brief onboarding intro the very first time only, but keep within the 230-byte cap.
+    if !gs.intro_shown {
+        let intro_long = "Welcome to TinyHack — find the Stairs and escape.\nHeader shows LVL, HP, ATK/DEF, XPx/y, G, Inv.\nMove with N,S,E,W. Try E or S; use ? for help.\n";
+        let intro_short = "Welcome to TinyHack. Goal: find Stairs. Move N,S,E,W; ? help.\n";
+        let prompt = "Your move?\n";
+        let remaining = MAX_MSG.saturating_sub(msg.len() + prompt.len());
+        if intro_long.len() <= remaining { msg.push_str(intro_long); }
+        else if intro_short.len() <= remaining { msg.push_str(intro_short); }
+        // else: no intro to avoid chunking; header/opts remain visible.
+    }
     // Add a compact one-line legend if there's enough room left, so we don't truncate the prompt.
     let legend = "Legend: N S E W | A | U P | U B | C F | T | O | R | I | Q\n";
     let prompt = "Your move?\n";
@@ -477,13 +493,17 @@ pub fn load_or_new_and_render(base_dir: &str, username: &str) -> (GameState, Str
                 // Clamp position within bounds if sizes changed
                 if gs.player.x >= gs.w { gs.player.x = gs.w.saturating_sub(1); }
                 if gs.player.y >= gs.h { gs.player.y = gs.h.saturating_sub(1); }
+                // Render view; do not change intro_shown here for old saves defaulting to true.
                 return (gs.clone(), render(&gs));
             }
         }
     }
     let seed = rand::thread_rng().gen::<u64>();
-    let gs = new_game(seed, 6, 6);
-    (gs.clone(), render(&gs))
+    let mut gs = new_game(seed, 6, 6);
+    // First view should include intro (intro_shown is false). After rendering, flip it so it won't repeat.
+    let view = render(&gs);
+    gs.intro_shown = true;
+    (gs.clone(), view)
 }
 
 /// Apply a command to the current save, persist, and return the new rendered snapshot.
@@ -508,6 +528,7 @@ mod tests {
         assert!(view.starts_with("TH g"), "header should start with TH g.. got: {}", view);
         assert!(view.contains(" LVL"), "header should include LVL: {}", view);
         assert!(view.contains(" XP"), "header should include XP progress: {}", view);
-        assert!(view.contains("Legend:"), "inline legend should be present when space allows: {}", view);
+        // On first render, intro may consume space and omit the legend. Accept either intro or legend.
+        assert!(view.contains("Legend:") || view.contains("Welcome to TinyHack"), "expect legend or intro present: {}", view);
     }
 }
