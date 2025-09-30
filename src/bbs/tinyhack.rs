@@ -585,6 +585,9 @@ fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
 
 fn parse_cmd(raw: &str) -> (String, String) {
     let up = raw.trim().to_uppercase();
+    if up == "?" { return ("?".into(), String::new()); }
+    // Some clients might send stray punctuation; accept a single '?' token even if surrounded by spaces
+    if up.contains('?') && up.chars().all(|c| c=='?' || c.is_whitespace()) { return ("?".into(), String::new()); }
     let mut it = up.split_whitespace();
     let op = it.next().unwrap_or("").to_string();
     let arg = it.next().unwrap_or("").to_string();
@@ -681,5 +684,14 @@ mod tests {
     assert!(view.contains(" X"), "status should include XP progress: {}", view);
         // On first render, intro may appear.
         assert!(view.contains("Welcome to TinyHack") || view.contains("Your move?"), "expect intro or prompt present: {}", view);
+    }
+
+    #[test]
+    fn question_mark_shows_help() {
+        let mut gs = new_game(123, 6, 6);
+        gs.intro_shown = true; // don't include intro to simplify assertion
+        let (_ngs, view) = handle_turn(gs, "?");
+        assert!(view.contains("TinyHack Commands:"), "help expected, got: {}", view);
+        assert!(!view.contains("Bad cmd"), "should not show bad cmd on help: {}", view);
     }
 }
