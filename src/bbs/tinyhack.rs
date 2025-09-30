@@ -112,6 +112,11 @@ impl GameState {
 
 fn d6(rng: &mut StdRng) -> i32 { (rng.gen_range(1..=6)) as i32 }
 
+fn choose<'a>(rng: &mut StdRng, opts: &[&'a str]) -> &'a str {
+    let i = rng.gen_range(0..opts.len());
+    opts[i]
+}
+
 fn monster_stats(k: MonsterKind) -> (i32,i32,i32,i32) {
     match k {
         MonsterKind::Rat => (4, 1, 0, 1),
@@ -317,12 +322,12 @@ fn full_status_line(gs: &GameState) -> String {
 fn help_text() -> &'static str {
     "TinyHack Commands:\n\
 N)orth S)outh E)ast W)est — move between rooms\n\
-A)ttack — strike the foe in your room\n\
-U)se P)otion — heal; U)se B)omb — blast door/foe\n\
-C)ast F)ireball — burn a foe\n\
+A)ttack — melee strike (crits possible); monster may retaliate\n\
+U)se P)otion — heal; U)se B)omb — blast door/foe (6 dmg)\n\
+C)ast F)ireball — burn a foe (5 dmg)\n\
 T)ake — loot a chest (gold, keys, items)\n\
 O)pen — unlock a locked door (needs a key)\n\
-PICK — attempt to pick a locked door (chance; lockpicks help; risk)\n\
+PICK — try to pick a locked door (chance↑ with lockpicks; some risk)\n\
 R)est — recover a little HP (risk ambush)\n\
 I)nspect — show status and options again\n\
 B)ack — return to BBS menu; Q)uit — leave TinyHack\n\
@@ -346,7 +351,7 @@ pub fn render(gs: &GameState) -> String {
     // Show a brief onboarding intro the very first time only, keeping within the tighter render budget.
     if !gs.intro_shown {
         let intro_long = "Welcome to TinyHack — find the Stairs and escape.\nHeader shows LVL, HP, ATK/DEF, XPx/y, G, Inv.\nMove with N,S,E,W. Try E or S; use ? for help.\n";
-        let intro_short = "Welcome to TinyHack. Goal: find Stairs. Move N,S,E,W; ? help.\n";
+        let intro_short = "Welcome to TinyHack. Goal: Find the stairs. Escape. Move N,S,E,W; ? help.\n";
         let prompt = "Your move?\n";
         let remaining = RENDER_BUDGET.saturating_sub(msg.len() + prompt.len());
         if intro_long.len() <= remaining { msg.push_str(intro_long); }
@@ -377,16 +382,19 @@ fn do_attack(gs: &mut GameState, rng: &mut StdRng) -> String {
     // Player hit
     let (_, matk, mdef, _mxp) = monster_stats(mk);
     let mut pd = (p_atk + d6(rng) - mdef).max(1);
-    if pd >= p_atk + 6 - mdef { pd += 2; } // simple crit on high roll
+    let mut crit = false;
+    if pd >= p_atk + 6 - mdef { pd += 2; crit = true; } // simple crit on high roll
     let mhp = mon_hp - pd; r.mon_hp = Some(mhp);
-    let mut out = format!("You strike for {}. ", pd);
+    let verb = choose(rng, &["strike", "slash", "jab", "smash", "lunge"]);
+    let mut out = format!("You {} for {}. ", verb, pd);
+    if crit { out.push_str("Critical! "); }
     if mhp <= 0 {
-        r.mon_hp=None; r.kind=RoomKind::Empty; let xp = monster_stats(mk).3; gs.player.xp += xp; gs.player.gold += rng.gen_range(1..=3); try_level_up(&mut gs.player, rng); out.push_str("The foe collapses. ");
+        r.mon_hp=None; r.kind=RoomKind::Empty; let xp = monster_stats(mk).3; let g = rng.gen_range(1..=3); gs.player.xp += xp; gs.player.gold += g; try_level_up(&mut gs.player, rng); let kp = choose(rng, &["The foe collapses.", "The enemy falls.", "Down it goes.", "You prevail.", "The monster is defeated."]); out.push_str(kp); out.push_str(&format!(" (+{} XP, +{}g). ", xp, g));
     } else {
         // Monster retaliates
         let mut md = (matk + d6(rng) - p_def).max(1);
         if md >= matk + 6 - p_def { md += 2; }
-        gs.player.hp -= md; out.push_str(&format!("It retaliates for {}. ", md));
+    gs.player.hp -= md; let ret = choose(rng, &["It retaliates for {}.", "It strikes back for {}.", "It claws you for {}.", "It bites for {}.", "It counters for {}."]); let line = ret.replacen("{}", &md.to_string(), 1); out.push_str(&line);
     }
     if gs.player.hp <= 0 { return death_text(gs); }
     out.push('\n'); out
@@ -397,29 +405,48 @@ fn use_potion(gs: &mut GameState) -> String {
     gs.player.potions -= 1; gs.player.hp = (gs.player.hp + 6).min(gs.player.max_hp); "You quaff a potion; warmth spreads as wounds knit.\n".into()
 }
 
-fn use_bomb(gs: &mut GameState) -> String {
+fn use_bomb(gs: &mut GameState, rng: &mut StdRng) -> String {
     if gs.player.bombs <= 0 { return "No bombs.\n".into(); }
     gs.player.bombs -= 1;
     let x = gs.player.x; let y = gs.player.y;
     let r = gs.room_mut(x, y);
     match r.kind {
         RoomKind::LockedDoor => { r.kind = RoomKind::Empty; r.used=true; gs.player.gold += 3; gs.player.xp += 1; "You set the charge—wood splinters; behind it, a small stash (+3g, +1 XP).\n".into() }
-        RoomKind::Monster(_) => { let hp = r.mon_hp.unwrap_or(0) - 6; if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "The blast hurls the foe aside.\n".into() } else { r.mon_hp=Some(hp); "The blast staggers your foe.\n".into() } }
+        RoomKind::Monster(mk) => {
+            let hp = r.mon_hp.unwrap_or(0) - 6;
+            if hp <= 0 {
+                r.kind=RoomKind::Empty; r.mon_hp=None;
+                let xp = monster_stats(mk).3; let g = rng.gen_range(1..=3);
+                gs.player.xp += xp; gs.player.gold += g; try_level_up(&mut gs.player, rng);
+                let msg = choose(rng, &["The blast hurls the foe aside.", "The explosion ends it.", "Shrapnel finishes the monster."]);
+                format!("{} (+{} XP, +{}g).\n", msg, xp, g)
+            } else {
+                r.mon_hp=Some(hp);
+                let msg = choose(rng, &["The blast staggers your foe.", "Shrapnel tears into it.", "The explosion rocks it."]);
+                format!("{}\n", msg)
+            }
+        }
         _ => "The fuse sputters out harmlessly.\n".into()
     }
 }
 
-fn cast_fireball(gs: &mut GameState) -> String {
+fn cast_fireball(gs: &mut GameState, rng: &mut StdRng) -> String {
     if gs.player.scrolls <= 0 { return "No scrolls.\n".into(); }
     let x = gs.player.x; let y = gs.player.y;
     // Inspect first without holding mutable borrow
-    let is_monster = matches!(gs.room(x,y).kind, RoomKind::Monster(_));
-    if !is_monster { return "Nothing to burn.\n".into(); }
+    let mk_opt = match gs.room(x,y).kind { RoomKind::Monster(mk) => Some(mk), _ => None };
+    if mk_opt.is_none() { return "Nothing to burn.\n".into(); }
     gs.player.scrolls -= 1;
     let r = gs.room_mut(x, y);
     // Safe: r.kind is Monster
     let hp = r.mon_hp.unwrap_or(0) - 5;
-    if hp <= 0 { r.kind=RoomKind::Empty; r.mon_hp=None; "You conjure flame—your foe is reduced to ash.\n".into() } else { r.mon_hp=Some(hp); "A gout of flame scorches your foe.\n".into() }
+    if hp <= 0 {
+        r.kind=RoomKind::Empty; r.mon_hp=None;
+        let mk = mk_opt.unwrap();
+        let xp = monster_stats(mk).3; let g = rng.gen_range(1..=3);
+        gs.player.xp += xp; gs.player.gold += g; try_level_up(&mut gs.player, rng);
+        let msg = choose(rng, &["You conjure flame—your foe is reduced to ash.", "An inferno engulfs the monster.", "Searing fire ends the fight."]); format!("{} (+{} XP, +{}g).\n", msg, xp, g)
+    } else { r.mon_hp=Some(hp); let msg = choose(rng, &["A gout of flame scorches your foe.", "Fire sears the enemy.", "Your spell burns it."]); format!("{}\n", msg) }
 }
 
 fn do_take(gs: &mut GameState, rng: &mut StdRng) -> String {
@@ -602,8 +629,8 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
         "N"|"S"|"E"|"W" => { out.push_str(&do_move(&mut gs, op.chars().next().unwrap())); if let Some(extra) = on_enter_tile(&mut gs, &mut rng) { out.push_str(&extra); } },
         "A" => { out.push_str(&do_attack(&mut gs, &mut rng)); },
         "U" if arg=="P" => { out.push_str(&use_potion(&mut gs)); },
-        "U" if arg=="B" => { out.push_str(&use_bomb(&mut gs)); },
-        "C" if arg=="F" => { out.push_str(&cast_fireball(&mut gs)); },
+    "U" if arg=="B" => { out.push_str(&use_bomb(&mut gs, &mut rng)); },
+    "C" if arg=="F" => { out.push_str(&cast_fireball(&mut gs, &mut rng)); },
         "T" => { out.push_str(&do_take(&mut gs, &mut rng)); },
         "O" => { out.push_str(&do_open(&mut gs)); },
         "PICK" => { out.push_str(&do_pick_lock(&mut gs, &mut rng)); },
