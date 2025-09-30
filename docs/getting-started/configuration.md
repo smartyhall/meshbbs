@@ -40,7 +40,7 @@ security_file = "meshbbs-security.log"   # optional security/audit log file
 [meshtastic]
 port = "/dev/tty.usbserial-XXXXX"
 baud_rate = 115200
-node_id = ""                 # optional; can be decimal or 0xHEX
+# node_id = "0x1234ABCD"      # optional; decimal or 0xHEX; used only as a display fallback
 channel = 0
 # Optional tuning
 min_send_gap_ms = 2000
