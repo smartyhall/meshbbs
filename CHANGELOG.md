@@ -9,6 +9,16 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 # Changelog
 
+## [1.0.35] - 2025-09-30
+
+### Changed
+- Public command DM replies now honor the incoming event channel with fallback to the configured primary channel, reducing NoChannel routing errors.
+- Startup now emits an INFO log showing the configured Meshtastic primary channel to aid diagnostics.
+- NodeCache maintenance: hourly cleanup of entries not seen in more than 90 days; persist last_seen on observed node info updates. Atomic save and resilient load were added previously and remain in effect.
+
+### Notes
+- Direct Message encryption requires the recipient's public key to be known by the radio. If you see `RoutingError: PkiUnknownPubkey`, ensure a key exchange occurs (e.g., an initial DM or presence exchange) so the radio learns the peer's key.
+
 ## [1.0.32] - 2025-09-29
 
 ### Changed

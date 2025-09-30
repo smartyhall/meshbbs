@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.32-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.35-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,11 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## � Release notes
+
+- 1.0.35 (2025-09-30): Reliability and maintenance improvements:
+   - DM replies for public commands now use the incoming event channel with fallback to the configured primary channel, avoiding NoChannel routing errors.
+   - Startup now logs the configured primary Meshtastic channel at INFO level for easier diagnostics.
+   - Node cache maintenance: hourly cleanup of entries not seen in > 90 days; last_seen updates persisted when new node info is observed. Atomic save and resilient load already in place.
 
 - 1.0.32 (2025-09-29): Replace Fortune database with ~400 user‑provided fortunes (haiku, limericks, proverbs, jokes). Kept all entries mesh‑safe (<=200 chars) and updated tests to be count‑agnostic. Synced docs to describe the updated Fortune module.
 - 1.0.31 (2025-09-29): Robust persistence hardening: atomic write-then-rename with fsync for JSON data (users, runtime topics, NodeCache), plus read-side resilience that trims accidental leading NULs. Refactored sysop seeding to use centralized atomic storage helper; made NodeCache save/load fully atomic and resilient.
