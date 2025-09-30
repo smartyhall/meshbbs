@@ -287,23 +287,26 @@ fn compute_options(gs: &GameState) -> Vec<String> {
     v
 }
 
-fn hdr(gs: &GameState) -> String {
-    // Include player level and a simple XP progress hint to next level.
+fn status_line(gs: &GameState) -> String {
+    // Compact status for top line (Option 5)
     let need = level_threshold(gs.player.lvl);
+    format!("L{} H{}/{} X{}/{} G{}", gs.player.lvl, gs.player.hp, gs.player.max_hp, gs.player.xp, need, gs.player.gold)
+}
+
+fn full_status_line(gs: &GameState) -> String {
+    // More detailed status for Inspect: include coords and gear/inventory
     format!(
-        "TH g{} t{} L{},{} LVL{} HP {}/{} ATK{} DEF{} XP{}/{} G{} Inv:P{} K{} B{} S{}",
-        gs.gid,
-        gs.turn,
-        gs.player.x,
-        gs.player.y,
+        "L{} H{}/{} X{}/{} G{} @{},{} ATK{} DEF{} Inv:P{} K{} B{} S{}",
         gs.player.lvl,
         gs.player.hp,
         gs.player.max_hp,
+        gs.player.xp,
+        level_threshold(gs.player.lvl),
+        gs.player.gold,
+        gs.player.x,
+        gs.player.y,
         gs.player.atk,
         gs.player.defn,
-        gs.player.xp,
-        need,
-        gs.player.gold,
         gs.player.potions,
         gs.player.keys,
         gs.player.bombs,
@@ -329,7 +332,7 @@ Goal: Find the Stairs and escape the dungeon."
 
 pub fn render(gs: &GameState) -> String {
     let mut msg = String::new();
-    msg.push_str(&hdr(gs));
+    msg.push_str(&status_line(gs));
     msg.push('\n');
     let mut room = describe_room(gs);
     // Append exits summary
@@ -602,8 +605,8 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
         "O" => { out.push_str(&do_open(&mut gs)); },
         "PICK" => { out.push_str(&do_pick_lock(&mut gs, &mut rng)); },
         "R" => { out.push_str(&do_rest(&mut gs, &mut rng)); },
-    "I" => { let view = clamp_ascii(format!("{}\n{}\nOpts: {}\nYour move?\n", hdr(&gs), describe_room(&gs), compute_options(&gs).join(" "))); return (gs, view); },
-    "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", hdr(&gs), describe_room(&gs), help_text())); return (gs, view); },
+    "I" => { let view = clamp_ascii(format!("{}\n{}\nOpts: {}\nYour move?\n", full_status_line(&gs), describe_room(&gs), compute_options(&gs).join(" "))); return (gs, view); },
+    "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", status_line(&gs), describe_room(&gs), help_text())); return (gs, view); },
     other if other.starts_with("BUY") || other=="LEAVE" || other=="UPG" || other=="MYST" => { if let Some(txt) = handle_vendor(&mut gs, cmd) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
         "Q" => { return (gs, "Quit.\n".into()); },
         _ => { out.push_str("Bad cmd. Use ? for help.\n"); }
@@ -616,7 +619,7 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
     if trimmed.starts_with("TH g") { return (gs.clone(), clamp_ascii(out)); }
     // Otherwise, compose the normal view and append the action/hint text if it fits
     let mut view = String::new();
-    view.push_str(&hdr(&gs)); view.push('\n');
+    view.push_str(&status_line(&gs)); view.push('\n');
     let mut room = describe_room(&gs);
     let (n,s,w,e) = exits(&gs); let mut ex: Vec<&str> = Vec::new(); if n { ex.push("N"); } if s { ex.push("S"); } if w { ex.push("W"); } if e { ex.push("E"); }
     if !ex.is_empty() { room.push_str(" Exits "); room.push_str(&ex.join(",")); room.push('.'); }
@@ -673,9 +676,9 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
         let base = td.path().to_string_lossy().to_string();
         let (_gs, view) = load_or_new_and_render(&base, "legend_tester");
-        assert!(view.starts_with("TH g"), "header should start with TH g.. got: {}", view);
-        assert!(view.contains(" LVL"), "header should include LVL: {}", view);
-        assert!(view.contains(" XP"), "header should include XP progress: {}", view);
+    assert!(view.starts_with("L"), "status line should start compactly with L.. got: {}", view);
+    assert!(view.contains(" H"), "status should include HP: {}", view);
+    assert!(view.contains(" X"), "status should include XP progress: {}", view);
         // On first render, intro may appear.
         assert!(view.contains("Welcome to TinyHack") || view.contains("Your move?"), "expect intro or prompt present: {}", view);
     }

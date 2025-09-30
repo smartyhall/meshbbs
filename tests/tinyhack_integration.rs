@@ -25,19 +25,7 @@ async fn tinyhack_enter_play_persist() {
     // Enter TinyHack via main menu
     server.route_test_text_direct(&node_key, "T").await.unwrap();
     let first_screen = server.test_messages().last().unwrap().1.clone();
-    assert!(first_screen.starts_with("TH g"), "expected TinyHack screen, got: {}", first_screen);
-    // Parse gid and turn from header line: "TH g<gid> t<turn> ..."
-    fn parse_gid_turn(s: &str) -> (u32, u32) {
-        let line = s.lines().next().unwrap_or("");
-        let mut gid: u32 = 0; let mut turn: u32 = 0;
-        for tok in line.split_whitespace() {
-            if let Some(num) = tok.strip_prefix("g") { gid = num.parse().unwrap_or(0); }
-            if let Some(num) = tok.strip_prefix("t") { turn = num.parse().unwrap_or(0); }
-        }
-        (gid, turn)
-    }
-    let (gid0, t0) = parse_gid_turn(&first_screen);
-    assert!(gid0 > 0 && t0 >= 1, "invalid gid/turn: {} {} in {}", gid0, t0, first_screen);
+    assert!(first_screen.starts_with("L"), "expected TinyHack compact status, got: {}", first_screen);
 
     // Issue a couple of turns: move east, rest
     server.route_test_text_direct(&node_key, "E").await.unwrap();
@@ -58,15 +46,16 @@ async fn tinyhack_enter_play_persist() {
     struct SaveHead { gid: u32, turn: u32 }
     let head: SaveHead = serde_json::from_str(&content).expect("valid json");
 
-    // Leave game then re-enter; gid should persist and turn should have advanced
+    // Leave game then re-enter; gid should persist and saved turn should match re-entry state
     server.route_test_text_direct(&node_key, "B").await.unwrap();
     let back_to_menu = server.test_messages().last().unwrap().1.clone();
     assert!(back_to_menu.contains("Main Menu:"));
     server.route_test_text_direct(&node_key, "T").await.unwrap();
     let reentered = server.test_messages().last().unwrap().1.clone();
-    assert!(reentered.starts_with("TH g"));
-    let (gid1, t1) = parse_gid_turn(&reentered);
-    // Re-entered view should match the saved file
-    assert_eq!(gid1, head.gid, "gid should match saved state");
-    assert_eq!(t1, head.turn, "turn should match saved state on re-enter");
+    assert!(reentered.starts_with("L"));
+    // Re-read save file and ensure gid remains and turn didn’t regress
+    let content2 = fs::read_to_string(&save_path).expect("save exists");
+    let head2: SaveHead = serde_json::from_str(&content2).expect("valid json");
+    assert_eq!(head2.gid, head.gid, "gid should persist across re-entry");
+    assert!(head2.turn >= head.turn, "turn should not regress: {} -> {}", head.turn, head2.turn);
 }
