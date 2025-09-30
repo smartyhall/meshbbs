@@ -155,8 +155,8 @@ impl CommandProcessor {
                 self.handle_main_menu(session, &cmd_upper, storage, config).await
             }
             SessionState::TinyHack => {
-                // Special game loop: 'B' to return to main menu; otherwise forward to game engine
-                if cmd_upper == "B" || cmd_upper == "BACK" || cmd_upper == "MENU" {
+                // Special game loop: 'B' or 'Q' to return to main menu; otherwise forward to game engine
+                if cmd_upper == "B" || cmd_upper == "BACK" || cmd_upper == "MENU" || cmd_upper == "Q" || cmd_upper == "QUIT" {
                     session.state = SessionState::MainMenu;
                     let games_note = if config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
                     return Ok(format!("Main Menu:\n[M]essages [U]ser{} [Q]uit\n", games_note));
