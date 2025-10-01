@@ -602,7 +602,20 @@ fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
 
 fn parse_cmd(raw: &str) -> (String, String) {
     let up = raw.trim().to_uppercase();
-    if up == "?" { return ("?".into(), String::new()); }
+    // Normalize a variety of question mark glyphs to ASCII '?'
+    // Accept if the input is solely one or more question marks (any supported glyph) and/or whitespace
+    let mut only_qmarks = true;
+    for ch in up.chars() {
+        if !(ch.is_whitespace()
+            || ch == '?'
+            || ch == '\u{FF1F}' /* FULLWIDTH QUESTION MARK */
+            || ch == '\u{00BF}' /* INVERTED QUESTION MARK */
+            || ch == '\u{FE56}' /* SMALL QUESTION MARK */
+            || ch == '\u{061F}' /* ARABIC QUESTION MARK */) {
+            only_qmarks = false; break;
+        }
+    }
+    if up == "?" || only_qmarks { return ("?".into(), String::new()); }
     // Some clients might send stray punctuation; accept a single '?' token even if surrounded by spaces
     if up.contains('?') && up.chars().all(|c| c=='?' || c.is_whitespace()) { return ("?".into(), String::new()); }
 
@@ -651,8 +664,8 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
         "O" => { out.push_str(&do_open(&mut gs)); },
         "PICK" => { out.push_str(&do_pick_lock(&mut gs, &mut rng)); },
         "R" => { out.push_str(&do_rest(&mut gs, &mut rng)); },
-    "I" => { let view = format!("{}\n{}\nOpts: {}\nYour move?\n", full_status_line(&gs), describe_room(&gs), compute_options(&gs).join(" ")); return (gs, view); },
-    "?" => { let view = format!("{}\n{}\n{}\nYour move?\n", status_line(&gs), describe_room(&gs), help_text()); return (gs, view); },
+    "I" => { let view = format!("{}\n{}\nOpts: {}\n", full_status_line(&gs), describe_room(&gs), compute_options(&gs).join(" ")); return (gs, view); },
+    "?" => { let view = format!("{}\n{}\n{}\n", status_line(&gs), describe_room(&gs), help_text()); return (gs, view); },
     other if other.starts_with("BUY") || other=="LEAVE" || other=="UPG" || other=="MYST" => { if let Some(txt) = handle_vendor(&mut gs, cmd) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
         "Q" => { return (gs, "Quit.\n".into()); },
         _ => { out.push_str("Bad cmd. Use ? for help.\n"); }
