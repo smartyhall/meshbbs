@@ -41,11 +41,11 @@ async fn tinyhack_enter_play_persist() {
     // Issue a couple of turns: move east, rest
     server.route_test_text_direct(&node_key, "E").await.unwrap();
     let after_e = server.test_messages().last().unwrap().1.clone();
-    assert!(after_e.contains("Your move?"), "screen should prompt for move: {}", after_e);
+    assert!(after_e.ends_with("alice (lvl1)>") , "screen should end with session prompt: {}", after_e);
 
     server.route_test_text_direct(&node_key, "R").await.unwrap();
     let after_r = server.test_messages().last().unwrap().1.clone();
-    assert!(after_r.contains("Your move?"), "screen should prompt for move: {}", after_r);
+    assert!(after_r.ends_with("alice (lvl1)>") , "screen should end with session prompt: {}", after_r);
 
     // Validate save file written and contains JSON with gid
     // Since server.config is private, reconstruct expected path: cfg.storage.data_dir + "/tinyhack/alice.json"

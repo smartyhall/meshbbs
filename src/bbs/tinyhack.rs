@@ -349,8 +349,7 @@ pub fn render(gs: &GameState) -> String {
     if !gs.intro_shown {
         msg.push_str("Welcome to TinyHack — find the Stairs. Use ? for help.\n");
     }
-    let prompt = "Your move?\n";
-    msg.push_str(prompt);
+    // Do not include an in-game prompt; the server appends the session prompt on the last chunk.
     // Do not locally truncate: server will chunk and append the DM prompt on the last part.
     msg
 }
@@ -672,9 +671,7 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
     if !ex.is_empty() { room.push_str(" Exits "); room.push_str(&ex.join(",")); room.push('.'); }
     view.push_str(&room); view.push('\n');
     view.push_str("Opts: "); view.push_str(&compute_options(&gs).join(" ")); view.push('\n');
-    let prompt = "Your move?\n";
     if !out.is_empty() { let extra = out.as_str(); view.push_str(extra); if !extra.ends_with('\n') { view.push('\n'); } }
-    view.push_str(prompt);
     (gs.clone(), view)
 }
 
