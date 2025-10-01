@@ -23,7 +23,7 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
-## � Release notes
+## 📝 Release notes
 
 - 1.0.35 (2025-09-30): Reliability and maintenance improvements:
    - DM replies for public commands now use the incoming event channel with fallback to the configured primary channel, avoiding NoChannel routing errors.
@@ -37,7 +37,7 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 - 1.0.22 (2025-09-28): Add unit tests to verify UTF‑8 safe truncation of log previews (em‑dash and emoji boundaries). Reinforces the 1.0.21 fix and prevents regressions.
 - 1.0.21 (2025-09-28): Critical hotfix for a crash when logging long messages containing multibyte characters (e.g., em dashes/emoji). We now truncate previews using a UTF-8 safe helper and hardened parser slices to avoid invalid byte-boundary slicing. If you saw a panic like "byte index N is not a char boundary", update immediately.
 
-## �📚 Documentation
+## 📚 Documentation
 
 Comprehensive documentation is available in the [`docs/`](docs/) directory and hosted at [GitHub Pages](https://martinbogo.github.io/meshbbs):
 
@@ -61,7 +61,7 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 
 ## ✨ Features
 
-### � **Connectivity & Integration**
+### 🔌 **Connectivity & Integration**
 - **📡 Meshtastic Integration**: Direct communication via serial (USB/UART)
 - **🛎️ Public Discovery + DM Sessions**: Low-noise public channel handshake leading to authenticated Direct Message sessions
 - **📨 Broadcast Semantics**: Broadcasts are best‑effort; we can request an ACK and consider any single ACK as basic delivery confirmation (no retries). DMs remain reliable with ACK tracking and retries.
@@ -381,9 +381,16 @@ Meshbbs is built with a clean, modular architecture in Rust:
 
 ```mermaid
 flowchart TD
-   M[Meshtastic Device] --- SIO[Serial (USB / UART)]
-   SIO --> R[Meshtastic Reader Task]
-   W[Meshtastic Writer Task] --> SIO
+   %% Define nodes first to avoid inline parsing issues
+   M[Meshtastic Device]
+   SIO[Serial (USB/UART)]
+   R[Meshtastic Reader Task]
+   W[Meshtastic Writer Task]
+
+   %% Connections
+   M --- SIO
+   SIO --> R
+   W --> SIO
 
    R -- "TextEvent (mpsc)" --> SV[BBS Server]
    R -- "our_node_id (mpsc)" --> SV
