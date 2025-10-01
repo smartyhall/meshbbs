@@ -23,9 +23,20 @@ async fn tinyhack_enter_play_persist() {
     server.test_insert_session(session);
 
     // Enter TinyHack via main menu
+    let before = server.test_messages().len();
     server.route_test_text_direct(&node_key, "T").await.unwrap();
-    let first_screen = server.test_messages().last().unwrap().1.clone();
-    assert!(first_screen.starts_with("L"), "expected TinyHack compact status, got: {}", first_screen);
+    // Collect all chunks produced by this command for our node and join them
+    let first_chunks: Vec<String> = server
+        .test_messages()[before..]
+        .iter()
+        .filter(|(k, _)| k == &node_key)
+        .map(|(_, m)| m.clone())
+        .collect();
+    assert!(
+        first_chunks.iter().any(|m| m.starts_with("L")),
+        "expected at least one chunk to start with 'L'; got: {:?}",
+        first_chunks
+    );
 
     // Issue a couple of turns: move east, rest
     server.route_test_text_direct(&node_key, "E").await.unwrap();
@@ -50,9 +61,19 @@ async fn tinyhack_enter_play_persist() {
     server.route_test_text_direct(&node_key, "B").await.unwrap();
     let back_to_menu = server.test_messages().last().unwrap().1.clone();
     assert!(back_to_menu.contains("Main Menu:"));
+    let before2 = server.test_messages().len();
     server.route_test_text_direct(&node_key, "T").await.unwrap();
-    let reentered = server.test_messages().last().unwrap().1.clone();
-    assert!(reentered.starts_with("L"));
+    let re_chunks: Vec<String> = server
+        .test_messages()[before2..]
+        .iter()
+        .filter(|(k, _)| k == &node_key)
+        .map(|(_, m)| m.clone())
+        .collect();
+    assert!(
+        re_chunks.iter().any(|m| m.starts_with("L")),
+        "expected at least one re-entry chunk to start with 'L'; got: {:?}",
+        re_chunks
+    );
     // Re-read save file and ensure gid remains and turn didn’t regress
     let content2 = fs::read_to_string(&save_path).expect("save exists");
     let head2: SaveHead = serde_json::from_str(&content2).expect("valid json");

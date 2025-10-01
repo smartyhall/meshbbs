@@ -18,10 +18,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use fs2::FileExt;
 
-/// Maximum outgoing message bytes. All renderings are trimmed to this size.
-const MAX_MSG: usize = 230;
-/// Effective TinyHack body budget to leave room for the BBS prompt and avoid chunking.
-const RENDER_BUDGET: usize = 200;
+// Note: Chunking is handled centrally by the BBS server when sending DM replies.
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RoomKind {
@@ -129,10 +126,7 @@ fn monster_stats(k: MonsterKind) -> (i32,i32,i32,i32) {
     }
 }
 
-fn clamp_ascii(mut s: String) -> String {
-    if s.len() > MAX_MSG { s.truncate(MAX_MSG); }
-    s
-}
+fn clamp_ascii(s: String) -> String { s }
 
 fn ensure_dir(path: &Path) { let _ = std::fs::create_dir_all(path); }
 
@@ -350,20 +344,15 @@ pub fn render(gs: &GameState) -> String {
     msg.push('\n');
     let opts = compute_options(gs).join(" ");
     msg.push_str("Opts: "); msg.push_str(&opts); msg.push('\n');
-    // Show a brief onboarding intro the very first time only, keeping within the tighter render budget.
+    // Show a very brief onboarding intro the very first time only. Keep it to one short line
+    // so the initial screen reliably fits in a single frame; longer texts will be chunked by the server.
     if !gs.intro_shown {
-        let intro_long = "Welcome to TinyHack — find the Stairs and escape.\nHeader shows LVL, HP, ATK/DEF, XPx/y, G, Inv.\nMove with N,S,E,W. Try E or S; use ? for help.\n";
-        let intro_short = "Welcome to TinyHack. Goal: Find the stairs. Escape. Move N,S,E,W; ? help.\n";
-        let prompt = "Your move?\n";
-        let remaining = RENDER_BUDGET.saturating_sub(msg.len() + prompt.len());
-        if intro_long.len() <= remaining { msg.push_str(intro_long); }
-        else if intro_short.len() <= remaining { msg.push_str(intro_short); }
-        // else: no intro to avoid chunking; header/opts remain visible.
+        msg.push_str("Welcome to TinyHack — find the Stairs. Use ? for help.\n");
     }
     let prompt = "Your move?\n";
     msg.push_str(prompt);
-    // Final clamp to render budget to avoid chunking before the BBS prompt is appended.
-    if msg.len() > RENDER_BUDGET { let mut s = msg; s.truncate(RENDER_BUDGET); s } else { msg }
+    // Do not locally truncate: server will chunk and append the DM prompt on the last part.
+    msg
 }
 
 fn level_threshold(lvl: u8) -> i32 { match lvl { 1=>5, 2=>12, 3=>20, 4=>30, _=>42 + ((lvl as i32 - 5) * 12) } }
@@ -663,8 +652,8 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
         "O" => { out.push_str(&do_open(&mut gs)); },
         "PICK" => { out.push_str(&do_pick_lock(&mut gs, &mut rng)); },
         "R" => { out.push_str(&do_rest(&mut gs, &mut rng)); },
-    "I" => { let view = clamp_ascii(format!("{}\n{}\nOpts: {}\nYour move?\n", full_status_line(&gs), describe_room(&gs), compute_options(&gs).join(" "))); return (gs, view); },
-    "?" => { let view = clamp_ascii(format!("{}\n{}\n{}\nYour move?\n", status_line(&gs), describe_room(&gs), help_text())); return (gs, view); },
+    "I" => { let view = format!("{}\n{}\nOpts: {}\nYour move?\n", full_status_line(&gs), describe_room(&gs), compute_options(&gs).join(" ")); return (gs, view); },
+    "?" => { let view = format!("{}\n{}\n{}\nYour move?\n", status_line(&gs), describe_room(&gs), help_text()); return (gs, view); },
     other if other.starts_with("BUY") || other=="LEAVE" || other=="UPG" || other=="MYST" => { if let Some(txt) = handle_vendor(&mut gs, cmd) { out.push_str(&txt); } else { out.push_str("No vendor here.\n"); } },
         "Q" => { return (gs, "Quit.\n".into()); },
         _ => { out.push_str("Bad cmd. Use ? for help.\n"); }
@@ -674,7 +663,7 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
     if dead { return (gs.clone(), death_text(&gs)); }
     // If an event produced a full-screen message (e.g., WIN/RIP), return it directly
     let trimmed = out.trim_start();
-    if trimmed.starts_with("TH g") { return (gs.clone(), clamp_ascii(out)); }
+    if trimmed.starts_with("TH g") { return (gs.clone(), out); }
     // Otherwise, compose the normal view and append the action/hint text if it fits
     let mut view = String::new();
     view.push_str(&status_line(&gs)); view.push('\n');
@@ -684,13 +673,9 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
     view.push_str(&room); view.push('\n');
     view.push_str("Opts: "); view.push_str(&compute_options(&gs).join(" ")); view.push('\n');
     let prompt = "Your move?\n";
-    let remaining = RENDER_BUDGET.saturating_sub(view.len() + prompt.len());
-    if !out.is_empty() {
-        let extra = out.as_str();
-        if extra.len() <= remaining { view.push_str(extra); if !extra.ends_with('\n') { view.push('\n'); } }
-    }
+    if !out.is_empty() { let extra = out.as_str(); view.push_str(extra); if !extra.ends_with('\n') { view.push('\n'); } }
     view.push_str(prompt);
-    if view.len() > RENDER_BUDGET { let mut s = view; s.truncate(RENDER_BUDGET); (gs.clone(), s) } else { (gs.clone(), view) }
+    (gs.clone(), view)
 }
 
 /// Load or create a save for the given user; returns the state and the rendered snapshot.
