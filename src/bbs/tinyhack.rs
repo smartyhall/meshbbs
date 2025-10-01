@@ -722,6 +722,30 @@ pub fn apply_and_save(base_dir: &str, username: &str, gs: GameState, cmd: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+
+    fn mk_gs_wh(w: usize, h: usize) -> GameState {
+        GameState {
+            gid: 1,
+            turn: 1,
+            seed: 42,
+            w,
+            h,
+            player: Player::new(),
+            map: vec![Room::default(); w*h],
+            intro_shown: true,
+            seen_monster: false,
+            seen_chest: false,
+            seen_vendor: false,
+            seen_door: false,
+            seen_trap: false,
+        }
+    }
+
+    fn set_room(gs: &mut GameState, x: usize, y: usize, kind: RoomKind, mon_hp: Option<i32>, used: bool) {
+        let idx = gs.idx(x,y);
+        gs.map[idx] = Room { kind, mon_hp, used };
+    }
 
     #[test]
     fn render_includes_intro_and_level_progress() {
@@ -743,5 +767,157 @@ mod tests {
         let (_ngs, view) = handle_turn(gs, "?");
         assert!(view.contains("TinyHack Commands:"), "help expected, got: {}", view);
         assert!(!view.contains("Bad cmd"), "should not show bad cmd on help: {}", view);
+    }
+
+    #[test]
+    fn parse_cmd_accepts_unicode_question_marks() {
+        for inp in ["?", "  ?  ", "？？", " ¿ ", "\u{FF1F}", "\u{FE56}", "\u{061F}"] {
+            let (op, arg) = parse_cmd(inp);
+            assert_eq!(op, "?", "input {:?} should map to help", inp);
+            assert!(arg.is_empty());
+        }
+    }
+
+    #[test]
+    fn compute_options_context_specific() {
+        let mut gs = mk_gs_wh(2,2);
+        // Empty: base options
+        let opts = compute_options(&gs).join(" ");
+        assert!(opts.contains("R") && opts.contains("I") && opts.contains("?"));
+        // Monster
+        set_room(&mut gs, 0, 0, RoomKind::Monster(MonsterKind::Rat), Some(3), false);
+        let opts_m = compute_options(&gs).join(" ");
+        assert!(opts_m.contains("A") && opts_m.contains("U P") && opts_m.contains("C F"));
+        // LockedDoor
+        set_room(&mut gs, 0, 0, RoomKind::LockedDoor, None, false);
+        let opts_d = compute_options(&gs).join(" ");
+        assert!(opts_d.contains("O") && opts_d.contains("PICK") && opts_d.contains("U B"));
+        // Chest
+        set_room(&mut gs, 0, 0, RoomKind::Chest, None, false);
+        let opts_c = compute_options(&gs).join(" ");
+        assert!(opts_c.contains("T"));
+    }
+
+    #[test]
+    fn movement_boundaries_and_blocks() {
+        let mut gs = mk_gs_wh(2,2);
+        // At (0,0), moving North/West should fail
+        let msg_n = do_move(&mut gs, 'N');
+        assert!(msg_n.contains("Can't move"));
+        assert_eq!((gs.player.x, gs.player.y), (0,0));
+        let msg_w = do_move(&mut gs, 'W');
+        assert!(msg_w.contains("Can't move"));
+        // Place locked door to the east to block
+        set_room(&mut gs, 1, 0, RoomKind::LockedDoor, None, false);
+        let msg_e = do_move(&mut gs, 'E');
+        assert!(msg_e.contains("locked door bars your way"));
+        assert_eq!((gs.player.x, gs.player.y), (0,0));
+        // South should be fine
+        let msg_s = do_move(&mut gs, 'S');
+        assert!(msg_s.is_empty());
+        assert_eq!((gs.player.x, gs.player.y), (0,1));
+    }
+
+    #[test]
+    fn vendor_buy_and_upgrade() {
+        let mut gs = mk_gs_wh(2,2);
+        set_room(&mut gs, 0, 0, RoomKind::Vendor, None, false);
+        gs.player.gold = 20;
+        // Buy potion
+        let resp = handle_vendor(&mut gs, "BUY P").expect("vendor here");
+        assert!(resp.contains("Bought potion"));
+        assert_eq!(gs.player.potions, 2);
+        // Upgrade weapon
+        let resp2 = handle_vendor(&mut gs, "UPG W").expect("vendor here");
+        assert!(resp2.contains("Upgraded weapon"));
+        assert_eq!(gs.player.weapon_lvl, 1);
+        assert_eq!(gs.player.atk, 3);
+    }
+
+    #[test]
+    fn use_potion_and_bomb() {
+        let mut gs = mk_gs_wh(2,2);
+        // Potion
+        gs.player.hp = 4; gs.player.potions = 1;
+        let pmsg = use_potion(&mut gs);
+        assert!(pmsg.contains("quaff a potion"));
+        assert!(gs.player.hp > 4);
+        assert_eq!(gs.player.potions, 0);
+        // Bomb on door
+        set_room(&mut gs, 0, 0, RoomKind::LockedDoor, None, false);
+        gs.player.bombs = 1; let mut rng = StdRng::seed_from_u64(7);
+        let bmsg = use_bomb(&mut gs, &mut rng);
+        assert!(bmsg.contains("charge") || bmsg.contains("splinters"));
+        assert!(matches!(gs.room(0,0).kind, RoomKind::Empty));
+        assert!(gs.player.gold >= 3);
+        assert!(gs.player.xp >= 1);
+    }
+
+    #[test]
+    fn cast_fireball_kills_rat() {
+        let mut gs = mk_gs_wh(2,2);
+        set_room(&mut gs, 0, 0, RoomKind::Monster(MonsterKind::Rat), Some(4), false);
+        gs.player.scrolls = 1; let mut rng = StdRng::seed_from_u64(9);
+        let msg = cast_fireball(&mut gs, &mut rng);
+        assert!(msg.contains("inferno") || msg.contains("reduced to ash") || msg.contains("ends the fight") || msg.contains("(+"));
+        assert!(matches!(gs.room(0,0).kind, RoomKind::Empty));
+        assert_eq!(gs.player.scrolls, 0);
+        assert!(gs.player.gold >= 1 && gs.player.gold <= 3);
+        assert!(gs.player.xp >= 1);
+    }
+
+    fn find_seed_for_threshold(thresh: f64, want_below: bool) -> u64 {
+        for s in 0u64..10_000u64 {
+            let mut rng = StdRng::seed_from_u64(s);
+            let v: f64 = rng.gen();
+            if want_below && v < thresh { return s; }
+            if !want_below && v >= thresh { return s; }
+        }
+        0
+    }
+
+    #[test]
+    fn pick_lock_success_and_failure() {
+        let mut gs = mk_gs_wh(2,2);
+        set_room(&mut gs, 0, 0, RoomKind::LockedDoor, None, false);
+        gs.player.lvl = 1; gs.player.lockpicks = 1; let chance = 0.40 + 0.05 + 0.10; // 0.55
+        let seed_ok = find_seed_for_threshold(chance, true);
+        let mut rng_ok = StdRng::seed_from_u64(seed_ok);
+        let msg_ok = do_pick_lock(&mut gs, &mut rng_ok);
+        assert!(msg_ok.contains("click") || msg_ok.contains("yields"));
+        assert!(matches!(gs.room(0,0).kind, RoomKind::Empty));
+        assert!(gs.player.gold >= 2);
+        // Reset for failure case
+        set_room(&mut gs, 0, 0, RoomKind::LockedDoor, None, false);
+        gs.player.lockpicks = 1;
+        let seed_bad = find_seed_for_threshold(chance, false);
+        let mut rng_bad = StdRng::seed_from_u64(seed_bad);
+        let msg_bad = do_pick_lock(&mut gs, &mut rng_bad);
+        assert!(msg_bad.contains("trap") || msg_bad.contains("rat") || msg_bad.contains("clumsy"));
+        assert_eq!(gs.player.lockpicks, 0);
+    }
+
+    #[test]
+    fn render_shows_intro_when_first_time() {
+        let mut gs = mk_gs_wh(2,2);
+        gs.intro_shown = false;
+        let view = render(&gs);
+        assert!(view.contains("Welcome to TinyHack"));
+    }
+
+    #[test]
+    fn quit_command_short_circuits() {
+        let gs = mk_gs_wh(2,2);
+        let (_ngs, view) = handle_turn(gs, "Q");
+        assert!(view.starts_with("Quit"));
+    }
+
+    #[test]
+    fn stairs_win_text_on_enter() {
+        let mut gs = mk_gs_wh(2,2);
+        set_room(&mut gs, 0, 0, RoomKind::Stairs, None, false);
+        let mut rng = StdRng::seed_from_u64(1);
+        let maybe = on_enter_tile(&mut gs, &mut rng);
+        assert!(maybe.unwrap_or_default().starts_with("TH g"));
     }
 }
