@@ -11,6 +11,12 @@ This file records notable changes for meshbbs. Starting with the 1.0.0 BETA base
 
 ## [1.0.35] - 2025-09-30
 
+## [1.0.36-beta] - 2025-10-01
+
+### Changed
+- Docs only: Fix README Mermaid diagram parse error and sanitize section heading characters so the GitHub page renders correctly.
+
+
 ### Changed
 - Public command DM replies now honor the incoming event channel with fallback to the configured primary channel, reducing NoChannel routing errors.
 - Startup now emits an INFO log showing the configured Meshtastic primary channel to aid diagnostics.
