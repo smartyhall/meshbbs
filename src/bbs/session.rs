@@ -85,7 +85,7 @@ pub struct Session {
     pub state: SessionState,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SessionState {
     Connected,
     LoggingIn,

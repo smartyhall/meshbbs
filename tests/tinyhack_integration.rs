@@ -80,8 +80,8 @@ async fn tinyhack_enter_play_persist() {
         re_chunks
     );
     assert!(
-        !re_chunks.iter().any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
-        "re-entry should not include the welcome message"
+        re_chunks.iter().any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
+        "re-entry should include the welcome message"
     );
     // Re-read save file and ensure gid remains and turn didn’t regress
     let content2 = fs::read_to_string(&save_path).expect("save exists");

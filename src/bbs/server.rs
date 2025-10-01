@@ -1038,6 +1038,14 @@ impl BbsServer {
                             // For multi-part help, suppress prompt until final
                             self.send_session_message(&node_key, &chunk, last).await?;
                         }
+                    } else if (upper == "HELP" || upper == "H") || (upper == "?" && session.state != super::session::SessionState::TinyHack) {
+                        // Compact help unless we're in TinyHack state handling '?', which is forwarded to game engine
+                        let mut help_text = session.process_command("HELP", &mut self.storage, &self.config).await?;
+                        if !session.help_seen {
+                            session.help_seen = true;
+                            help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
+                        }
+                        self.send_session_message(&node_key, &help_text, true).await?;
                     } else if upper.starts_with("LOGIN ") {
                         // Enforce max_users only if this session is not yet logged in
                         if !session.is_logged_in() && (logged_in_count as u32) >= self.config.bbs.max_users {
@@ -1557,11 +1565,12 @@ impl BbsServer {
                         } else {
                             deferred_reply = Some(screen);
                         }
-                    } else if upper == "HELP" || upper == "?" || upper == "H" {
+                    } else if (upper == "HELP" || upper == "H") || (upper == "?" && session.state != super::session::SessionState::TinyHack) {
                         // Use existing abbreviated help via command processor (ensures consistent text)
                         let help_text = session.process_command("HELP", &mut self.storage, &self.config).await?;
                         if !session.help_seen { session.help_seen = true; }
                         self.send_session_message(&node_key, &help_text, true).await?;
+                        return Ok(());
                     } else {
                         let redact = ["REGISTER ", "LOGIN ", "SETPASS ", "CHPASS "];
                         let log_snippet = if redact.iter().any(|p| upper.starts_with(p)) { "<redacted>" } else { raw_content.as_str() };
@@ -2093,17 +2102,14 @@ impl BbsServer {
                     }
                 }
             } else if (upper == "T" || upper == "TINYHACK") && self.config.games.tinyhack_enabled {
-                // Test-path TinyHack start: send separate welcome and screen
+                // Test-path TinyHack start: send welcome and then the screen on every entry
                 session.state = super::session::SessionState::TinyHack;
                 let username = session.display_name();
-                let (gs, screen, is_new) = crate::bbs::tinyhack::load_or_new_with_flag(&self.storage.base_dir(), &username);
+                let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(&self.storage.base_dir(), &username);
                 session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
-                if is_new {
-                    self.send_session_message(node_key, crate::bbs::tinyhack::welcome_message(), true).await?;
-                    self.send_session_message(node_key, &screen, true).await?;
-                } else {
-                    deferred_reply = Some(screen);
-                }
+                self.send_session_message(node_key, crate::bbs::tinyhack::welcome_message(), true).await?;
+                self.send_session_message(node_key, &screen, true).await?;
+                return Ok(());
             } else {
                 let response = session.process_command(&raw_content, &mut self.storage, &self.config).await?;
                 if !response.is_empty() { deferred_reply = Some(response); }
