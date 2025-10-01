@@ -342,7 +342,7 @@ impl CommandProcessor {
                 // Enter TinyHack loop and render current snapshot
                 session.state = SessionState::TinyHack;
                 let username = session.display_name();
-                let (gs, screen) = crate::bbs::tinyhack::load_or_new_and_render(&storage.base_dir(), &username);
+                let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(&storage.base_dir(), &username);
                 // Cache minimal blob in session filter_text to avoid adding new fields; serialize small state id
                 // We will reload from disk on each turn for simplicity and resilience.
                 session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());

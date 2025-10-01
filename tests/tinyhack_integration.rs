@@ -32,9 +32,14 @@ async fn tinyhack_enter_play_persist() {
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
         .collect();
+    // First chunk should contain the welcome text, second should begin with status line (L..)
+    assert!(
+        first_chunks.iter().any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
+        "expected a separate welcome message chunk; got: {:?}", first_chunks
+    );
     assert!(
         first_chunks.iter().any(|m| m.starts_with("L")),
-        "expected at least one chunk to start with 'L'; got: {:?}",
+        "expected at least one non-welcome chunk to start with 'L'; got: {:?}",
         first_chunks
     );
 
@@ -73,6 +78,10 @@ async fn tinyhack_enter_play_persist() {
         re_chunks.iter().any(|m| m.starts_with("L")),
         "expected at least one re-entry chunk to start with 'L'; got: {:?}",
         re_chunks
+    );
+    assert!(
+        !re_chunks.iter().any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
+        "re-entry should not include the welcome message"
     );
     // Re-read save file and ensure gid remains and turn didn’t regress
     let content2 = fs::read_to_string(&save_path).expect("save exists");

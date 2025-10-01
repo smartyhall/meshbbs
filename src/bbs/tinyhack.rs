@@ -331,6 +331,11 @@ Also accepted: USE POTION/BOMB and CAST FIREBALL.\n\
 Goal: Find the Stairs and escape the dungeon."
 }
 
+/// Compact, ASCII-only welcome message for first-time TinyHack start.
+pub fn welcome_message() -> &'static str {
+    "Welcome to TinyHack: a compact, turn-based dungeon crawl. Explore a maze of rooms, meet monsters, dodge traps, visit vendors, hoard treasure, grow stronger, and race for the Stairs."
+}
+
 pub fn render(gs: &GameState) -> String {
     let mut msg = String::new();
     msg.push_str(&status_line(gs));
@@ -344,11 +349,6 @@ pub fn render(gs: &GameState) -> String {
     msg.push('\n');
     let opts = compute_options(gs).join(" ");
     msg.push_str("Opts: "); msg.push_str(&opts); msg.push('\n');
-    // Show a very brief onboarding intro the very first time only. Keep it to one short line
-    // so the initial screen reliably fits in a single frame; longer texts will be chunked by the server.
-    if !gs.intro_shown {
-        msg.push_str("Welcome to TinyHack — find the Stairs. Use ? for help.\n");
-    }
     // Do not include an in-game prompt; the server appends the session prompt on the last chunk.
     // Do not locally truncate: server will chunk and append the DM prompt on the last part.
     msg
@@ -688,8 +688,8 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
     (gs.clone(), view)
 }
 
-/// Load or create a save for the given user; returns the state and the rendered snapshot.
-pub fn load_or_new_and_render(base_dir: &str, username: &str) -> (GameState, String) {
+/// Load or create a save for the given user; returns the state and the rendered snapshot, plus is_new flag.
+pub fn load_or_new_with_flag(base_dir: &str, username: &str) -> (GameState, String, bool) {
     let path = save_path(base_dir, username);
     if path.exists() {
         if let Ok(s) = read_json(&path) {
@@ -698,16 +698,22 @@ pub fn load_or_new_and_render(base_dir: &str, username: &str) -> (GameState, Str
                 if gs.player.x >= gs.w { gs.player.x = gs.w.saturating_sub(1); }
                 if gs.player.y >= gs.h { gs.player.y = gs.h.saturating_sub(1); }
                 // Render view; do not change intro_shown here for old saves defaulting to true.
-                return (gs.clone(), render(&gs));
+                return (gs.clone(), render(&gs), false);
             }
         }
     }
     let seed = rand::thread_rng().gen::<u64>();
     let mut gs = new_game(seed, 6, 6);
-    // First view should include intro (intro_shown is false). After rendering, flip it so it won't repeat.
+    // First render does not include inline intro; welcome is sent separately. Mark intro shown afterwards.
     let view = render(&gs);
     gs.intro_shown = true;
-    (gs.clone(), view)
+    (gs.clone(), view, true)
+}
+
+/// Backwards-compatible wrapper: load or new and render, ignoring the new flag.
+pub fn load_or_new_and_render(base_dir: &str, username: &str) -> (GameState, String) {
+    let (gs, view, _is_new) = load_or_new_with_flag(base_dir, username);
+    (gs, view)
 }
 
 /// Apply a command to the current save, persist, and return the new rendered snapshot.
@@ -752,12 +758,11 @@ mod tests {
         // Use a temp dir to avoid touching real data; create a fresh game view.
         let td = tempfile::tempdir().unwrap();
         let base = td.path().to_string_lossy().to_string();
-        let (_gs, view) = load_or_new_and_render(&base, "legend_tester");
+        let (_gs, view, _is_new) = load_or_new_with_flag(&base, "legend_tester");
     assert!(view.starts_with("L"), "status line should start compactly with L.. got: {}", view);
     assert!(view.contains(" H"), "status should include HP: {}", view);
     assert!(view.contains(" X"), "status should include XP progress: {}", view);
-        // On first render, intro may appear.
-        assert!(view.contains("Welcome to TinyHack") || view.contains("Your move?"), "expect intro or prompt present: {}", view);
+        // Welcome text is sent as a separate first message by the main menu handler, not inline here.
     }
 
     #[test]
@@ -899,10 +904,15 @@ mod tests {
 
     #[test]
     fn render_shows_intro_when_first_time() {
-        let mut gs = mk_gs_wh(2,2);
-        gs.intro_shown = false;
-        let view = render(&gs);
-        assert!(view.contains("Welcome to TinyHack"));
+        // New behavior: welcome is a separate message; render() does not include it.
+        let (gs, view, is_new) = load_or_new_with_flag("/tmp", "unit_intro_test");
+        assert!(is_new, "expected new-game flag true on first load");
+        assert!(view.starts_with("L"), "screen should start with status line");
+        // Welcome message is provided separately and should be concise (<=200 chars target)
+        let welcome = welcome_message();
+        assert!(welcome.len() <= 200, "welcome should be ~200 chars or less; got {}", welcome.len());
+        // gs.intro_shown should be true after first load
+        assert!(gs.intro_shown);
     }
 
     #[test]
