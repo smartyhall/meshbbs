@@ -85,6 +85,14 @@ pub struct CommandProcessor;
 impl CommandProcessor {
     pub fn new() -> Self { CommandProcessor }
 
+    /// Render the top-level main menu based on enabled modules
+    fn render_main_menu(&self, _session: &Session, config: &Config) -> String {
+        let mut line = String::from("Main Menu:\n[M]essages ");
+        if config.games.tinyhack_enabled { line.push_str("[T]inyhack "); }
+        line.push_str("[P]references [Q]uit\n");
+        line
+    }
+
     fn where_am_i(&self, session: &Session, config: &Config) -> String {
         // Build a compact breadcrumb like: BBS > Topics > hello > Threads > Read
         let mut parts: Vec<String> = vec![config.bbs.name.clone()];
@@ -158,8 +166,7 @@ impl CommandProcessor {
                 // Special game loop: 'B' or 'Q' to return to main menu; otherwise forward to game engine
                 if cmd_upper == "B" || cmd_upper == "BACK" || cmd_upper == "MENU" || cmd_upper == "Q" || cmd_upper == "QUIT" {
                     session.state = SessionState::MainMenu;
-                    let games_note = if config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
-                    return Ok(format!("Main Menu:\n[M]essages [U]ser{} [Q]uit\n", games_note));
+                    return Ok(self.render_main_menu(session, config));
                 }
                 let username = session.display_name();
                 // Load or use prior state from disk; forgiving of missing/malformed
@@ -278,12 +285,11 @@ impl CommandProcessor {
 
     async fn handle_initial_connection(&self, session: &mut Session, _cmd: &str, _storage: &mut Storage, config: &Config) -> Result<String> {
         session.state = SessionState::MainMenu;
-        let games_note = if config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
         Ok(format!(
-            "[{}]\nNode: {}\nAuth: REGISTER <user> <pass> or LOGIN <user> [pass]\nType HELP for commands\nMain Menu:\n[M]essages [U]ser{} [Q]uit\n",
+            "[{}]\nNode: {}\nAuth: REGISTER <user> <pass> or LOGIN <user> [pass]\nType HELP for commands\n{}",
             config.bbs.name,
             session.node_id,
-            games_note
+            self.render_main_menu(session, config)
         ))
     }
 
@@ -312,8 +318,7 @@ impl CommandProcessor {
             session.login(username.clone(), 1).await?;
             storage.create_or_update_user(&username, &session.node_id).await?;
             {
-                let games_note = if _config.games.tinyhack_enabled { " [T]inyHack" } else { "" };
-                Ok(format!("Welcome {}!\nMain Menu:\n[M]essages [U]ser{} [Q]uit\n", username, games_note))
+                Ok(format!("Welcome {}!\n{}", username, self.render_main_menu(session, _config)))
             }
         } else {
             Ok("Please enter: LOGIN <username>\n".to_string())
@@ -328,10 +333,10 @@ impl CommandProcessor {
                 session.list_page = 1;
                 self.render_topics_page(session, storage, config).await
             }
-            "U" | "USER" => {
+            "P" | "PREFERENCES" | "U" | "USER" => {
                 session.state = SessionState::UserMenu;
                 Ok(format!(
-                    "User Menu:\nUsername: {}\nLevel: {}\nLogin time: {}\n[I]nfo [S]tats [B]ack\n",
+                    "Preferences:\nUsername: {}\nLevel: {}\nLogin time: {}\n[I]nfo [S]tats [B]ack/[Q]uit\n",
                     session.display_name(),
                     session.user_level,
                     session.login_time.format("%Y-%m-%d %H:%M UTC")
@@ -339,7 +344,7 @@ impl CommandProcessor {
             }
             "Q" | "QUIT" | "GOODBYE" | "BYE" => { session.logout().await?; Ok("Goodbye! 73s".to_string()) }
             "T" | "TINYHACK" if config.games.tinyhack_enabled => {
-                // Enter TinyHack loop and render current snapshot
+                // Enter TinyHack loop and render current snapshot (server may send separate welcome)
                 session.state = SessionState::TinyHack;
                 let username = session.display_name();
                 let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(&storage.base_dir(), &username);
@@ -586,7 +591,7 @@ impl CommandProcessor {
         match upper {
             "H" | "HELP" | "?" => return Ok("Topics: 1-9 pick, L more, B back, M menu, X exit\n".into()),
             "M" => { session.list_page = 1; return self.render_topics_page(session, storage, config).await; }
-            "B" => { session.state = SessionState::MainMenu; return Ok("Main Menu:\n[M]essages [U]ser [Q]uit\n".into()); }
+            "B" | "Q" => { session.state = SessionState::MainMenu; return Ok(self.render_main_menu(session, config)); }
             "X" => { session.state = SessionState::Disconnected; return Ok("Goodbye! 73s".into()); }
             "L" => { session.list_page += 1; return self.render_topics_page(session, storage, config).await; }
             _ => {}
@@ -648,6 +653,7 @@ impl CommandProcessor {
             "H" | "HELP" | "?" => return Ok("Subtopics: 1-9 pick, U up, L more, M topics, X exit\n".into()),
             "M" => { session.state = SessionState::Topics; session.list_page = 1; return self.render_topics_page(session, storage, config).await; }
             "U" | "UP" | "B" => { session.state = SessionState::Topics; session.list_page = 1; return self.render_topics_page(session, storage, config).await; }
+            "Q" => { session.state = SessionState::MainMenu; return Ok(self.render_main_menu(session, config)); }
             "X" => { session.state = SessionState::Disconnected; return Ok("Goodbye! 73s".into()); }
             "L" => { session.list_page += 1; return self.render_subtopics_page(session, storage, config).await; }
             _ => {}
@@ -724,6 +730,7 @@ impl CommandProcessor {
                 return Ok(s);
             }
             "M" => { session.state = SessionState::Topics; session.list_page = 1; return self.render_topics_page(session, storage, config).await; }
+            "Q" => { session.state = SessionState::MainMenu; return Ok(self.render_main_menu(session, config)); }
             "B" => {
                 let _ = session.filter_text.take();
                 // If current topic has a parent, go up to Subtopics of parent; else to Topics
@@ -897,9 +904,10 @@ impl CommandProcessor {
                 session.state = SessionState::Threads; 
                 return self.render_threads_list(session, storage, config).await; 
             }
+            "Q" => { session.state = SessionState::MainMenu; return Ok(self.render_main_menu(session, config)); }
             "H" | "HELP" | "?" => {
-                let mut s = "Read: + next, - prev, Y reply, B back".to_string();
-                if session.user_level >= LEVEL_MODERATOR { s.push_str(" | mod: D del, P pin, R title, K lock"); }
+                let mut s = "Read: + next, - prev, Y reply, B back, M topics".to_string();
+                if session.user_level >= LEVEL_MODERATOR { s.push_str(" | mod: D delete, P pin, R rename, K lock"); }
                 s.push('\n');
                 return Ok(s);
             }
@@ -1076,7 +1084,7 @@ impl CommandProcessor {
                 response.push('\n');
                 Ok(response)
             }
-            "B" | "BACK" => { session.state = SessionState::MainMenu; Ok("Main Menu:\n[M]essages [U]ser [Q]uit\n".to_string()) }
+            "B" | "BACK" | "Q" => { session.state = SessionState::MainMenu; Ok(self.render_main_menu(session, config)) }
             _ => Ok("Commands: [R]ead [P]ost [L]ist [B]ack or type topic number\n".to_string())
         }
     }
@@ -1084,6 +1092,7 @@ impl CommandProcessor {
     async fn handle_reading_messages(&self, session: &mut Session, cmd: &str, _storage: &mut Storage, _config: &Config) -> Result<String> {
         match cmd {
             "B" | "BACK" => { session.state = SessionState::MessageTopics; Ok("Message Topics:\n[R]ead [P]ost [L]ist [B]ack\n".to_string()) }
+            "Q" => { session.state = SessionState::MainMenu; Ok(self.render_main_menu(session, _config)) }
             _ => Ok("Commands: [N]ext [P]rev [R]eply [B]ack\n".to_string())
         }
     }
@@ -1125,7 +1134,7 @@ impl CommandProcessor {
                     stats.total_messages, stats.total_users, stats.moderator_count, stats.recent_registrations
                 ))
             }
-            "B" | "BACK" => { session.state = SessionState::MainMenu; Ok("Main Menu:\n[M]essages [U]ser [Q]uit\n".to_string()) }
+            "B" | "BACK" | "Q" => { session.state = SessionState::MainMenu; Ok(self.render_main_menu(session, _config)) }
             _ => Ok("Commands: [I]nfo [S]tats [B]ack\n".to_string())
         }
     }

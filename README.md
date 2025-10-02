@@ -53,6 +53,8 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory and h
 
 > The documentation is maintained alongside the code and automatically updated with each release.
 
+See also: [Permissions and third-party notices](PERMISSIONS.md) for external conversation links documenting permission context (e.g., Reddit thread referencing Anycubic ACE Pro RFID tooling).
+
 ### Building the API docs locally
 
 You can generate the same Rust API docs on your machine:

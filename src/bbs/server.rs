@@ -1039,7 +1039,7 @@ impl BbsServer {
                             self.send_session_message(&node_key, &chunk, last).await?;
                         }
                     } else if (upper == "HELP" || upper == "H") || (upper == "?" && session.state != super::session::SessionState::TinyHack) {
-                        // Compact help unless we're in TinyHack state handling '?', which is forwarded to game engine
+                        // Defer compact help text to command processor, then append one-time shortcuts hint server-side
                         let mut help_text = session.process_command("HELP", &mut self.storage, &self.config).await?;
                         if !session.help_seen {
                             session.help_seen = true;
@@ -1553,22 +1553,10 @@ impl BbsServer {
                     } else if upper == "LOGOUT" {
                         if session.is_logged_in() { let name = session.display_name(); session.logout().await?; deferred_reply = Some(format!("User {} logged out.\n", name)); }
                         else { deferred_reply = Some("Not logged in.\n".into()); }
-                    } else if (upper == "T" || upper == "TINYHACK") && self.config.games.tinyhack_enabled {
-                        // Start TinyHack and send a separate welcome message if it's a new save
-                        session.state = super::session::SessionState::TinyHack;
-                        let username = session.display_name();
-                        let (gs, screen, is_new) = crate::bbs::tinyhack::load_or_new_with_flag(&self.storage.base_dir(), &username);
-                        session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
-                        if is_new {
-                            self.send_session_message(&node_key, crate::bbs::tinyhack::welcome_message(), true).await?;
-                            self.send_session_message(&node_key, &screen, true).await?;
-                        } else {
-                            deferred_reply = Some(screen);
-                        }
                     } else if (upper == "HELP" || upper == "H") || (upper == "?" && session.state != super::session::SessionState::TinyHack) {
-                        // Use existing abbreviated help via command processor (ensures consistent text)
-                        let help_text = session.process_command("HELP", &mut self.storage, &self.config).await?;
-                        if !session.help_seen { session.help_seen = true; }
+                        // Use abbreviated help via command processor (ensures consistent text) + one-time shortcuts hint
+                        let mut help_text = session.process_command("HELP", &mut self.storage, &self.config).await?;
+                        if !session.help_seen { session.help_seen = true; help_text.push_str("Shortcuts: M=areas U=user Q=quit\n"); }
                         self.send_session_message(&node_key, &help_text, true).await?;
                         return Ok(());
                     } else {
@@ -2079,10 +2067,7 @@ impl BbsServer {
                 return Ok(());
             } else if upper == "HELP" || upper == "?" || upper == "H" {
                 let mut help_text = session.process_command("HELP", &mut self.storage, &self.config).await?;
-                if !session.help_seen {
-                    session.help_seen = true;
-                    help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
-                }
+                if !session.help_seen { session.help_seen = true; help_text.push_str("Shortcuts: M=areas U=user Q=quit\n"); }
                 self.send_session_message(node_key, &help_text, true).await?;
                 return Ok(());
             } else if upper.starts_with("LOGIN ") {
@@ -2102,7 +2087,7 @@ impl BbsServer {
                     }
                 }
             } else if (upper == "T" || upper == "TINYHACK") && self.config.games.tinyhack_enabled {
-                // Test-path TinyHack start: send welcome and then the screen on every entry
+                // Test-path TinyHack start: send welcome and then the screen on every entry (separate messages)
                 session.state = super::session::SessionState::TinyHack;
                 let username = session.display_name();
                 let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(&self.storage.base_dir(), &username);
