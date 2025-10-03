@@ -6,38 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- _Nothing yet._
+
+## [1.0.40-beta] - 2025-10-02
+
+### Added
+- TinyHack roguelike DM mini-game accessible from the main menu when enabled, with per-user saves stored under `data/tinyhack`.
 
 ### Changed
-- **UX Streamlining**: Compact help (HELP) no longer shows legacy long-word commands (READ/POST/TOPICS)
-- **Command Set**: Removed legacy long-form commands (READ, POST, TOPICS, LIST); compact shortcuts are now the only supported interface
-- **Login Experience**: New users now see a helpful hint after login: "Hint: M=messages H=help"
-- **Verbose Help**: Verbose output now mirrors compact help, reinforcing the single shortcut-driven interface
-- Primary interface now emphasizes letter/number-driven navigation: [M]essages, [T]inyhack, etc.
+- Retired legacy long-form commands (READ, POST, TOPICS, LIST); compact letter/number shortcuts now drive the entire UI, and help output mirrors the streamlined prompts.
+- Added succinct first-login hints in DM onboarding so new users immediately see `M=messages` / `H=help`, reinforcing the shortcut workflow.
 
 ### Documentation
-- Added `docs/MIGRATION_COMPACT_UI.md` explaining the UX transition
-- Documented the removal of legacy long-form commands and the new hints shown during onboarding
+- Updated the user guide, QA plan, and README to describe the compact command set and TinyHack entry point.
 
-### Technical
-- Removed legacy command handler plumbing (`try_inline_message_command`) in favor of compact-only flows
-- All tests pass with updated help text expectations
-
-This file records notable changes for meshbbs. Starting with the 1.0.0 BETA baseline, new entries will be added above this section over time (e.g., 1.0.1, 1.0.2).
-
-# Changelog
-
-## [1.0.35] - 2025-09-30
+### Tests
+- Refreshed help/menu integration tests and TinyHack coverage to guard the new navigation flow.
 
 ## [1.0.36-beta] - 2025-10-01
 
 ### Changed
 - Docs only: Fix README Mermaid diagram parse error and sanitize section heading characters so the GitHub page renders correctly.
 
+## [1.0.35] - 2025-09-30
 
 ### Changed
-- Public command DM replies now honor the incoming event channel with fallback to the configured primary channel, reducing NoChannel routing errors.
+- Public command DM replies now honor the incoming event channel with fallback to the configured primary channel, reducing `NoChannel` routing errors.
 - Startup now emits an INFO log showing the configured Meshtastic primary channel to aid diagnostics.
-- NodeCache maintenance: hourly cleanup of entries not seen in more than 90 days; persist last_seen on observed node info updates. Atomic save and resilient load were added previously and remain in effect.
+- NodeCache maintenance: hourly cleanup of entries not seen in more than 90 days; persist `last_seen` on observed node info updates. Atomic save and resilient load remain in effect.
 
 ### Notes
 - Direct Message encryption requires the recipient's public key to be known by the radio. If you see `RoutingError: PkiUnknownPubkey`, ensure a key exchange occurs (e.g., an initial DM or presence exchange) so the radio learns the peer's key.
