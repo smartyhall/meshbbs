@@ -2437,7 +2437,11 @@ impl BbsServer {
                     }
                 }
                 PublicCommand::Login(username) => {
-                    if self.public_state.should_reply(&node_key) {
+                    // Check if public LOGIN is allowed by configuration
+                    if !self.config.bbs.allow_public_login {
+                        // Silently ignore public LOGIN when disabled - no reply to avoid spam/enumeration
+                        trace!("Public LOGIN ignored (disabled by config): user={}, node={}", username, node_key);
+                    } else if self.public_state.should_reply(&node_key) {
                         self.public_state.set_pending(&node_key, username.clone());
                         let reply = format!("Login pending for '{}'. Open a direct message to this node and say HI or LOGIN <name> again to complete.", username);
                         self.send_message(&node_key, &reply).await?;

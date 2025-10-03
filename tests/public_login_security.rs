@@ -260,3 +260,97 @@ async fn public_login_wrong_password_rejected() {
         "Correct username"
     );
 }
+
+/// Test that public LOGIN command is disabled when allow_public_login = false
+#[tokio::test]
+async fn public_login_disabled_by_config() {
+    let tmpdir = TempDir::new().unwrap();
+    let mut config = Config::default();
+    config.storage.data_dir = tmpdir.path().join("data").to_string_lossy().to_string();
+    config.bbs.sysop = "testsysop".to_string();
+    config.bbs.allow_public_login = false; // Disable public LOGIN
+
+    let mut server = BbsServer::new(config).await.expect("server creation");
+
+    // First, register a user via DM with password (before disabling public login is relevant)
+    let register_event = TextEvent {
+        source: 111,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "REGISTER testuser testpass123".into(),
+    };
+    server
+        .route_text_event(register_event)
+        .await
+        .expect("user registration");
+
+    // Logout the user
+    let logout_event = TextEvent {
+        source: 111,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "LOGOUT".into(),
+    };
+    server.route_text_event(logout_event).await.expect("logout");
+
+    // Now attempt public LOGIN - should be silently ignored due to config
+    let public_event = TextEvent {
+        source: 111,
+        dest: None,
+        is_direct: false,
+        channel: None,
+        content: "^LOGIN testuser".into(),
+    };
+    server
+        .route_text_event(public_event)
+        .await
+        .expect("public login attempt");
+
+    // Open DM and try HI - should NOT auto-login because public LOGIN was disabled
+    let dm_event = TextEvent {
+        source: 111,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "HI".into(),
+    };
+    server.route_text_event(dm_event).await.expect("dm hi");
+
+    // Verify user is NOT logged in (because public LOGIN was ignored)
+    let session = server.test_get_session("111");
+    assert!(session.is_some(), "Session should exist from DM");
+    let session = session.unwrap();
+    assert!(
+        session.username.is_none(),
+        "User should NOT be auto-logged in when public LOGIN is disabled"
+    );
+
+    // However, DM-based LOGIN with password should still work
+    let dm_login = TextEvent {
+        source: 111,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "LOGIN testuser testpass123".into(),
+    };
+    server
+        .route_text_event(dm_login)
+        .await
+        .expect("dm login with password");
+
+    // Verify user IS now logged in via DM LOGIN
+    let session = server.test_get_session("111");
+    assert!(session.is_some(), "Session should exist");
+    let session = session.unwrap();
+    assert!(
+        session.username.is_some(),
+        "User should be logged in via DM LOGIN with password"
+    );
+    assert_eq!(
+        session.username.as_ref().unwrap(),
+        "testuser",
+        "Correct username from DM login"
+    );
+}

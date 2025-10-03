@@ -13,6 +13,10 @@ welcome_message = "Welcome to this Mesh BBS"
 # Must be one of: ^ ! + $ / >
 # Choose something easy-to-type on your device; default is "^" if omitted.
 public_command_prefix = "^"
+# Allow public channel LOGIN command (default: true)
+# When set to false, users must initiate login via direct message only.
+# This enhances security by preventing username enumeration on public channels.
+allow_public_login = true
 
 [meshtastic]
 # Serial port for Meshtastic device (Linux/macOS: /dev/ttyUSB0, Windows: COM3)

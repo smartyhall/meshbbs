@@ -101,6 +101,14 @@ pub struct BbsConfig {
         alias = "public_command_prefixes"
     )]
     pub public_command_prefix: Option<String>,
+    /// Allow public channel LOGIN command. When false, users must initiate login via DM only.
+    /// Defaults to true for backwards compatibility. Set to false for enhanced security.
+    #[serde(default = "default_allow_public_login")]
+    pub allow_public_login: bool,
+}
+
+fn default_allow_public_login() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -347,6 +355,7 @@ impl Default for Config {
                 welcome_message: "".to_string(),
                 sysop_password_hash: None,
                 public_command_prefix: Some("^".to_string()),
+                allow_public_login: true,
             },
             meshtastic: MeshtasticConfig {
                 port: "/dev/ttyUSB0".to_string(),

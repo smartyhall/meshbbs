@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.41-beta] - 2025-10-02
+
+### Added
+- Configuration option `allow_public_login` in `[bbs]` section to control whether public channel LOGIN commands are accepted
+- When set to `false`, users must initiate login via direct message only, enhancing security by preventing username enumeration
+- Comprehensive documentation in configuration guide explaining security implications
+- Unit test `public_login_disabled_by_config` validating the feature behavior
+
+### Changed
+- Public LOGIN command handler now respects `allow_public_login` configuration setting
+- When disabled, public LOGIN attempts are silently ignored with trace logging (no response to prevent enumeration attacks)
+- Direct message LOGIN continues to work regardless of this setting
+
+### Documentation
+- Added "BBS Settings" section to configuration guide documenting all core BBS configuration options
+- Updated `config.example.toml` with `allow_public_login` field and explanatory comments
+- Created `FEATURE_PUBLIC_LOGIN_CONFIG.md` with complete implementation details and usage examples
+
+### Security
+- Defaults to `true` for backward compatibility with existing configurations
+- When disabled, prevents potential username enumeration attacks on public channels
+- All authentication remains functional via direct messages
+
 ## [1.0.40-beta] - 2025-10-02
 
 ### Added

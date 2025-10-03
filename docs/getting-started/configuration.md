@@ -2,6 +2,37 @@
 
 This guide covers the `config.toml` options for MeshBBS.
 
+## BBS Settings
+
+Core BBS settings control name, sysop, and security behavior.
+
+```toml
+[bbs]
+name = "meshbbs Station"
+sysop = "sysop"
+location = "Your Location"
+description = "A bulletin board system for mesh networks"
+max_users = 100
+session_timeout = 10  # minutes of inactivity before automatic logout
+welcome_message = "Welcome to this Mesh BBS"
+
+# Public command prefix (single character)
+# Must be one of: ^ ! + $ / >
+# Default: "^"
+public_command_prefix = "^"
+
+# Allow public channel LOGIN command (default: true)
+# When set to false, users must initiate login via direct message only.
+# This enhances security by preventing username enumeration on public channels.
+allow_public_login = true
+```
+
+Security considerations:
+- When `allow_public_login = false`, users cannot use `<prefix>LOGIN username` on public channels
+- Users must open a direct message and use `LOGIN username` or `HI` to authenticate
+- This prevents potential username enumeration attacks and keeps authentication private
+- Existing sessions and DM-based login are unaffected by this setting
+
 ## Ident Beacon
 
 Periodic station identification broadcast on the public channel.
