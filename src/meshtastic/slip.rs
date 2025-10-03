@@ -15,7 +15,12 @@ pub struct SlipDecoder {
 }
 
 impl SlipDecoder {
-    pub fn new() -> Self { Self { buf: Vec::new(), esc: false } }
+    pub fn new() -> Self {
+        Self {
+            buf: Vec::new(),
+            esc: false,
+        }
+    }
 
     /// Push bytes, returning any completed frames.
     pub fn push(&mut self, data: &[u8]) -> Vec<Vec<u8>> {
@@ -32,9 +37,13 @@ impl SlipDecoder {
             }
             match b {
                 END => {
-                    if !self.buf.is_empty() { frames.push(std::mem::take(&mut self.buf)); }
+                    if !self.buf.is_empty() {
+                        frames.push(std::mem::take(&mut self.buf));
+                    }
                 }
-                ESC => { self.esc = true; }
+                ESC => {
+                    self.esc = true;
+                }
                 _ => self.buf.push(b),
             }
         }
@@ -48,9 +57,15 @@ pub fn slip_encode(payload: &[u8]) -> Vec<u8> {
     out.push(END); // start delimiter (optional, ensures clean boundary)
     for &b in payload {
         match b {
-            END => { out.push(ESC); out.push(ESC_END); }
-            ESC => { out.push(ESC); out.push(ESC_ESC); }
-            _ => out.push(b)
+            END => {
+                out.push(ESC);
+                out.push(ESC_END);
+            }
+            ESC => {
+                out.push(ESC);
+                out.push(ESC_ESC);
+            }
+            _ => out.push(b),
         }
     }
     out.push(END);

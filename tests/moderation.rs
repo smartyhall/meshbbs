@@ -1,22 +1,64 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, MessageTopicConfig, GamesConfig};
-use meshbbs::{config::*, bbs::server::BbsServer};
+use meshbbs::config::{
+    BbsConfig, Config, GamesConfig, LoggingConfig, MeshtasticConfig, MessageTopicConfig,
+    StorageConfig,
+};
+use meshbbs::{bbs::server::BbsServer, config::*};
 use std::collections::HashMap;
 
 async fn base_config() -> Config {
     let mut topics = HashMap::new();
-    topics.insert("general".into(), MessageTopicConfig { 
-        name: "General".into(), 
-        description: "General discussions".into(), 
-        read_level: 0, 
-        post_level: 0 
-    });
-    
+    topics.insert(
+        "general".into(),
+        MessageTopicConfig {
+            name: "General".into(),
+            description: "General discussions".into(),
+            read_level: 0,
+            post_level: 0,
+        },
+    );
+
     Config {
-    bbs: BbsConfig { name: "Test".into(), sysop: "sysop".into(), location: "loc".into(), description: "d".into(), max_users: 10, session_timeout: 10, welcome_message: "w".into(), sysop_password_hash: None, public_command_prefix: None },
-    meshtastic: MeshtasticConfig { port: "".into(), baud_rate: 115200, node_id: "".into(), channel: 0, min_send_gap_ms: None, dm_resend_backoff_seconds: None, post_dm_broadcast_gap_ms: None, dm_to_dm_gap_ms: None, help_broadcast_delay_ms: None, scheduler_max_queue: None, scheduler_aging_threshold_ms: None, scheduler_stats_interval_ms: None },
-        storage: StorageConfig { data_dir: tempfile::tempdir().unwrap().path().join("data").to_str().unwrap().to_string(), max_message_size: 1024 },
+        bbs: BbsConfig {
+            name: "Test".into(),
+            sysop: "sysop".into(),
+            location: "loc".into(),
+            description: "d".into(),
+            max_users: 10,
+            session_timeout: 10,
+            welcome_message: "w".into(),
+            sysop_password_hash: None,
+            public_command_prefix: None,
+        },
+        meshtastic: MeshtasticConfig {
+            port: "".into(),
+            baud_rate: 115200,
+            node_id: "".into(),
+            channel: 0,
+            min_send_gap_ms: None,
+            dm_resend_backoff_seconds: None,
+            post_dm_broadcast_gap_ms: None,
+            dm_to_dm_gap_ms: None,
+            help_broadcast_delay_ms: None,
+            scheduler_max_queue: None,
+            scheduler_aging_threshold_ms: None,
+            scheduler_stats_interval_ms: None,
+        },
+        storage: StorageConfig {
+            data_dir: tempfile::tempdir()
+                .unwrap()
+                .path()
+                .join("data")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            max_message_size: 1024,
+        },
         message_topics: topics,
-        logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
+        logging: LoggingConfig {
+            level: "error".into(),
+            file: None,
+            security_file: None,
+        },
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
@@ -32,12 +74,18 @@ async fn moderator_delete_message() {
     server.test_register("mod", "Password123").await.unwrap();
     server.test_update_level("mod", 5).await.unwrap();
     // Post a message as alice
-    server.test_store_message("general", "alice", "Hello").await.unwrap();
+    server
+        .test_store_message("general", "alice", "Hello")
+        .await
+        .unwrap();
     let msgs = server.test_get_messages("general", 10).await.unwrap();
     let id = msgs.first().unwrap().id.clone();
     // Attempt deletion as normal user should fail via helper (not exposed); call moderator method with low level won't check level itself, so simulate security by manual check.
     // Here we directly call moderator_delete_message as test harness (server already ensures only moderators call it in command path). It should delete.
-    let deleted = server.moderator_delete_message("general", &id, "mod").await.unwrap();
+    let deleted = server
+        .moderator_delete_message("general", &id, "mod")
+        .await
+        .unwrap();
     assert!(deleted);
     let msgs_after = server.test_get_messages("general", 10).await.unwrap();
     assert!(msgs_after.is_empty());
@@ -52,11 +100,20 @@ async fn lock_prevents_post_regular_allows_moderator() {
     server.test_update_level("mod", 5).await.unwrap();
     server.moderator_lock_topic("general", "mod").await.unwrap();
     // Regular user posting via storage directly should error due to lock
-    let err = server.test_store_message("general", "bob", "Hi").await.err();
+    let err = server
+        .test_store_message("general", "bob", "Hi")
+        .await
+        .err();
     assert!(err.is_some());
     // Moderator posts by temporarily unlocking, posting, re-locking (simulate command path which would check)
-    server.moderator_unlock_topic("general", "mod").await.unwrap();
-    server.test_store_message("general", "mod", "Announcement").await.unwrap();
+    server
+        .moderator_unlock_topic("general", "mod")
+        .await
+        .unwrap();
+    server
+        .test_store_message("general", "mod", "Announcement")
+        .await
+        .unwrap();
     server.moderator_lock_topic("general", "mod").await.unwrap();
     let msgs = server.test_get_messages("general", 10).await.unwrap();
     assert_eq!(msgs.len(), 1);

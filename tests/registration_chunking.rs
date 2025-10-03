@@ -1,5 +1,5 @@
-use meshbbs::config::Config;
 use meshbbs::bbs::server::BbsServer;
+use meshbbs::config::Config;
 use tokio::runtime::Runtime;
 
 // Helper to build a config with small max message size to force chunking

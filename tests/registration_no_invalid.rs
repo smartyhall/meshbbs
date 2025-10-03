@@ -20,16 +20,28 @@ async fn register_no_invalid_command_echo() {
         channel: None,
         content: "REGISTER bob password123".into(),
     };
-    server.route_text_event(register_event).await.expect("register event");
+    server
+        .route_text_event(register_event)
+        .await
+        .expect("register event");
 
     // Gather all messages sent to this node
     let node_key = format!("{node_id}");
     let mut combined = String::new();
     for (to, msg) in server.test_messages() {
-        if to == &node_key { combined.push_str(msg); combined.push('\n'); }
+        if to == &node_key {
+            combined.push_str(msg);
+            combined.push('\n');
+        }
     }
 
-    assert!(combined.contains("Registered as bob."), "Missing compact registration confirmation: {combined}");
-    assert!(!combined.contains("Invalid command \"REGISTER"), "Unexpected invalid command after registration: {combined}");
+    assert!(
+        combined.contains("Registered as bob."),
+        "Missing compact registration confirmation: {combined}"
+    );
+    assert!(
+        !combined.contains("Invalid command \"REGISTER"),
+        "Unexpected invalid command after registration: {combined}"
+    );
 }
 // (Removed earlier experimental test harness; final test above is authoritative.)

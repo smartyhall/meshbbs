@@ -1,5 +1,5 @@
-use meshbbs::config::Config;
 use meshbbs::bbs::BbsServer;
+use meshbbs::config::Config;
 
 // This test relies on meshtastic-proto feature; skip if not enabled.
 #[cfg(feature = "meshtastic-proto")]
@@ -13,7 +13,9 @@ async fn dm_preempts_broadcast() {
     let mut server = BbsServer::new(config.clone()).await.expect("server new");
 
     // Enqueue several broadcasts
-    for i in 0..5 { let _ = server.send_broadcast(&format!("BCAST {i}" )).await; }
+    for i in 0..5 {
+        let _ = server.send_broadcast(&format!("BCAST {i}")).await;
+    }
     // Enqueue a DM
     let _ = server.send_message("0x0000ABCD", "HELLO DM").await;
 
@@ -22,15 +24,28 @@ async fn dm_preempts_broadcast() {
 
     // Collected messages: ensure DM appears before at least last broadcast (preemption)
     let msgs = server.test_messages();
-    let dm_pos = msgs.iter().position(|(_,m)| m.contains("HELLO DM"));
-    let bcast_positions: Vec<_> = msgs.iter().enumerate().filter(|(_,(_,m))| m.starts_with("BCAST")).map(|(i,_)| i).collect();
+    let dm_pos = msgs.iter().position(|(_, m)| m.contains("HELLO DM"));
+    let bcast_positions: Vec<_> = msgs
+        .iter()
+        .enumerate()
+        .filter(|(_, (_, m))| m.starts_with("BCAST"))
+        .map(|(i, _)| i)
+        .collect();
 
-    assert!(dm_pos.is_some(), "DM not found in collected messages: {:?}", msgs);
+    assert!(
+        dm_pos.is_some(),
+        "DM not found in collected messages: {:?}",
+        msgs
+    );
     assert!(!bcast_positions.is_empty(), "No broadcasts recorded");
     let dm_index = dm_pos.unwrap();
     // DM should not be strictly after all broadcasts (i.e., some broadcast queued later should come after it)
     let max_bcast_before_dm = bcast_positions.iter().all(|p| *p < dm_index);
-    assert!(max_bcast_before_dm, "DM was not scheduled ahead of queued broadcasts: order={:?}", msgs);
+    assert!(
+        max_bcast_before_dm,
+        "DM was not scheduled ahead of queued broadcasts: order={:?}",
+        msgs
+    );
 }
 
 #[cfg(not(feature = "meshtastic-proto"))]

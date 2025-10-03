@@ -75,7 +75,7 @@
 //! Configuration values can be overridden via environment variables and CLI arguments,
 //! following a clear precedence order: CLI args > Environment > Config file > Defaults
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::fs;
@@ -95,7 +95,11 @@ pub struct BbsConfig {
     pub sysop_password_hash: Option<String>,
     /// Public command prefix. Must be one of a hard-coded allowed set for safety.
     /// Examples: "^", "!", "+", "$", "/", ">". If unset or invalid, defaults to "^".
-    #[serde(default, skip_serializing_if = "Option::is_none", alias = "public_command_prefixes")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "public_command_prefixes"
+    )]
     pub public_command_prefix: Option<String>,
 }
 
@@ -229,7 +233,10 @@ impl IdentBeaconConfig {
             "2hours" => 120,
             "4hours" => 240,
             _ => {
-                eprintln!("Invalid ident beacon frequency '{}', defaulting to 15min", self.frequency);
+                eprintln!(
+                    "Invalid ident beacon frequency '{}', defaulting to 15min",
+                    self.frequency
+                );
                 15
             }
         }
@@ -271,12 +278,13 @@ impl Default for WeatherConfig {
 impl Config {
     /// Load configuration from a file
     pub async fn load(path: &str) -> Result<Self> {
-        let content = fs::read_to_string(path).await
+        let content = fs::read_to_string(path)
+            .await
             .map_err(|e| anyhow!("Failed to read config file {}: {}", path, e))?;
-        
+
         let config: Config = toml::from_str(&content)
             .map_err(|e| anyhow!("Failed to parse config file {}: {}", path, e))?;
-        
+
         Ok(config)
     }
 
@@ -285,10 +293,11 @@ impl Config {
         let config = Config::default();
         let content = toml::to_string_pretty(&config)
             .map_err(|e| anyhow!("Failed to serialize default config: {}", e))?;
-        
-        fs::write(path, content).await
+
+        fs::write(path, content)
+            .await
             .map_err(|e| anyhow!("Failed to write config file {}: {}", path, e))?;
-        
+
         Ok(())
     }
 }
@@ -296,27 +305,36 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         let mut message_topics = HashMap::new();
-        
-        message_topics.insert("general".to_string(), MessageTopicConfig {
-            name: "General".to_string(),
-            description: "General discussions".to_string(),
-            read_level: 0,
-            post_level: 0,
-        });
-        
-        message_topics.insert("community".to_string(), MessageTopicConfig {
-            name: "Community".to_string(),
-            description: "Events, meet-ups, and community discussions".to_string(),
-            read_level: 0,
-            post_level: 0,
-        });
-        
-        message_topics.insert("technical".to_string(), MessageTopicConfig {
-            name: "Technical".to_string(),
-            description: "Tech, hardware, and administrative discussions".to_string(),
-            read_level: 0,
-            post_level: 0,
-        });
+
+        message_topics.insert(
+            "general".to_string(),
+            MessageTopicConfig {
+                name: "General".to_string(),
+                description: "General discussions".to_string(),
+                read_level: 0,
+                post_level: 0,
+            },
+        );
+
+        message_topics.insert(
+            "community".to_string(),
+            MessageTopicConfig {
+                name: "Community".to_string(),
+                description: "Events, meet-ups, and community discussions".to_string(),
+                read_level: 0,
+                post_level: 0,
+            },
+        );
+
+        message_topics.insert(
+            "technical".to_string(),
+            MessageTopicConfig {
+                name: "Technical".to_string(),
+                description: "Tech, hardware, and administrative discussions".to_string(),
+                read_level: 0,
+                post_level: 0,
+            },
+        );
 
         Config {
             bbs: BbsConfig {
@@ -401,14 +419,7 @@ mod tests {
 
     #[test]
     fn test_ident_beacon_frequency_minutes_invalid() {
-        let invalid_frequencies = vec![
-            "invalid",
-            "10hours",
-            "",
-            "60min",
-            "30mins",
-            "1hr",
-        ];
+        let invalid_frequencies = vec!["invalid", "10hours", "", "60min", "30mins", "1hr"];
 
         for invalid_freq in invalid_frequencies {
             let config = IdentBeaconConfig {
@@ -466,7 +477,7 @@ mod tests {
             enabled: false,
             frequency: "4hours".to_string(),
         };
-        
+
         let cloned = config.clone();
         assert_eq!(cloned.enabled, config.enabled);
         assert_eq!(cloned.frequency, config.frequency);

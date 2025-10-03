@@ -412,22 +412,22 @@ const FORTUNES: [&str; 400] = [
 ];
 
 /// Pick a random fortune from the classic database.
-/// 
+///
 /// Returns a reference to a static string containing a fortune cookie message.
 /// All fortunes are guaranteed to be under 200 characters for mesh network compatibility.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use meshbbs::bbs::fortune::get_fortune;
-/// 
+///
 /// let fortune = get_fortune();
 /// assert!(!fortune.is_empty());
 /// assert!(fortune.len() <= 200);
 /// ```
-/// 
+///
 /// # Thread Safety
-/// 
+///
 /// This function is thread-safe and uses `rand::thread_rng()` for randomization.
 /// Multiple calls from different threads will produce independent random results.
 pub fn get_fortune() -> &'static str {
@@ -437,11 +437,11 @@ pub fn get_fortune() -> &'static str {
 }
 
 /// Get the total number of fortunes in the database.
-/// 
+///
 /// This function is primarily useful for testing and diagnostics.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use meshbbs::bbs::fortune::fortune_count;
 /// assert!(fortune_count() > 0);
@@ -451,15 +451,15 @@ pub fn fortune_count() -> usize {
 }
 
 /// Get the maximum length of any fortune in the database.
-/// 
+///
 /// This function is useful for validation and ensuring all fortunes
 /// meet the mesh network size constraints.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```
 /// use meshbbs::bbs::fortune::max_fortune_length;
-/// 
+///
 /// assert!(max_fortune_length() <= 200);
 /// ```
 pub fn max_fortune_length() -> usize {
@@ -481,7 +481,9 @@ mod tests {
             assert!(
                 fortune.len() <= 200,
                 "Fortune {} is too long ({} chars): {}",
-                i, fortune.len(), fortune
+                i,
+                fortune.len(),
+                fortune
             );
         }
     }
@@ -489,11 +491,7 @@ mod tests {
     #[test]
     fn all_fortunes_non_empty() {
         for (i, fortune) in FORTUNES.iter().enumerate() {
-            assert!(
-                !fortune.is_empty(),
-                "Fortune {} is empty",
-                i
-            );
+            assert!(!fortune.is_empty(), "Fortune {} is empty", i);
         }
     }
 
@@ -501,9 +499,12 @@ mod tests {
     fn all_fortunes_contain_printable_chars() {
         for (i, fortune) in FORTUNES.iter().enumerate() {
             assert!(
-                fortune.chars().all(|c| !c.is_control() || c.is_ascii_whitespace()),
+                fortune
+                    .chars()
+                    .all(|c| !c.is_control() || c.is_ascii_whitespace()),
                 "Fortune {} contains control characters: {}",
-                i, fortune
+                i,
+                fortune
             );
         }
     }
@@ -524,14 +525,18 @@ mod tests {
             results.insert(get_fortune());
         }
         // Should get at least 10 different fortunes in 50 tries
-        assert!(results.len() >= 10, "Fortune randomness seems poor: only {} unique results", results.len());
+        assert!(
+            results.len() >= 10,
+            "Fortune randomness seems poor: only {} unique results",
+            results.len()
+        );
     }
 
     #[test]
     fn fortune_thread_safety_simulation() {
         // Simulate concurrent access by calling get_fortune many times rapidly
         let mut handles = vec![];
-        
+
         for _ in 0..10 {
             let handle = std::thread::spawn(|| {
                 let mut local_results = std::collections::HashSet::new();
@@ -542,15 +547,19 @@ mod tests {
             });
             handles.push(handle);
         }
-        
+
         let mut all_results = std::collections::HashSet::new();
         for handle in handles {
             let thread_results = handle.join().unwrap();
             all_results.extend(thread_results);
         }
-        
+
         // Should collect a good variety of fortunes across threads
-        assert!(all_results.len() >= 15, "Concurrent access produced only {} unique fortunes", all_results.len());
+        assert!(
+            all_results.len() >= 15,
+            "Concurrent access produced only {} unique fortunes",
+            all_results.len()
+        );
     }
 
     #[test]
@@ -568,9 +577,16 @@ mod tests {
     #[test]
     fn max_fortune_length_validation() {
         let max_len = max_fortune_length();
-        assert!(max_len <= 200, "Maximum fortune length {} exceeds 200 character limit", max_len);
-        assert!(max_len > 0, "Maximum fortune length should be greater than 0");
-        
+        assert!(
+            max_len <= 200,
+            "Maximum fortune length {} exceeds 200 character limit",
+            max_len
+        );
+        assert!(
+            max_len > 0,
+            "Maximum fortune length should be greater than 0"
+        );
+
         // Verify it actually matches the longest fortune
         let actual_max = FORTUNES.iter().map(|f| f.len()).max().unwrap();
         assert_eq!(max_len, actual_max);
@@ -580,7 +596,7 @@ mod tests {
     fn helper_functions_consistency() {
         // Ensure helper functions are consistent with the actual data
         assert_eq!(fortune_count(), FORTUNES.len());
-        
+
         let calculated_max = FORTUNES.iter().map(|f| f.len()).max().unwrap_or(0);
         assert_eq!(max_fortune_length(), calculated_max);
     }

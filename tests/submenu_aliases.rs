@@ -6,20 +6,50 @@ async fn message_area_aliases() {
     let cfg = Config::default();
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
     let mut session = meshbbs::bbs::session::Session::new("s_ma".into(), "node_ma".into());
-    // Enter main menu
-    let _ = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "init", &mut storage, &cfg).await.unwrap();
-    // Enter message areas via full and short forms
-    let _areas_full = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "MESSAGES", &mut storage, &cfg).await.unwrap();
-    // Back to main menu to test short form
+    session.login("tester".into(), 1).await.unwrap();
     session.state = meshbbs::bbs::session::SessionState::MainMenu;
-    let _areas_short = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "m", &mut storage, &cfg).await.unwrap();
-    // In MessageTopics state now. R vs READ path handled by handle_message_topics only for R/READ without topic argument; we only check they produce same transition output.
-    let r_full = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "READ", &mut storage, &cfg).await.unwrap();
-    assert!(r_full.contains("Messages in") || r_full.contains("Recent messages"), "READ output should list messages");
-    // Reset state to MessageTopics to compare short form again
+
+    // Long-form should be rejected once logged in.
+    let areas_full = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "MESSAGES", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        areas_full.starts_with("Invalid command"),
+        "MESSAGES should be rejected in favor of short-form M; got: {areas_full}"
+    );
+
+    // Short form still works and transitions to topics menu.
+    let areas_short = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "M", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        areas_short.contains("Topics") || areas_short.contains("Message Topics"),
+        "M should enter topics view; got: {areas_short}"
+    );
+
+    // Simulate navigating to MessageTopics menu (e.g., listing topics then returning).
     session.state = meshbbs::bbs::session::SessionState::MessageTopics;
-    let r_short = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "R", &mut storage, &cfg).await.unwrap();
-    assert!(r_short.contains("Messages in") || r_short.contains("Recent messages"), "R output should list messages");
+
+    // Long-form READ should now be rejected, while short-form R lists messages.
+    let r_full = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "READ", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        r_full.contains("Commands: [R]ead"),
+        "READ should be nudged toward R shortcut; got: {r_full}"
+    );
+
+    let r_short = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "R", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        r_short.contains("Messages in") || r_short.contains("Recent messages"),
+        "R output should list messages; got: {r_short}"
+    );
 }
 
 #[tokio::test]
@@ -27,12 +57,26 @@ async fn user_menu_aliases() {
     let cfg = Config::default();
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
     let mut session = meshbbs::bbs::session::Session::new("s_um".into(), "node_um".into());
-    // Enter main menu
-    let _ = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "go", &mut storage, &cfg).await.unwrap();
-    // Enter user menu via full and short forms
-    let full = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "USER", &mut storage, &cfg).await.unwrap();
-    // Back to main menu
+    session.login("tester2".into(), 1).await.unwrap();
     session.state = meshbbs::bbs::session::SessionState::MainMenu;
-    let short = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "u", &mut storage, &cfg).await.unwrap();
-    assert_eq!(full, short, "U should equal USER");
+
+    // Long-form USER should now be rejected to reinforce concise inputs.
+    let full = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "USER", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        full.starts_with("Invalid command"),
+        "USER should be rejected in favor of P; got: {full}"
+    );
+
+    // Short form P opens preferences.
+    let short = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "P", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        short.contains("Preferences"),
+        "P should open the preferences menu; got: {short}"
+    );
 }

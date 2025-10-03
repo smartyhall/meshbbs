@@ -15,7 +15,7 @@
 //! bound memory usage.
 use log::trace;
 use std::collections::HashMap;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct PendingLogin {
@@ -58,18 +58,28 @@ impl PublicState {
 
     pub fn prune_expired(&mut self) {
         let now = Instant::now();
-        self.pending.retain(|_, v| now.duration_since(v.created_at) < self.pending_timeout);
+        self.pending
+            .retain(|_, v| now.duration_since(v.created_at) < self.pending_timeout);
         // Keep slot entries reasonably small; drop entries not touched for 30 minutes
         let slot_ttl = Duration::from_secs(30 * 60);
-        self.slot_last_spin.retain(|_, t| now.duration_since(*t) < slot_ttl);
+        self.slot_last_spin
+            .retain(|_, t| now.duration_since(*t) < slot_ttl);
         // Same TTL policy for eightball
-        self.eightball_last.retain(|_, t| now.duration_since(*t) < slot_ttl);
+        self.eightball_last
+            .retain(|_, t| now.duration_since(*t) < slot_ttl);
         // Same TTL policy for fortune
-        self.fortune_last.retain(|_, t| now.duration_since(*t) < slot_ttl);
+        self.fortune_last
+            .retain(|_, t| now.duration_since(*t) < slot_ttl);
     }
 
     pub fn set_pending(&mut self, node_id: &str, username: String) {
-        self.pending.insert(node_id.to_string(), PendingLogin { requested_username: username, created_at: Instant::now() });
+        self.pending.insert(
+            node_id.to_string(),
+            PendingLogin {
+                requested_username: username,
+                created_at: Instant::now(),
+            },
+        );
     }
 
     pub fn take_pending(&mut self, node_id: &str) -> Option<String> {
@@ -80,7 +90,10 @@ impl PublicState {
         let now = Instant::now();
         match self.last_public_reply.get(node_id) {
             Some(last) if now.duration_since(*last) < self.reply_cooldown => false,
-            _ => { self.last_public_reply.insert(node_id.to_string(), now); true }
+            _ => {
+                self.last_public_reply.insert(node_id.to_string(), now);
+                true
+            }
         }
     }
 
@@ -89,7 +102,10 @@ impl PublicState {
         let now = Instant::now();
         match self.slot_last_spin.get(node_id) {
             Some(last) if now.duration_since(*last) < self.slot_cooldown => false,
-            _ => { self.slot_last_spin.insert(node_id.to_string(), now); true }
+            _ => {
+                self.slot_last_spin.insert(node_id.to_string(), now);
+                true
+            }
         }
     }
 
@@ -98,7 +114,10 @@ impl PublicState {
         let now = Instant::now();
         match self.eightball_last.get(node_id) {
             Some(last) if now.duration_since(*last) < self.eightball_cooldown => false,
-            _ => { self.eightball_last.insert(node_id.to_string(), now); true }
+            _ => {
+                self.eightball_last.insert(node_id.to_string(), now);
+                true
+            }
         }
     }
 
@@ -107,7 +126,10 @@ impl PublicState {
         let now = Instant::now();
         match self.fortune_last.get(node_id) {
             Some(last) if now.duration_since(*last) < self.fortune_cooldown => false,
-            _ => { self.fortune_last.insert(node_id.to_string(), now); true }
+            _ => {
+                self.fortune_last.insert(node_id.to_string(), now);
+                true
+            }
         }
     }
 }
@@ -122,58 +144,93 @@ impl PublicCommandParser {
     /// Create a parser with a single prefix. If `prefix_opt` is None or invalid, defaults to '^'.
     pub fn new_with_prefix(prefix_opt: Option<String>) -> Self {
         let default = '^';
-        let allowed: &[char] = &['^','!','+','$','/','>'];
+        let allowed: &[char] = &['^', '!', '+', '$', '/', '>'];
         let p = prefix_opt
             .and_then(|s| s.chars().next())
             .filter(|c| allowed.contains(c))
             .unwrap_or(default);
         Self { prefix: p }
     }
-    pub fn new() -> Self { Self::new_with_prefix(None) }
+    pub fn new() -> Self {
+        Self::new_with_prefix(None)
+    }
 
     /// Returns the configured prefix for use in help text and parsing.
-    pub fn primary_prefix_char(&self) -> char { self.prefix }
+    pub fn primary_prefix_char(&self) -> char {
+        self.prefix
+    }
 
     pub fn parse(&self, raw: &str) -> PublicCommand {
-    let trimmed = raw.trim();
-    // Require configured prefix for public commands to reduce accidental noise
-    let mut chars = trimmed.chars();
-    let Some(first) = chars.next() else { return PublicCommand::Unknown };
-    if first != self.prefix { return PublicCommand::Unknown; }
-    let body: String = chars.collect();
-    if body.eq_ignore_ascii_case("HELP") || body == "?" { trace!("Parsed HELP from '{}'" , raw); return PublicCommand::Help; }
-    // WEATHER command: accept optional trailing arguments (ignored for now)
-    if body.len() >= 7 && body.get(..7).map(|s| s.eq_ignore_ascii_case("WEATHER")).unwrap_or(false)
-        && (body.len() == 7 || body.get(7..8).and_then(|_| body.chars().nth(7)).map(|c| c.is_whitespace()).unwrap_or(false)) {
-        trace!("Parsed WEATHER from '{}' (args ignored)", raw);
-        return PublicCommand::Weather;
-    }
-    // SLOT machine command: <prefix>SLOTMACHINE or <prefix>SLOT
+        let trimmed = raw.trim();
+        // Require configured prefix for public commands to reduce accidental noise
+        let mut chars = trimmed.chars();
+        let Some(first) = chars.next() else {
+            return PublicCommand::Unknown;
+        };
+        if first != self.prefix {
+            return PublicCommand::Unknown;
+        }
+        let body: String = chars.collect();
+        if body.eq_ignore_ascii_case("HELP") || body == "?" {
+            trace!("Parsed HELP from '{}'", raw);
+            return PublicCommand::Help;
+        }
+        // WEATHER command: accept optional trailing arguments (ignored for now)
+        if body.len() >= 7
+            && body
+                .get(..7)
+                .map(|s| s.eq_ignore_ascii_case("WEATHER"))
+                .unwrap_or(false)
+            && (body.len() == 7
+                || body
+                    .get(7..8)
+                    .and_then(|_| body.chars().nth(7))
+                    .map(|c| c.is_whitespace())
+                    .unwrap_or(false))
+        {
+            trace!("Parsed WEATHER from '{}' (args ignored)", raw);
+            return PublicCommand::Weather;
+        }
+        // SLOT machine command: <prefix>SLOTMACHINE or <prefix>SLOT
         if body.eq_ignore_ascii_case("SLOTMACHINE") || body.eq_ignore_ascii_case("SLOT") {
             trace!("Parsed SLOTMACHINE from '{}'", raw);
             return PublicCommand::SlotMachine;
         }
-    // Magic 8-Ball: <prefix>8BALL
+        // Magic 8-Ball: <prefix>8BALL
         if body.eq_ignore_ascii_case("8BALL") {
             trace!("Parsed 8BALL from '{}'", raw);
             return PublicCommand::EightBall;
         }
-    // Fortune cookies: <prefix>FORTUNE
+        // Fortune cookies: <prefix>FORTUNE
         if body.eq_ignore_ascii_case("FORTUNE") {
             trace!("Parsed FORTUNE from '{}'", raw);
             return PublicCommand::Fortune;
         }
-    // Slot stats: <prefix>SLOTSTATS
+        // Slot stats: <prefix>SLOTSTATS
         if body.eq_ignore_ascii_case("SLOTSTATS") {
             trace!("Parsed SLOTSTATS from '{}'", raw);
             return PublicCommand::SlotStats;
         }
-        if body.len() >= 5 && body.get(..5).map(|s| s.eq_ignore_ascii_case("LOGIN")).unwrap_or(false) {
-            if body.len() == 5 { return PublicCommand::Invalid("Username required".into()); }
+        if body.len() >= 5
+            && body
+                .get(..5)
+                .map(|s| s.eq_ignore_ascii_case("LOGIN"))
+                .unwrap_or(false)
+        {
+            if body.len() == 5 {
+                return PublicCommand::Invalid("Username required".into());
+            }
             let after = body.get(5..).unwrap_or("");
-            if after.chars().next().map(|c| c.is_whitespace()).unwrap_or(false) {
+            if after
+                .chars()
+                .next()
+                .map(|c| c.is_whitespace())
+                .unwrap_or(false)
+            {
                 let user = after.trim();
-                if user.is_empty() { return PublicCommand::Invalid("Username required".into()); }
+                if user.is_empty() {
+                    return PublicCommand::Invalid("Username required".into());
+                }
                 trace!("Parsed LOGIN '{}' from '{}'", user, raw);
                 return PublicCommand::Login(user.to_string());
             }
@@ -182,7 +239,11 @@ impl PublicCommandParser {
     }
 }
 
-impl Default for PublicCommandParser { fn default() -> Self { Self::new() } }
+impl Default for PublicCommandParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum PublicCommand {

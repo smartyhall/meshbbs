@@ -1,11 +1,11 @@
-use anyhow::Result;
-use log::debug;
 use crate::logutil::escape_log;
+use anyhow::Result;
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use log::debug;
+use serde::{Deserialize, Serialize};
 
-use crate::storage::Storage;
 use super::commands::CommandProcessor;
+use crate::storage::Storage;
 
 /// # User Session Management
 ///
@@ -32,7 +32,7 @@ use super::commands::CommandProcessor;
 ///
 /// // Create new session for a connecting user
 /// let session = Session::new("session_123".to_string(), "node_456".to_string());
-/// 
+///
 /// // Sessions start in Connected state
 /// assert!(matches!(session.state, SessionState::Connected));
 /// ```
@@ -76,8 +76,10 @@ pub struct Session {
     pub post_index: usize,
     /// Current slice index within a post body (1-based) when content spans multiple slices
     pub slice_index: usize,
-    /// Optional filter text for list/search context (e.g., `F <text>`) 
+    /// Optional filter text for list/search context (e.g., `F <text>`)
     pub filter_text: Option<String>,
+    /// Temporary scratchpad for multi-step flows (password changes, filters, etc.)
+    pub pending_input: Option<String>,
     /// Baseline timestamp for unread indicators (captured as previous last_login when user logs in)
     pub unread_since: Option<DateTime<Utc>>,
     pub login_time: DateTime<Utc>,
@@ -94,7 +96,7 @@ pub enum SessionState {
     ReadingMessages,
     PostingMessage,
     /// New flat-mode UI states
-    Topics,          // Topics root list
+    Topics, // Topics root list
     Subtopics,       // Subtopics under current_topic (as parent)
     Threads,         // Threads (messages) list within current_topic
     ThreadRead,      // Reading a single thread/post slice
@@ -103,6 +105,9 @@ pub enum SessionState {
     ComposeReply,    // Reply compose to current thread
     ConfirmDelete,   // Confirm delete of selected entity
     UserMenu,
+    UserChangePassCurrent,
+    UserChangePassNew,
+    UserSetPassNew,
     /// TinyHack mini-game play loop
     TinyHack,
     Disconnected,
@@ -112,7 +117,7 @@ impl Session {
     /// Create a new session
     pub fn new(id: String, node_id: String) -> Self {
         let now = Utc::now();
-        
+
         Session {
             id,
             node_id,
@@ -127,6 +132,7 @@ impl Session {
             post_index: 1,
             slice_index: 1,
             filter_text: None,
+            pending_input: None,
             unread_since: None,
             login_time: now,
             last_activity: now,
@@ -135,14 +141,23 @@ impl Session {
     }
 
     /// Process a command from the user
-    pub async fn process_command(&mut self, command: &str, storage: &mut Storage, config: &crate::config::Config) -> Result<String> {
+    pub async fn process_command(
+        &mut self,
+        command: &str,
+        storage: &mut Storage,
+        config: &crate::config::Config,
+    ) -> Result<String> {
         self.update_activity();
-        
-    debug!("Session {}: Processing command: {}", self.id, escape_log(command));
-        
+
+        debug!(
+            "Session {}: Processing command: {}",
+            self.id,
+            escape_log(command)
+        );
+
         let processor = CommandProcessor::new();
         let response = processor.process(self, command, storage, config).await?;
-        
+
         Ok(response)
     }
 
@@ -157,7 +172,7 @@ impl Session {
         self.username = Some(username);
         self.user_level = user_level;
         self.state = SessionState::MainMenu;
-        
+
         Ok(())
     }
 
@@ -168,7 +183,7 @@ impl Session {
         self.user_level = 0;
         self.current_topic = None;
         self.state = SessionState::Disconnected;
-        
+
         Ok(())
     }
 
@@ -185,18 +200,32 @@ impl Session {
     #[allow(dead_code)]
     pub fn display_node_short(&self) -> String {
         self.short_label.clone().unwrap_or_else(|| {
-            if let Ok(n) = self.node_id.parse::<u32>() { format!("0x{:06X}", n & 0xFFFFFF) } else { self.node_id.clone() }
+            if let Ok(n) = self.node_id.parse::<u32>() {
+                format!("0x{:06X}", n & 0xFFFFFF)
+            } else {
+                self.node_id.clone()
+            }
         })
     }
 
     #[allow(dead_code)]
     pub fn display_node_long(&self) -> String {
-        self.long_label.clone().unwrap_or_else(|| self.display_node_short())
+        self.long_label
+            .clone()
+            .unwrap_or_else(|| self.display_node_short())
     }
 
     pub fn update_labels(&mut self, short: Option<String>, long: Option<String>) {
-        if let Some(s) = short { if !s.is_empty() { self.short_label = Some(s); } }
-        if let Some(l) = long { if !l.is_empty() { self.long_label = Some(l); } }
+        if let Some(s) = short {
+            if !s.is_empty() {
+                self.short_label = Some(s);
+            }
+        }
+        if let Some(l) = long {
+            if !l.is_empty() {
+                self.long_label = Some(l);
+            }
+        }
     }
 
     /// Check if the user has sufficient access level
@@ -218,9 +247,9 @@ impl Session {
     }
 
     /// Build a dynamic prompt string based on session state.
-    /// 
+    ///
     /// ## Prompt Formats
-    /// 
+    ///
     /// All prompts end with `>`:
     /// - Unauthenticated: `"unauth>"`
     /// - Main/menu (logged in): `"username (lvl1)>"`
@@ -234,20 +263,47 @@ impl Session {
 
         let level = self.user_level;
         match self.state {
-            SessionState::PostingMessage | SessionState::ComposeNewTitle | SessionState::ComposeNewBody | SessionState::ComposeReply => {
-                if let Some(topic) = &self.current_topic { format!("post@{}>", Self::truncate_topic(topic)) } else { "post>".into() }
+            SessionState::PostingMessage
+            | SessionState::ComposeNewTitle
+            | SessionState::ComposeNewBody
+            | SessionState::ComposeReply => {
+                if let Some(topic) = &self.current_topic {
+                    format!("post@{}>", Self::truncate_topic(topic))
+                } else {
+                    "post>".into()
+                }
             }
-            SessionState::ReadingMessages | SessionState::MessageTopics | SessionState::Topics | SessionState::Subtopics | SessionState::Threads | SessionState::ThreadRead => {
-                if let Some(topic) = &self.current_topic { format!("{}@{}>", self.display_name(), Self::truncate_topic(topic)) } else { format!("{} (lvl{})>", self.display_name(), level) }
+            SessionState::ReadingMessages
+            | SessionState::MessageTopics
+            | SessionState::Topics
+            | SessionState::Subtopics
+            | SessionState::Threads
+            | SessionState::ThreadRead => {
+                if let Some(topic) = &self.current_topic {
+                    format!("{}@{}>", self.display_name(), Self::truncate_topic(topic))
+                } else {
+                    format!("{} (lvl{})>", self.display_name(), level)
+                }
             }
             SessionState::ConfirmDelete => {
-                format!("confirm@{}>", self.current_topic.as_deref().unwrap_or("bbs"))
+                format!(
+                    "confirm@{}>",
+                    self.current_topic.as_deref().unwrap_or("bbs")
+                )
             }
             SessionState::TinyHack => {
                 // Keep prompt short in game mode
                 format!("{} (lvl{})>", self.display_name(), level)
             }
-            SessionState::MainMenu | SessionState::UserMenu | SessionState::LoggingIn | SessionState::Connected => {
+            SessionState::MainMenu
+            | SessionState::UserMenu
+            | SessionState::LoggingIn
+            | SessionState::Connected => {
+                format!("{} (lvl{})>", self.display_name(), level)
+            }
+            SessionState::UserChangePassCurrent
+            | SessionState::UserChangePassNew
+            | SessionState::UserSetPassNew => {
                 format!("{} (lvl{})>", self.display_name(), level)
             }
             SessionState::Disconnected => "".to_string(), // no prompt after disconnect
@@ -256,7 +312,10 @@ impl Session {
 
     fn truncate_topic(topic: &str) -> String {
         const MAX: usize = 20;
-        if topic.len() <= MAX { topic.to_string() } else { format!("{}…", &topic[..MAX-1]) }
+        if topic.len() <= MAX {
+            topic.to_string()
+        } else {
+            format!("{}…", &topic[..MAX - 1])
+        }
     }
-
 }

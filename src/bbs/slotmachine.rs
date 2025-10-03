@@ -30,13 +30,13 @@
 //! The module is intentionally self‑contained and exposes a small API that the BBS server calls
 //! to perform spins and query player status.
 
-use chrono::{DateTime, Utc, Duration as ChronoDuration};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use fs2::FileExt;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write, Seek, SeekFrom};
-use fs2::FileExt;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 /// Fixed bet cost per spin (coins deducted before spin)
@@ -49,16 +49,16 @@ pub const REFILL_HOURS: i64 = 24;
 // Reels: expanded to 22 symbols each; added two blanks and replaced one cherry with a blank
 // Blanks (⬜) are spaced within the reels for a more natural distribution (not clustered at the end)
 const REEL1: [&str; 22] = [
-    "🍒","🍊","🍋","🔔","🍒","🍇","🟦","⬜","🍊","🍒","🔔",
-    "🍇","⬜","🍊","🍋","7️⃣","🍒","🔔","🍇","🍊","🍋","⬜",
+    "🍒", "🍊", "🍋", "🔔", "🍒", "🍇", "🟦", "⬜", "🍊", "🍒", "🔔", "🍇", "⬜", "🍊", "🍋", "7️⃣",
+    "🍒", "🔔", "🍇", "🍊", "🍋", "⬜",
 ];
 const REEL2: [&str; 22] = [
-    "🍋","🍊","🔔","🍒","🍇","🍋","🍊","🔔","🍇","⬜","🟦",
-    "🍋","7️⃣","🍊","🔔","⬜","🍇","🍋","🔔","🍊","⬜","🍋",
+    "🍋", "🍊", "🔔", "🍒", "🍇", "🍋", "🍊", "🔔", "🍇", "⬜", "🟦", "🍋", "7️⃣", "🍊", "🔔", "⬜",
+    "🍇", "🍋", "🔔", "🍊", "⬜", "🍋",
 ];
 const REEL3: [&str; 22] = [
-    "🍊","🍋","🍒","🔔","🍋","⬜","🍊","🍇","🔔","🍋","7️⃣",
-    "🍊","🍒","🔔","⬜","🍋","🟦","⬜","🍋","🔔","🍊","🍋",
+    "🍊", "🍋", "🍒", "🔔", "🍋", "⬜", "🍊", "🍇", "🔔", "🍋", "7️⃣", "🍊", "🍒", "🔔", "⬜", "🍋",
+    "🟦", "⬜", "🍋", "🔔", "🍊", "🍋",
 ];
 
 /// Persistent state tracked per player (Meshtastic node ID)
@@ -129,7 +129,12 @@ fn save_players(base_dir: &str, players: &PlayersFile) {
     let path = players_file_path(base_dir);
     match serde_json::to_string_pretty(players) {
         Ok(data) => {
-            if let Ok(mut f) = fs::OpenOptions::new().create(true).write(true).truncate(true).open(&path) {
+            if let Ok(mut f) = fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)
+            {
                 if f.lock_exclusive().is_ok() {
                     let _ = f.write_all(data.as_bytes());
                     let _ = f.flush();
@@ -163,7 +168,13 @@ fn jackpot_payout_and_reset(base_dir: &str, now: DateTime<Utc>, winner: &str) ->
     let path = jackpot_file_path(base_dir);
     // Open with read/write to allow locking and persistence
     let mut jackpot = GlobalJackpot::default();
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).read(true).write(true).truncate(false).open(&path) {
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)
+    {
         let _ = f.lock_exclusive();
         // Read current
         let mut s = String::new();
@@ -172,19 +183,21 @@ fn jackpot_payout_and_reset(base_dir: &str, now: DateTime<Utc>, winner: &str) ->
             let cleaned = s.trim_start_matches('\0');
             jackpot = serde_json::from_str(cleaned).unwrap_or_default();
         }
-    // Compute payout: 500 base + losses * BET_COINS
-    let mut payout_u64 = 500u64 + jackpot.losses.saturating_mul(BET_COINS as u64);
-        if payout_u64 > u32::MAX as u64 { payout_u64 = u32::MAX as u64; }
+        // Compute payout: 500 base + losses * BET_COINS
+        let mut payout_u64 = 500u64 + jackpot.losses.saturating_mul(BET_COINS as u64);
+        if payout_u64 > u32::MAX as u64 {
+            payout_u64 = u32::MAX as u64;
+        }
         let payout = payout_u64 as u32;
-    // Reset and save
+        // Reset and save
         jackpot.losses = 0;
         jackpot.last_win = Some(now);
-    jackpot.last_win_node = Some(winner.to_string());
-    let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
-    // Ensure writes start at beginning to avoid sparse/invalid files
-    let _ = f.seek(SeekFrom::Start(0));
-    let _ = f.set_len(0);
-    let _ = f.write_all(data.as_bytes());
+        jackpot.last_win_node = Some(winner.to_string());
+        let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
+        // Ensure writes start at beginning to avoid sparse/invalid files
+        let _ = f.seek(SeekFrom::Start(0));
+        let _ = f.set_len(0);
+        let _ = f.write_all(data.as_bytes());
         let _ = f.flush();
         let _ = f.unlock();
         payout
@@ -198,12 +211,22 @@ fn jackpot_record_loss(base_dir: &str) {
     let dir = Path::new(base_dir).join("slotmachine");
     let _ = ensure_dir(&dir);
     let path = jackpot_file_path(base_dir);
-    if let Ok(mut f) = fs::OpenOptions::new().create(true).read(true).write(true).truncate(false).open(&path) {
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)
+    {
         let _ = f.lock_exclusive();
         let mut s = String::new();
         let _ = f.read_to_string(&mut s);
         let cleaned = s.trim_start_matches('\0');
-        let mut jackpot: GlobalJackpot = if cleaned.is_empty() { GlobalJackpot::default() } else { serde_json::from_str(cleaned).unwrap_or_default() };
+        let mut jackpot: GlobalJackpot = if cleaned.is_empty() {
+            GlobalJackpot::default()
+        } else {
+            serde_json::from_str(cleaned).unwrap_or_default()
+        };
         jackpot.losses = jackpot.losses.saturating_add(1);
         let data = serde_json::to_string_pretty(&jackpot).unwrap_or_else(|_| "{}".to_string());
         // Ensure writes start at beginning to avoid sparse/invalid files
@@ -280,14 +303,21 @@ fn evaluate(r1: &str, r2: &str, r3: &str) -> (u32, String) {
             "🍒" => 5,
             _ => 0,
         };
-        let desc = if mult == 100 { "JACKPOT! 7️⃣7️⃣7️⃣".to_string() }
-                   else { format!("Triple {}", r1) };
+        let desc = if mult == 100 {
+            "JACKPOT! 7️⃣7️⃣7️⃣".to_string()
+        } else {
+            format!("Triple {}", r1)
+        };
         return (mult, desc);
     }
     // Cherry pays by count
     let cherries = [r1, r2, r3].iter().filter(|&&sym| sym == "🍒").count() as u32;
-    if cherries == 2 { return (3, "Two cherries".into()); }
-    if cherries == 1 { return (2, "Cherry".into()); }
+    if cherries == 2 {
+        return (3, "Two cherries".into());
+    }
+    if cherries == 1 {
+        return (2, "Cherry".into());
+    }
     (0, "No win".into())
 }
 
@@ -309,7 +339,15 @@ pub fn perform_spin(base_dir: &str, player_id: &str) -> (SpinOutcome, u32) {
         let entry = file
             .players
             .entry(player_id.to_string())
-            .or_insert(PlayerState { coins: DAILY_GRANT, last_reset: now, total_spins: 0, total_wins: 0, jackpots: 0, last_spin: None, last_jackpot: None });
+            .or_insert(PlayerState {
+                coins: DAILY_GRANT,
+                last_reset: now,
+                total_spins: 0,
+                total_wins: 0,
+                jackpots: 0,
+                last_spin: None,
+                last_jackpot: None,
+            });
 
         // Handle zero-balance refill window
         if entry.coins < BET_COINS && entry.coins == 0 {
@@ -322,8 +360,8 @@ pub fn perform_spin(base_dir: &str, player_id: &str) -> (SpinOutcome, u32) {
 
         // If still can't afford, return a special outcome with no spin
         if entry.coins < BET_COINS {
-            let remaining = ChronoDuration::hours(REFILL_HOURS)
-                - now.signed_duration_since(entry.last_reset);
+            let remaining =
+                ChronoDuration::hours(REFILL_HOURS) - now.signed_duration_since(entry.last_reset);
             let hours = remaining.num_hours().max(0);
             let mins = (remaining.num_minutes().max(0)) % 60;
             let desc = format!("Out of coins. Next refill in ~{}h {}m", hours, mins);
@@ -361,14 +399,23 @@ pub fn perform_spin(base_dir: &str, player_id: &str) -> (SpinOutcome, u32) {
             // Stats
             entry.total_spins = entry.total_spins.saturating_add(1);
             entry.last_spin = Some(now);
-            if mult > 0 { entry.total_wins = entry.total_wins.saturating_add(1); }
+            if mult > 0 {
+                entry.total_wins = entry.total_wins.saturating_add(1);
+            }
             if mult == 100 {
                 entry.jackpots = entry.jackpots.saturating_add(1);
                 entry.last_jackpot = Some(now);
             }
             let bal = entry.coins;
             (
-                SpinOutcome { r1, r2, r3, multiplier: mult, winnings, description: desc },
+                SpinOutcome {
+                    r1,
+                    r2,
+                    r3,
+                    multiplier: mult,
+                    winnings,
+                    description: desc,
+                },
                 bal,
             )
         }
@@ -386,10 +433,17 @@ pub fn perform_spin(base_dir: &str, player_id: &str) -> (SpinOutcome, u32) {
 pub fn next_refill_eta(base_dir: &str, player_id: &str) -> Option<(i64, i64)> {
     let file = load_players(base_dir);
     let entry = file.players.get(player_id)?;
-    if entry.coins > 0 { return None; }
+    if entry.coins > 0 {
+        return None;
+    }
     let now = Utc::now();
-    let remaining = ChronoDuration::hours(REFILL_HOURS) - now.signed_duration_since(entry.last_reset);
-    if remaining <= ChronoDuration::zero() { Some((0,0)) } else { Some((remaining.num_hours(), (remaining.num_minutes() % 60))) }
+    let remaining =
+        ChronoDuration::hours(REFILL_HOURS) - now.signed_duration_since(entry.last_reset);
+    if remaining <= ChronoDuration::zero() {
+        Some((0, 0))
+    } else {
+        Some((remaining.num_hours(), (remaining.num_minutes() % 60)))
+    }
 }
 
 /// Public summary used by `<prefix>SLOTSTATS` to report a user's stats (default prefix `^`).
@@ -421,8 +475,8 @@ pub fn get_player_summary(base_dir: &str, player_id: &str) -> Option<PlayerSumma
 mod tests {
     use super::*;
     use chrono::Duration;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     fn write_players(base: &str, players: &PlayersFile) {
         let dir = Path::new(base).join("slotmachine");
@@ -439,7 +493,15 @@ mod tests {
         let mut file = PlayersFile::default();
         file.players.insert(
             "node1".to_string(),
-            PlayerState { coins: 0, last_reset: Utc::now(), total_spins: 0, total_wins: 0, jackpots: 0, last_spin: None, last_jackpot: None }
+            PlayerState {
+                coins: 0,
+                last_reset: Utc::now(),
+                total_spins: 0,
+                total_wins: 0,
+                jackpots: 0,
+                last_spin: None,
+                last_jackpot: None,
+            },
         );
         write_players(base, &file);
         let (out, bal) = perform_spin(base, "node1");
@@ -455,13 +517,21 @@ mod tests {
         let mut file = PlayersFile::default();
         file.players.insert(
             "node2".to_string(),
-            PlayerState { coins: 0, last_reset: Utc::now() - Duration::hours(REFILL_HOURS + 1), total_spins: 0, total_wins: 0, jackpots: 0, last_spin: None, last_jackpot: None }
+            PlayerState {
+                coins: 0,
+                last_reset: Utc::now() - Duration::hours(REFILL_HOURS + 1),
+                total_spins: 0,
+                total_wins: 0,
+                jackpots: 0,
+                last_spin: None,
+                last_jackpot: None,
+            },
         );
         write_players(base, &file);
         let (_out, bal) = perform_spin(base, "node2");
         // After refill and one spin, balance should be at least DAILY_GRANT - BET
         assert!(bal >= DAILY_GRANT - BET_COINS);
-    // Upper bound for fresh state: jackpot minimum equals BET*100 (500 coins). Pot can be larger over time.
-    assert!(bal <= DAILY_GRANT - BET_COINS + BET_COINS * 100);
+        // Upper bound for fresh state: jackpot minimum equals BET*100 (500 coins). Pot can be larger over time.
+        assert!(bal <= DAILY_GRANT - BET_COINS + BET_COINS * 100);
     }
 }

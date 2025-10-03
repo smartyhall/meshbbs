@@ -1,5 +1,5 @@
 //! # BBS (Bulletin Board System) Core Module
-//! 
+//!
 //! This module implements the core BBS functionality for Meshbbs, providing a complete
 //! bulletin board system experience over Meshtastic mesh networks.
 //!
@@ -63,27 +63,27 @@
 //! 5. User interacts with full BBS command set privately
 //! 6. Session ends with `LOGOUT` or timeout
 
-pub mod server;
-pub mod session;
 pub mod commands;
-pub mod public;
-pub mod roles;
 pub mod dispatch;
-pub mod slotmachine;
 pub mod eightball;
 pub mod fortune;
-pub mod weather;
+pub mod public;
+pub mod roles;
+pub mod server;
+pub mod session;
+pub mod slotmachine;
 pub mod tinyhack;
+pub mod weather;
 
 pub use server::BbsServer;
 
 // Optional re-exports for downstream crates when feature enabled
 #[cfg(feature = "api-reexports")]
 #[allow(unused_imports)]
-pub use session::Session;
-#[cfg(feature = "api-reexports")]
-#[allow(unused_imports)]
 pub use commands::CommandProcessor;
 #[cfg(feature = "api-reexports")]
 #[allow(unused_imports)]
-pub use public::{PublicState, PublicCommandParser};
+pub use public::{PublicCommandParser, PublicState};
+#[cfg(feature = "api-reexports")]
+#[allow(unused_imports)]
+pub use session::Session;

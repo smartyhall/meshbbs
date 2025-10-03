@@ -13,13 +13,21 @@ static BROADCAST_ACK_CONFIRMED: AtomicU64 = AtomicU64::new(0);
 static BROADCAST_ACK_EXPIRED: AtomicU64 = AtomicU64::new(0);
 
 #[allow(dead_code)]
-pub fn inc_reliable_sent() { RELIABLE_SENT.fetch_add(1, Ordering::Relaxed); }
+pub fn inc_reliable_sent() {
+    RELIABLE_SENT.fetch_add(1, Ordering::Relaxed);
+}
 #[allow(dead_code)]
-pub fn inc_reliable_acked() { RELIABLE_ACKED.fetch_add(1, Ordering::Relaxed); }
+pub fn inc_reliable_acked() {
+    RELIABLE_ACKED.fetch_add(1, Ordering::Relaxed);
+}
 #[allow(dead_code)]
-pub fn inc_reliable_failed() { RELIABLE_FAILED.fetch_add(1, Ordering::Relaxed); }
+pub fn inc_reliable_failed() {
+    RELIABLE_FAILED.fetch_add(1, Ordering::Relaxed);
+}
 #[allow(dead_code)]
-pub fn inc_reliable_retries() { RELIABLE_RETRIES.fetch_add(1, Ordering::Relaxed); }
+pub fn inc_reliable_retries() {
+    RELIABLE_RETRIES.fetch_add(1, Ordering::Relaxed);
+}
 #[allow(dead_code)]
 pub fn observe_ack_latency(sent_at: Instant) {
     let ms = sent_at.elapsed().as_millis() as u64;
@@ -28,9 +36,13 @@ pub fn observe_ack_latency(sent_at: Instant) {
 }
 
 #[allow(dead_code)]
-pub fn inc_broadcast_ack_confirmed() { BROADCAST_ACK_CONFIRMED.fetch_add(1, Ordering::Relaxed); }
+pub fn inc_broadcast_ack_confirmed() {
+    BROADCAST_ACK_CONFIRMED.fetch_add(1, Ordering::Relaxed);
+}
 #[allow(dead_code)]
-pub fn inc_broadcast_ack_expired() { BROADCAST_ACK_EXPIRED.fetch_add(1, Ordering::Relaxed); }
+pub fn inc_broadcast_ack_expired() {
+    BROADCAST_ACK_EXPIRED.fetch_add(1, Ordering::Relaxed);
+}
 
 #[derive(Debug, Default, Clone)]
 #[allow(dead_code)] // Fields read primarily in tests / future metrics endpoint

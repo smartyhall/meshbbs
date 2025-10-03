@@ -22,7 +22,10 @@ async fn public_login_with_password_requires_auth() {
         channel: None,
         content: "REGISTER alice secretpass123".into(),
     };
-    server.route_text_event(register_event).await.expect("user registration");
+    server
+        .route_text_event(register_event)
+        .await
+        .expect("user registration");
 
     // Logout the user to clean slate
     let logout_event = TextEvent {
@@ -42,7 +45,10 @@ async fn public_login_with_password_requires_auth() {
         channel: None,
         content: "^LOGIN alice".into(),
     };
-    server.route_text_event(public_event).await.expect("public login");
+    server
+        .route_text_event(public_event)
+        .await
+        .expect("public login");
 
     // Open DM - should NOT auto-login since user has password
     let dm_event = TextEvent {
@@ -62,13 +68,19 @@ async fn public_login_with_password_requires_auth() {
         channel: None,
         content: "READ".into(),
     };
-    server.route_text_event(read_event).await.expect("read attempt");
+    server
+        .route_text_event(read_event)
+        .await
+        .expect("read attempt");
 
     // Check that user is NOT logged in by checking session state
     let session = server.test_get_session("123");
     assert!(session.is_some(), "Session should exist");
     let session = session.unwrap();
-    assert!(session.username.is_none(), "User should NOT be auto-logged in");
+    assert!(
+        session.username.is_none(),
+        "User should NOT be auto-logged in"
+    );
 
     // Now provide correct password to complete login
     let login_with_pass = TextEvent {
@@ -78,14 +90,24 @@ async fn public_login_with_password_requires_auth() {
         channel: None,
         content: "LOGIN alice secretpass123".into(),
     };
-    server.route_text_event(login_with_pass).await.expect("login with password");
+    server
+        .route_text_event(login_with_pass)
+        .await
+        .expect("login with password");
 
     // Now check that user IS logged in
     let session = server.test_get_session("123");
     assert!(session.is_some(), "Session should exist");
     let session = session.unwrap();
-    assert!(session.username.is_some(), "User should be logged in after password");
-    assert_eq!(session.username.as_ref().unwrap(), "alice", "Correct username");
+    assert!(
+        session.username.is_some(),
+        "User should be logged in after password"
+    );
+    assert_eq!(
+        session.username.as_ref().unwrap(),
+        "alice",
+        "Correct username"
+    );
 }
 
 /// Test that public login for passwordless users still works (backward compatibility)
@@ -106,7 +128,10 @@ async fn public_login_without_password_auto_succeeds() {
         channel: None,
         content: "^LOGIN bob".into(),
     };
-    server.route_text_event(public_event).await.expect("public login");
+    server
+        .route_text_event(public_event)
+        .await
+        .expect("public login");
 
     // Open DM - should auto-login since user has no password
     let dm_event = TextEvent {
@@ -123,7 +148,11 @@ async fn public_login_without_password_auto_succeeds() {
     assert!(session.is_some(), "Session should exist");
     let session = session.unwrap();
     assert!(session.username.is_some(), "User should be auto-logged in");
-    assert_eq!(session.username.as_ref().unwrap(), "bob", "Correct username");
+    assert_eq!(
+        session.username.as_ref().unwrap(),
+        "bob",
+        "Correct username"
+    );
 }
 
 /// Test that wrong password after public login is rejected
@@ -144,7 +173,10 @@ async fn public_login_wrong_password_rejected() {
         channel: None,
         content: "REGISTER charlie mypassword".into(),
     };
-    server.route_text_event(register_event).await.expect("user registration");
+    server
+        .route_text_event(register_event)
+        .await
+        .expect("user registration");
 
     // Logout
     let logout_event = TextEvent {
@@ -164,7 +196,10 @@ async fn public_login_wrong_password_rejected() {
         channel: None,
         content: "^LOGIN charlie".into(),
     };
-    server.route_text_event(public_event).await.expect("public login");
+    server
+        .route_text_event(public_event)
+        .await
+        .expect("public login");
 
     // Open DM
     let dm_event = TextEvent {
@@ -184,13 +219,19 @@ async fn public_login_wrong_password_rejected() {
         channel: None,
         content: "LOGIN charlie wrongpassword".into(),
     };
-    server.route_text_event(wrong_pass).await.expect("wrong password attempt");
+    server
+        .route_text_event(wrong_pass)
+        .await
+        .expect("wrong password attempt");
 
     // Check that user is still NOT logged in
     let session = server.test_get_session("789");
     assert!(session.is_some(), "Session should exist");
     let session = session.unwrap();
-    assert!(session.username.is_none(), "User should NOT be logged in with wrong password");
+    assert!(
+        session.username.is_none(),
+        "User should NOT be logged in with wrong password"
+    );
 
     // Try correct password
     let correct_pass = TextEvent {
@@ -200,12 +241,22 @@ async fn public_login_wrong_password_rejected() {
         channel: None,
         content: "LOGIN charlie mypassword".into(),
     };
-    server.route_text_event(correct_pass).await.expect("correct password");
+    server
+        .route_text_event(correct_pass)
+        .await
+        .expect("correct password");
 
     // Now should be logged in
     let session = server.test_get_session("789");
     assert!(session.is_some(), "Session should exist");
     let session = session.unwrap();
-    assert!(session.username.is_some(), "User should be logged in with correct password");
-    assert_eq!(session.username.as_ref().unwrap(), "charlie", "Correct username");
+    assert!(
+        session.username.is_some(),
+        "User should be logged in with correct password"
+    );
+    assert_eq!(
+        session.username.as_ref().unwrap(),
+        "charlie",
+        "Correct username"
+    );
 }

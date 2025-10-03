@@ -1,5 +1,5 @@
 //! # Meshtastic Device Communication Module
-//! 
+//!
 //! This module provides communication interfaces with Meshtastic devices, supporting both
 //! text-based and protocol buffer communication modes. It handles device connection management,
 //! message parsing, and event processing.
@@ -66,19 +66,19 @@
 //! channel = 0
 //! ```
 
-use anyhow::{Result, anyhow};
-use log::{info, debug, error, trace, warn};
 use crate::logutil::escape_log; // for sanitizing log output
-use tokio::time::{sleep, Duration};
-use tokio::sync::mpsc;
+use anyhow::{anyhow, Result};
+use log::{debug, error, info, trace, warn};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
 
 /// Priority level for outgoing messages
 #[derive(Debug, Clone)]
 pub enum MessagePriority {
-    High,    // Direct messages with want_ack for immediate transmission
-    Normal,  // Regular broadcasts
+    High,   // Direct messages with want_ack for immediate transmission
+    Normal, // Regular broadcasts
 }
 
 /// Kind of outgoing message (normal vs internally generated retry)
@@ -93,11 +93,11 @@ pub enum OutgoingKind {
 /// Outgoing message structure for the writer task
 #[derive(Debug, Clone)]
 pub struct OutgoingMessage {
-    pub to_node: Option<u32>,  // None for broadcast, Some(node_id) for direct
-    pub channel: u32,          // Channel index (0 = primary)
-    pub content: String,       // Message content
+    pub to_node: Option<u32>, // None for broadcast, Some(node_id) for direct
+    pub channel: u32,         // Channel index (0 = primary)
+    pub content: String,      // Message content
     pub priority: MessagePriority,
-    pub kind: OutgoingKind,    // Normal or Retry
+    pub kind: OutgoingKind, // Normal or Retry
     /// Request an ACK even for broadcasts. When true, writer will set want_ack and
     /// assign a non-zero id for correlation. For direct messages this flag is ignored
     /// because DMs are always sent reliable with want_ack.
@@ -142,34 +142,45 @@ pub enum ControlMessage {
     /// Correlated ACK from radio for a previously sent reliable packet (reply_id)
     AckReceived(u32),
     /// Routing error reported by radio for a particular request/reply id (value per proto::routing::Error)
-    RoutingError { id: u32, reason: i32 },
+    RoutingError {
+        id: u32,
+        reason: i32,
+    },
     /// Provide scheduler handle to writer after creation (avoids circular ownership at construction)
     #[allow(dead_code)]
     SetSchedulerHandle(crate::bbs::dispatch::SchedulerHandle),
 }
 
-#[cfg(feature = "meshtastic-proto")]
-use bytes::BytesMut;
+use crate::metrics;
 #[cfg(feature = "meshtastic-proto")]
 use crate::protobuf::meshtastic_generated as proto;
-use crate::metrics; // metrics module
+#[cfg(feature = "meshtastic-proto")]
+use bytes::BytesMut; // metrics module
 
 // Provide hex_snippet early so it is in scope for receive_message (always available)
 fn hex_snippet(data: &[u8], max: usize) -> String {
     use std::cmp::min;
-    data.iter().take(min(max, data.len())).map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join("")
+    data.iter()
+        .take(min(max, data.len()))
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 // UTF-8 safe truncation for log display. Ensures we do not slice inside a multi-byte char.
 // If the input exceeds max_bytes, returns an escaped, truncated string with an ellipsis appended.
 // Otherwise returns the escaped original string.
 fn truncate_for_log(input: &str, max_bytes: usize) -> String {
-    if input.len() <= max_bytes { return escape_log(input); }
+    if input.len() <= max_bytes {
+        return escape_log(input);
+    }
     // Reserve 3 bytes for the ellipsis
     let reserve = 3usize;
     let cut_target = max_bytes.saturating_sub(reserve);
     let mut cut = cut_target;
-    while cut > 0 && !input.is_char_boundary(cut) { cut -= 1; }
+    while cut > 0 && !input.is_char_boundary(cut) {
+        cut -= 1;
+    }
     // Fallback: if for some reason cut became 0 (pathological), avoid empty add by using full escape of empty
     let mut out = escape_log(&input[..cut]);
     out.push_str("...");
@@ -211,7 +222,11 @@ mod utf8_tests {
 #[cfg(feature = "meshtastic-proto")]
 fn fmt_percent(val: f32) -> String {
     if val.is_finite() {
-        if val <= 1.0 { format!("{:.0}%", val * 100.0) } else { format!("{:.0}%", val) }
+        if val <= 1.0 {
+            format!("{:.0}%", val * 100.0)
+        } else {
+            format!("{:.0}%", val)
+        }
     } else {
         "na".to_string()
     }
@@ -230,20 +245,40 @@ fn summarize_known_port_payload(port: proto::PortNum, payload: &[u8]) -> Option<
                     match variant {
                         TVar::DeviceMetrics(dm) => {
                             let mut parts: Vec<String> = Vec::new();
-                            if let Some(batt) = dm.battery_level { parts.push(format!("batt={}{}", batt, "%")); }
-                            if let Some(v) = dm.voltage { parts.push(format!("v={:.2}V", v)); }
-                            if let Some(up) = dm.uptime_seconds { parts.push(format!("up={}s", up)); }
-                            if let Some(util) = dm.channel_utilization { parts.push(format!("util={}", fmt_percent(util))); }
-                            if let Some(tx) = dm.air_util_tx { parts.push(format!("tx={}", fmt_percent(tx))); }
-                            if !parts.is_empty() { return Some(format!("telemetry/device {}", parts.join(" "))); }
+                            if let Some(batt) = dm.battery_level {
+                                parts.push(format!("batt={}{}", batt, "%"));
+                            }
+                            if let Some(v) = dm.voltage {
+                                parts.push(format!("v={:.2}V", v));
+                            }
+                            if let Some(up) = dm.uptime_seconds {
+                                parts.push(format!("up={}s", up));
+                            }
+                            if let Some(util) = dm.channel_utilization {
+                                parts.push(format!("util={}", fmt_percent(util)));
+                            }
+                            if let Some(tx) = dm.air_util_tx {
+                                parts.push(format!("tx={}", fmt_percent(tx)));
+                            }
+                            if !parts.is_empty() {
+                                return Some(format!("telemetry/device {}", parts.join(" ")));
+                            }
                             return Some("telemetry/device".to_string());
                         }
                         TVar::EnvironmentMetrics(env) => {
                             let mut parts: Vec<String> = Vec::new();
-                            if let Some(t) = env.temperature { parts.push(format!("temp={:.1}C", t)); }
-                            if let Some(h) = env.relative_humidity { parts.push(format!("hum={:.0}%", h)); }
-                            if let Some(p) = env.barometric_pressure { parts.push(format!("press={:.0}hPa", p)); }
-                            if !parts.is_empty() { return Some(format!("telemetry/env {}", parts.join(" "))); }
+                            if let Some(t) = env.temperature {
+                                parts.push(format!("temp={:.1}C", t));
+                            }
+                            if let Some(h) = env.relative_humidity {
+                                parts.push(format!("hum={:.0}%", h));
+                            }
+                            if let Some(p) = env.barometric_pressure {
+                                parts.push(format!("press={:.0}hPa", p));
+                            }
+                            if !parts.is_empty() {
+                                return Some(format!("telemetry/env {}", parts.join(" ")));
+                            }
                             return Some("telemetry/env".to_string());
                         }
                         TVar::LocalStats(ls) => {
@@ -251,7 +286,10 @@ fn summarize_known_port_payload(port: proto::PortNum, payload: &[u8]) -> Option<
                             parts.push(format!("up={}s", ls.uptime_seconds));
                             parts.push(format!("util={}", fmt_percent(ls.channel_utilization)));
                             parts.push(format!("tx={}", fmt_percent(ls.air_util_tx)));
-                            parts.push(format!("rx={} bad={} dupe={}", ls.num_packets_rx, ls.num_packets_rx_bad, ls.num_rx_dupe));
+                            parts.push(format!(
+                                "rx={} bad={} dupe={}",
+                                ls.num_packets_rx, ls.num_packets_rx_bad, ls.num_rx_dupe
+                            ));
                             return Some(format!("telemetry/local {}", parts.join(" ")));
                         }
                         TVar::PowerMetrics(_) => return Some("telemetry/power".to_string()),
@@ -271,10 +309,20 @@ fn summarize_known_port_payload(port: proto::PortNum, payload: &[u8]) -> Option<
                 let lon = pos.longitude_i.map(|v| v as f64 * 1e-7);
                 let alt = pos.altitude.or(pos.altitude_hae);
                 let mut parts = Vec::new();
-                if let (Some(la), Some(lo)) = (lat, lon) { parts.push(format!("lat={:.5} lon={:.5}", la, lo)); }
-                if let Some(a) = alt { parts.push(format!("alt={}m", a)); }
-                if parts.is_empty() { None } else { Some(format!("position {}", parts.join(" "))) }
-            } else { None }
+                if let (Some(la), Some(lo)) = (lat, lon) {
+                    parts.push(format!("lat={:.5} lon={:.5}", la, lo));
+                }
+                if let Some(a) = alt {
+                    parts.push(format!("alt={}m", a));
+                }
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(format!("position {}", parts.join(" ")))
+                }
+            } else {
+                None
+            }
         }
         proto::PortNum::NodeinfoApp => {
             let mut b = BytesMut::from(payload).freeze();
@@ -282,9 +330,17 @@ fn summarize_known_port_payload(port: proto::PortNum, payload: &[u8]) -> Option<
                 let ln = u.long_name.trim();
                 let sn = u.short_name.trim();
                 if !ln.is_empty() || !sn.is_empty() {
-                    if !ln.is_empty() && !sn.is_empty() { Some(format!("user {} ({})", ln, sn)) } else { Some(format!("user {}{}", ln, sn)) }
-                } else { Some("user".to_string()) }
-            } else { None }
+                    if !ln.is_empty() && !sn.is_empty() {
+                        Some(format!("user {} ({})", ln, sn))
+                    } else {
+                        Some(format!("user {}{}", ln, sn))
+                    }
+                } else {
+                    Some("user".to_string())
+                }
+            } else {
+                None
+            }
         }
         _ => None,
     }
@@ -296,9 +352,9 @@ pub mod slip; // restore SLIP decoder (Meshtastic uses SLIP over some transports
 #[cfg(feature = "serial")]
 use serialport::SerialPort;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use chrono::{DateTime, Utc};
 
 /// Cached node information with timestamp for persistence
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -334,41 +390,61 @@ impl NodeCache {
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> anyhow::Result<()> {
-        use std::fs::{OpenOptions, self as sfs, File};
+        use std::fs::{self as sfs, File, OpenOptions};
         use std::io::Write;
         let path_ref = path.as_ref();
         let content = serde_json::to_string_pretty(self)?;
 
         // Create parent directories if needed
-        if let Some(parent) = path_ref.parent() { let _ = sfs::create_dir_all(parent); }
+        if let Some(parent) = path_ref.parent() {
+            let _ = sfs::create_dir_all(parent);
+        }
 
         // Create a unique temp file in the same directory
         let dir = path_ref.parent().unwrap_or_else(|| Path::new("."));
-        let base = path_ref.file_name().and_then(|s| s.to_str()).unwrap_or("node_cache.json");
+        let base = path_ref
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("node_cache.json");
         let mut counter = 0u32;
         let tmp_path = loop {
             let candidate = dir.join(format!(".{}.tmp-{}-{}", base, std::process::id(), counter));
-            match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&candidate)
+            {
                 Ok(mut tmp) => {
                     tmp.write_all(content.as_bytes())?;
                     tmp.flush()?;
                     let _ = tmp.sync_all();
                     break candidate;
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => { counter = counter.saturating_add(1); continue; }
-                Err(e) => return Err(anyhow::anyhow!("Failed to create temp file for atomic write: {}", e)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    counter = counter.saturating_add(1);
+                    continue;
+                }
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "Failed to create temp file for atomic write: {}",
+                        e
+                    ))
+                }
             }
         };
 
         // Atomically replace destination and fsync directory
         sfs::rename(&tmp_path, path_ref)?;
-        if let Ok(dir_file) = File::open(dir) { let _ = dir_file.sync_all(); }
+        if let Ok(dir_file) = File::open(dir) {
+            let _ = dir_file.sync_all();
+        }
         Ok(())
     }
 
     pub fn update_node(&mut self, node_id: u32, long_name: String, short_name: String) {
         let now = Utc::now();
-        self.nodes.entry(node_id)
+        self.nodes
+            .entry(node_id)
             .and_modify(|n| {
                 n.long_name = long_name.clone();
                 n.short_name = short_name.clone();
@@ -398,7 +474,9 @@ impl NodeCache {
 }
 
 impl Default for NodeCache {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Represents a connection to a Meshtastic device
@@ -522,7 +600,9 @@ impl MeshtasticDevice {
         if let Some(info) = self.nodes.get(&id) {
             if let Some(user) = &info.user {
                 let ln = user.long_name.trim();
-                if !ln.is_empty() { return ln.to_string(); }
+                if !ln.is_empty() {
+                    return ln.to_string();
+                }
             }
         }
         // Fallback to short uppercase hex (similar to Meshtastic short name style but simplified)
@@ -534,7 +614,9 @@ impl MeshtasticDevice {
         if let Some(info) = self.nodes.get(&id) {
             if let Some(user) = &info.user {
                 let sn = user.short_name.trim();
-                if !sn.is_empty() { return sn.to_string(); }
+                if !sn.is_empty() {
+                    return sn.to_string();
+                }
             }
         }
         format!("0x{:06X}", id & 0xFFFFFF)
@@ -549,22 +631,38 @@ impl MeshtasticDevice {
 
     #[cfg(feature = "meshtastic-proto")]
     #[allow(dead_code)]
-    pub fn our_node_id(&self) -> Option<u32> { self.our_node_id }
+    pub fn our_node_id(&self) -> Option<u32> {
+        self.our_node_id
+    }
     // ---------- Public state accessors (read-only) ----------
     #[cfg(feature = "meshtastic-proto")]
-    pub fn binary_detected(&self) -> bool { self.binary_frames_seen }
+    pub fn binary_detected(&self) -> bool {
+        self.binary_frames_seen
+    }
     #[cfg(feature = "meshtastic-proto")]
-    pub fn is_config_complete(&self) -> bool { self.config_complete }
+    pub fn is_config_complete(&self) -> bool {
+        self.config_complete
+    }
     #[cfg(feature = "meshtastic-proto")]
-    pub fn have_my_info(&self) -> bool { self.have_my_info }
+    pub fn have_my_info(&self) -> bool {
+        self.have_my_info
+    }
     #[cfg(feature = "meshtastic-proto")]
-    pub fn have_radio_config(&self) -> bool { self.have_radio_config }
+    pub fn have_radio_config(&self) -> bool {
+        self.have_radio_config
+    }
     #[cfg(feature = "meshtastic-proto")]
-    pub fn have_module_config(&self) -> bool { self.have_module_config }
+    pub fn have_module_config(&self) -> bool {
+        self.have_module_config
+    }
     #[cfg(feature = "meshtastic-proto")]
-    pub fn node_count(&self) -> usize { self.nodes.len() }
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
     #[cfg(feature = "meshtastic-proto")]
-    pub fn config_request_id_hex(&self) -> Option<String> { self.config_request_id.map(|id| format!("0x{:08x}", id)) }
+    pub fn config_request_id_hex(&self) -> Option<String> {
+        self.config_request_id.map(|id| format!("0x{:08x}", id))
+    }
 
     /// Load node cache from persistent storage
     #[cfg(feature = "meshtastic-proto")]
@@ -573,7 +671,11 @@ impl MeshtasticDevice {
         if Path::new(&self.cache_file_path).exists() {
             match NodeCache::load_from_file(&self.cache_file_path) {
                 Ok(cache) => {
-                    debug!("Loaded {} cached nodes from {}", cache.nodes.len(), self.cache_file_path);
+                    debug!(
+                        "Loaded {} cached nodes from {}",
+                        cache.nodes.len(),
+                        self.cache_file_path
+                    );
                     // Merge cached nodes into runtime nodes
                     for (node_id, cached_node) in &cache.nodes {
                         if !self.nodes.contains_key(node_id) {
@@ -591,14 +693,17 @@ impl MeshtasticDevice {
                     }
                     self.node_cache = cache;
                     Ok(())
-                },
+                }
                 Err(e) => {
                     warn!("Failed to load node cache: {}", e);
                     Ok(()) // Continue without cache
                 }
             }
         } else {
-            debug!("No node cache file found at {}, starting fresh", self.cache_file_path);
+            debug!(
+                "No node cache file found at {}, starting fresh",
+                self.cache_file_path
+            );
             Ok(())
         }
     }
@@ -627,14 +732,23 @@ impl MeshtasticDevice {
 
     /// Create a new Meshtastic device connection
     pub async fn new(port_name: &str, baud_rate: u32) -> Result<Self> {
-        info!("Initializing Meshtastic device on {} at {} baud", port_name, baud_rate);
-        
+        info!(
+            "Initializing Meshtastic device on {} at {} baud",
+            port_name, baud_rate
+        );
+
         #[cfg(feature = "serial")]
         {
-            let mut builder = serialport::new(port_name, baud_rate)
-                .timeout(Duration::from_millis(500));
+            let mut builder =
+                serialport::new(port_name, baud_rate).timeout(Duration::from_millis(500));
             // Some USB serial adapters need explicit settings
-            #[cfg(unix)] { builder = builder.data_bits(serialport::DataBits::Eight).stop_bits(serialport::StopBits::One).parity(serialport::Parity::None); }
+            #[cfg(unix)]
+            {
+                builder = builder
+                    .data_bits(serialport::DataBits::Eight)
+                    .stop_bits(serialport::StopBits::One)
+                    .parity(serialport::Parity::None);
+            }
             let mut port = builder
                 .open()
                 .map_err(|e| anyhow!("Failed to open serial port {}: {}", port_name, e))?;
@@ -645,43 +759,50 @@ impl MeshtasticDevice {
             sleep(Duration::from_millis(150)).await;
             // Clear any existing buffered startup text
             let mut purge_buf = [0u8; 512];
-            if let Ok(available) = port.bytes_to_read() { if available > 0 { let _ = port.read(&mut purge_buf); } }
-            debug!("Serial port initialized, flushed existing {} bytes", purge_buf.len());
+            if let Ok(available) = port.bytes_to_read() {
+                if available > 0 {
+                    let _ = port.read(&mut purge_buf);
+                }
+            }
+            debug!(
+                "Serial port initialized, flushed existing {} bytes",
+                purge_buf.len()
+            );
             Ok(MeshtasticDevice {
-                    port_name: port_name.to_string(),
-                    baud_rate,
-                    port: Some(port),
-            #[cfg(feature = "meshtastic-proto")]
-            slip: slip::SlipDecoder::new(),
-            #[cfg(feature = "meshtastic-proto")]
-            config_request_id: None,
-            #[cfg(feature = "meshtastic-proto")]
-            have_my_info: false,
-            #[cfg(feature = "meshtastic-proto")]
-            have_radio_config: false,
-            #[cfg(feature = "meshtastic-proto")]
-            have_module_config: false,
-            #[cfg(feature = "meshtastic-proto")]
-            config_complete: false,
-            #[cfg(feature = "meshtastic-proto")]
-            nodes: std::collections::HashMap::new(),
-            #[cfg(feature = "meshtastic-proto")]
-            node_cache: NodeCache::new(),
-            #[cfg(feature = "meshtastic-proto")]
-            cache_file_path: "data/node_cache.json".to_string(),
-            #[cfg(feature = "meshtastic-proto")]
-            binary_frames_seen: false,
-            #[cfg(feature = "meshtastic-proto")]
-            last_want_config_sent: None,
-            #[cfg(feature = "meshtastic-proto")]
-            rx_buf: Vec::new(),
-            #[cfg(feature = "meshtastic-proto")]
-            text_events: VecDeque::new(),
-            #[cfg(feature = "meshtastic-proto")]
-            our_node_id: None,
-                })
+                port_name: port_name.to_string(),
+                baud_rate,
+                port: Some(port),
+                #[cfg(feature = "meshtastic-proto")]
+                slip: slip::SlipDecoder::new(),
+                #[cfg(feature = "meshtastic-proto")]
+                config_request_id: None,
+                #[cfg(feature = "meshtastic-proto")]
+                have_my_info: false,
+                #[cfg(feature = "meshtastic-proto")]
+                have_radio_config: false,
+                #[cfg(feature = "meshtastic-proto")]
+                have_module_config: false,
+                #[cfg(feature = "meshtastic-proto")]
+                config_complete: false,
+                #[cfg(feature = "meshtastic-proto")]
+                nodes: std::collections::HashMap::new(),
+                #[cfg(feature = "meshtastic-proto")]
+                node_cache: NodeCache::new(),
+                #[cfg(feature = "meshtastic-proto")]
+                cache_file_path: "data/node_cache.json".to_string(),
+                #[cfg(feature = "meshtastic-proto")]
+                binary_frames_seen: false,
+                #[cfg(feature = "meshtastic-proto")]
+                last_want_config_sent: None,
+                #[cfg(feature = "meshtastic-proto")]
+                rx_buf: Vec::new(),
+                #[cfg(feature = "meshtastic-proto")]
+                text_events: VecDeque::new(),
+                #[cfg(feature = "meshtastic-proto")]
+                our_node_id: None,
+            })
         }
-        
+
         #[cfg(not(feature = "serial"))]
         {
             warn!("Serial support not compiled in, using mock device");
@@ -731,7 +852,9 @@ impl MeshtasticDevice {
                         let raw_slice = &buffer[..bytes_read];
                         trace!("RAW {} bytes: {}", bytes_read, hex_snippet(raw_slice, 64));
                         // Heuristic: if first byte looks like ASCII '{' or '[' we might be seeing JSON debug output - log it fully
-                        if raw_slice[0] == b'{' || raw_slice[0] == b'[' { debug!("ASCII/JSON chunk: {}", String::from_utf8_lossy(raw_slice)); }
+                        if raw_slice[0] == b'{' || raw_slice[0] == b'[' {
+                            debug!("ASCII/JSON chunk: {}", String::from_utf8_lossy(raw_slice));
+                        }
                         // First, try to interpret as protobuf (framed). Meshtastic typically uses
                         // a length-delimited protobuf framing. Here we do a heuristic attempt.
                         #[cfg(feature = "meshtastic-proto")]
@@ -740,22 +863,40 @@ impl MeshtasticDevice {
                             self.rx_buf.extend_from_slice(raw_slice);
                             // Attempt to extract as many frames as present
                             'outer: loop {
-                                if self.rx_buf.len() < 4 { break; }
+                                if self.rx_buf.len() < 4 {
+                                    break;
+                                }
                                 // Realign to header if needed
                                 if !(self.rx_buf[0] == 0x94 && self.rx_buf[1] == 0xC3) {
                                     // discard until possible header (avoid huge scans)
-                                    if let Some(pos) = self.rx_buf.iter().position(|&b| b == 0x94) { if pos > 0 { self.rx_buf.drain(0..pos); } }
-                                    else { self.rx_buf.clear(); break; }
-                                    if self.rx_buf.len() < 4 { break; }
-                                    if !(self.rx_buf[0]==0x94 && self.rx_buf[1]==0xC3) { continue; }
+                                    if let Some(pos) = self.rx_buf.iter().position(|&b| b == 0x94) {
+                                        if pos > 0 {
+                                            self.rx_buf.drain(0..pos);
+                                        }
+                                    } else {
+                                        self.rx_buf.clear();
+                                        break;
+                                    }
+                                    if self.rx_buf.len() < 4 {
+                                        break;
+                                    }
+                                    if !(self.rx_buf[0] == 0x94 && self.rx_buf[1] == 0xC3) {
+                                        continue;
+                                    }
                                 }
-                                let declared = ((self.rx_buf[2] as usize) << 8) | (self.rx_buf[3] as usize);
+                                let declared =
+                                    ((self.rx_buf[2] as usize) << 8) | (self.rx_buf[3] as usize);
                                 // Basic sanity cap (avoid absurd lengths)
-                                if declared == 0 || declared > 8192 { // unreasonable, shift one byte
-                                    self.rx_buf.drain(0..1); continue; }
-                                if self.rx_buf.len() < 4 + declared { break; }
-                                let frame: Vec<u8> = self.rx_buf[4..4+declared].to_vec();
-                                self.rx_buf.drain(0..4+declared);
+                                if declared == 0 || declared > 8192 {
+                                    // unreasonable, shift one byte
+                                    self.rx_buf.drain(0..1);
+                                    continue;
+                                }
+                                if self.rx_buf.len() < 4 + declared {
+                                    break;
+                                }
+                                let frame: Vec<u8> = self.rx_buf[4..4 + declared].to_vec();
+                                self.rx_buf.drain(0..4 + declared);
                                 if let Some(summary) = self.try_parse_protobuf_frame(&frame) {
                                     self.binary_frames_seen = true;
                                     self.update_state_from_summary(&summary);
@@ -770,7 +911,9 @@ impl MeshtasticDevice {
                         #[cfg(feature = "meshtastic-proto")]
                         {
                             let frames = self.slip.push(raw_slice);
-                            if !frames.is_empty() { self.binary_frames_seen = true; }
+                            if !frames.is_empty() {
+                                self.binary_frames_seen = true;
+                            }
                             for frame in frames {
                                 trace!("SLIP frame {} bytes", frame.len());
                                 if let Some(summary) = self.try_parse_protobuf_frame(&frame) {
@@ -809,13 +952,13 @@ impl MeshtasticDevice {
                 }
             }
         }
-        
+
         #[cfg(not(feature = "serial"))]
         {
             // Mock implementation for testing
             sleep(Duration::from_millis(100)).await;
         }
-        
+
         Ok(None)
     }
 
@@ -864,36 +1007,41 @@ impl MeshtasticDevice {
     fn parse_meshtastic_message(&self, raw_message: &str) -> Option<String> {
         // This is a simplified parser for demonstration
         // Real implementation would parse actual Meshtastic protobuf messages
-        
+
         let message = raw_message.trim();
-        
+
         // Look for text message format: FROM:1234567890 MSG:Hello World
         if let Some(from_start) = message.find("FROM:") {
             if let Some(msg_start) = message.find("MSG:") {
-                let from_end = message[from_start + 5..].find(' ').unwrap_or(message.len() - from_start - 5);
+                let from_end = message[from_start + 5..]
+                    .find(' ')
+                    .unwrap_or(message.len() - from_start - 5);
                 let from_node = &message[from_start + 5..from_start + 5 + from_end];
                 let msg_content = &message[msg_start + 4..];
-                
+
                 return Some(format!("{}:{}", from_node, msg_content));
             }
         }
-        
+
         None
     }
 
     #[cfg(feature = "meshtastic-proto")]
     fn try_parse_protobuf_frame(&mut self, data: &[u8]) -> Option<String> {
-        use proto::{FromRadio, PortNum};
+        use prost::Message;
         use proto::from_radio::PayloadVariant as FRPayload;
         use proto::mesh_packet::PayloadVariant as MPPayload;
-        use prost::Message;
-    let bytes = BytesMut::from(data);
+        use proto::{FromRadio, PortNum};
+        let bytes = BytesMut::from(data);
         if let Ok(msg) = FromRadio::decode(&mut bytes.freeze()) {
             match msg.payload_variant.as_ref()? {
-                FRPayload::ConfigCompleteId(id) => { return Some(format!("CONFIG_COMPLETE:{id}")); }
+                FRPayload::ConfigCompleteId(id) => {
+                    return Some(format!("CONFIG_COMPLETE:{id}"));
+                }
                 FRPayload::Packet(pkt) => {
                     if let Some(MPPayload::Decoded(data_msg)) = &pkt.payload_variant {
-                        let port = PortNum::try_from(data_msg.portnum).unwrap_or(PortNum::UnknownApp);
+                        let port =
+                            PortNum::try_from(data_msg.portnum).unwrap_or(PortNum::UnknownApp);
                         // Correlate explicit ACKs
                         if pkt.priority == 120 && data_msg.reply_id != 0 {
                             return Some(format!(
@@ -905,11 +1053,18 @@ impl MeshtasticDevice {
                         if matches!(port, PortNum::RoutingApp) {
                             let mut b = BytesMut::from(&data_msg.payload[..]).freeze();
                             if let Ok(routing) = proto::Routing::decode(&mut b) {
-                                use proto::routing::{Variant as RVar, Error as RErr};
+                                use proto::routing::{Error as RErr, Variant as RVar};
                                 if let Some(RVar::ErrorReason(e)) = routing.variant {
                                     if let Ok(err) = RErr::try_from(e) {
-                                        let corr_id = if data_msg.request_id != 0 { data_msg.request_id } else { data_msg.reply_id };
-                                        return Some(format!("ROUTING_ERROR:{:?}:id={}", err, corr_id));
+                                        let corr_id = if data_msg.request_id != 0 {
+                                            data_msg.request_id
+                                        } else {
+                                            data_msg.reply_id
+                                        };
+                                        return Some(format!(
+                                            "ROUTING_ERROR:{:?}:id={}",
+                                            err, corr_id
+                                        ));
                                     }
                                 }
                             }
@@ -922,58 +1077,93 @@ impl MeshtasticDevice {
                                     let is_direct = matches!((dest, self.our_node_id), (Some(d), Some(our)) if d == our);
                                     // In current Meshtastic proto, channel is a u32 field (0 = primary). Treat 0 as Some(0) for uniformity.
                                     let channel = Some(pkt.channel);
-                                    self.text_events.push_back(TextEvent { source: pkt.from, dest, is_direct, channel, content: text.to_string() });
+                                    self.text_events.push_back(TextEvent {
+                                        source: pkt.from,
+                                        dest,
+                                        is_direct,
+                                        channel,
+                                        content: text.to_string(),
+                                    });
                                     return Some(format!("TEXT:{}:{}", pkt.from, text));
                                 }
                             }
                             PortNum::TextMessageCompressedApp => {
                                 // Attempt naive decompression: if payload seems ASCII printable treat directly; else hex summarize.
-                                let maybe_text = if data_msg.payload.iter().all(|b| b.is_ascii() && !b.is_ascii_control()) {
+                                let maybe_text = if data_msg
+                                    .payload
+                                    .iter()
+                                    .all(|b| b.is_ascii() && !b.is_ascii_control())
+                                {
                                     Some(String::from_utf8_lossy(&data_msg.payload).to_string())
-                                } else { None };
+                                } else {
+                                    None
+                                };
                                 if let Some(text) = maybe_text {
                                     let dest = if pkt.to != 0 { Some(pkt.to) } else { None };
                                     let is_direct = matches!((dest, self.our_node_id), (Some(d), Some(our)) if d == our);
                                     let channel = Some(pkt.channel);
-                                    self.text_events.push_back(TextEvent { source: pkt.from, dest, is_direct, channel, content: text.clone() });
+                                    self.text_events.push_back(TextEvent {
+                                        source: pkt.from,
+                                        dest,
+                                        is_direct,
+                                        channel,
+                                        content: text.clone(),
+                                    });
                                     return Some(format!("TEXT:{}:{}", pkt.from, text));
                                 } else {
-                                    let hex = data_msg.payload.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                                    let hex = data_msg
+                                        .payload
+                                        .iter()
+                                        .map(|b| format!("{:02x}", b))
+                                        .collect::<String>();
                                     return Some(format!("CTEXT:{}:{}", pkt.from, hex));
                                 }
                             }
                             _ => {
-                                if let Some(s) = summarize_known_port_payload(port, &data_msg.payload) {
+                                if let Some(s) =
+                                    summarize_known_port_payload(port, &data_msg.payload)
+                                {
                                     return Some(format!("PKT:{}:port={:?}:{}", pkt.from, port, s));
                                 } else {
-                                    return Some(format!("PKT:{}:port={:?}:len={} hex={}...", pkt.from, port, data_msg.payload.len(), hex_snippet(&data_msg.payload, 12)));
+                                    return Some(format!(
+                                        "PKT:{}:port={:?}:len={} hex={}...",
+                                        pkt.from,
+                                        port,
+                                        data_msg.payload.len(),
+                                        hex_snippet(&data_msg.payload, 12)
+                                    ));
                                 }
-                            },
+                            }
                         }
                     }
                 }
                 FRPayload::MyInfo(info) => return Some(format!("MYINFO:{}", info.my_node_num)),
                 FRPayload::NodeInfo(n) => {
                     if let Some(user) = &n.user {
-                        return Some(format!("NODE:{}:{}:{}", n.num, user.long_name, user.short_name));
+                        return Some(format!(
+                            "NODE:{}:{}:{}",
+                            n.num, user.long_name, user.short_name
+                        ));
                     } else {
                         return Some(format!("NODE:{}:", n.num));
                     }
-                },
+                }
                 FRPayload::Config(_) => return Some("CONFIG".to_string()),
                 FRPayload::ModuleConfig(_) => return Some("MODULE_CONFIG".to_string()),
                 FRPayload::FileInfo(_) => return Some("FILE_INFO".to_string()),
                 FRPayload::QueueStatus(qs) => {
                     if qs.res != 0 {
                         return Some(format!(
-                            "QUEUE_STATUS:res={} FREE={}/{} id={} (non-zero res)", qs.res, qs.free, qs.maxlen, qs.mesh_packet_id
+                            "QUEUE_STATUS:res={} FREE={}/{} id={} (non-zero res)",
+                            qs.res, qs.free, qs.maxlen, qs.mesh_packet_id
                         ));
                     } else {
                         return Some(format!(
-                            "QUEUE_STATUS:res={} free={}/{} id={}", qs.res, qs.free, qs.maxlen, qs.mesh_packet_id
+                            "QUEUE_STATUS:res={} free={}/{} id={}",
+                            qs.res, qs.free, qs.maxlen, qs.mesh_packet_id
                         ));
                     }
-                },
+                }
                 FRPayload::XmodemPacket(_) => return Some("XMODEM_PACKET".to_string()),
                 FRPayload::Metadata(_) => return Some("METADATA".to_string()),
                 FRPayload::MqttClientProxyMessage(_) => return Some("MQTT_PROXY".to_string()),
@@ -985,81 +1175,120 @@ impl MeshtasticDevice {
 
     #[cfg(feature = "meshtastic-proto")]
     pub fn update_state_from_summary(&mut self, summary: &str) {
-        if summary.starts_with("MYINFO:") { self.have_my_info = true; }
-        else if summary.starts_with("NODE:") {
+        if summary.starts_with("MYINFO:") {
+            self.have_my_info = true;
+        } else if summary.starts_with("NODE:") {
             let parts: Vec<&str> = summary.split(':').collect();
-            if parts.len() >= 2 { if let Ok(id) = parts[1].parse::<u32>() {
-                let long_name = if parts.len() >= 3 { parts[2].to_string() } else { String::new() };
-                let network_short_name = if parts.len() >= 4 { parts[3].to_string() } else { String::new() };
-                
-                // Prefer network short name if available and non-empty
-                let short_name = if !network_short_name.trim().is_empty() {
-                    debug!("Using network short name '{}' for node {} ({})", network_short_name.trim(), id, long_name);
-                    network_short_name.trim().to_string()
-                } else if !long_name.is_empty() { 
-                    // Generate short name from long name (first 4 chars or similar)
-                    let generated = long_name.chars().take(4).collect::<String>().to_uppercase();
-                    debug!("Generated short name '{}' from long name '{}' for node {}", generated, long_name, id);
-                    generated
-                } else { 
-                    format!("{:04X}", id & 0xFFFF) 
-                };
-                
-                let mut ni = proto::NodeInfo { num: id, ..Default::default() };
-                if !long_name.is_empty() { 
-                    ni.user = Some(proto::User{ 
-                        long_name: long_name.clone(), 
-                        short_name: short_name.clone(),
+            if parts.len() >= 2 {
+                if let Ok(id) = parts[1].parse::<u32>() {
+                    let long_name = if parts.len() >= 3 {
+                        parts[2].to_string()
+                    } else {
+                        String::new()
+                    };
+                    let network_short_name = if parts.len() >= 4 {
+                        parts[3].to_string()
+                    } else {
+                        String::new()
+                    };
+
+                    // Prefer network short name if available and non-empty
+                    let short_name = if !network_short_name.trim().is_empty() {
+                        debug!(
+                            "Using network short name '{}' for node {} ({})",
+                            network_short_name.trim(),
+                            id,
+                            long_name
+                        );
+                        network_short_name.trim().to_string()
+                    } else if !long_name.is_empty() {
+                        // Generate short name from long name (first 4 chars or similar)
+                        let generated =
+                            long_name.chars().take(4).collect::<String>().to_uppercase();
+                        debug!(
+                            "Generated short name '{}' from long name '{}' for node {}",
+                            generated, long_name, id
+                        );
+                        generated
+                    } else {
+                        format!("{:04X}", id & 0xFFFF)
+                    };
+
+                    let mut ni = proto::NodeInfo {
+                        num: id,
                         ..Default::default()
-                    }); 
+                    };
+                    if !long_name.is_empty() {
+                        ni.user = Some(proto::User {
+                            long_name: long_name.clone(),
+                            short_name: short_name.clone(),
+                            ..Default::default()
+                        });
+                    }
+                    self.nodes.insert(id, ni);
+
+                    // Update cache
+                    self.node_cache.update_node(id, long_name, short_name);
+                    // Save cache asynchronously (best effort, don't block on failure)
+                    if let Err(e) = self.save_node_cache() {
+                        debug!("Failed to save node cache: {}", e);
+                    }
                 }
-                self.nodes.insert(id, ni);
-                
-                // Update cache
-                self.node_cache.update_node(id, long_name, short_name);
-                // Save cache asynchronously (best effort, don't block on failure)
-                if let Err(e) = self.save_node_cache() {
-                    debug!("Failed to save node cache: {}", e);
+            }
+        } else if summary == "CONFIG" {
+            self.have_radio_config = true;
+        } else if summary == "MODULE_CONFIG" {
+            self.have_module_config = true;
+        } else if summary.starts_with("CONFIG_COMPLETE:") {
+            if let Some(id_str) = summary.split(':').nth(1) {
+                if let Ok(id_val) = id_str.parse::<u32>() {
+                    if self.config_request_id == Some(id_val) {
+                        self.config_complete = true;
+                    }
                 }
-            }}
-        }
-    else if summary == "CONFIG" { self.have_radio_config = true; }
-        else if summary == "MODULE_CONFIG" { self.have_module_config = true; }
-        else if summary.starts_with("CONFIG_COMPLETE:") {
-            if let Some(id_str) = summary.split(':').nth(1) { if let Ok(id_val) = id_str.parse::<u32>() { if self.config_request_id == Some(id_val) { self.config_complete = true; }}}
+            }
         }
         if summary.starts_with("MYINFO:") {
-            if let Some(id_str) = summary.split(':').nth(1) { if let Ok(id_val) = id_str.parse::<u32>() { self.our_node_id = Some(id_val); }}
+            if let Some(id_str) = summary.split(':').nth(1) {
+                if let Ok(id_val) = id_str.parse::<u32>() {
+                    self.our_node_id = Some(id_val);
+                }
+            }
         }
     }
 
     #[cfg(feature = "meshtastic-proto")]
-    pub fn initial_sync_complete(&self) -> bool { self.config_complete && self.have_my_info && self.have_radio_config }
+    pub fn initial_sync_complete(&self) -> bool {
+        self.config_complete && self.have_my_info && self.have_radio_config
+    }
     /// Disconnect from the device
     pub async fn disconnect(&mut self) -> Result<()> {
         info!("Disconnecting from Meshtastic device");
         #[cfg(feature = "serial")]
-        { self.port = None; }
+        {
+            self.port = None;
+        }
         Ok(())
     }
-
 }
 
 #[cfg(feature = "meshtastic-proto")]
 impl MeshtasticDevice {
     /// Retrieve next structured text event if available
     #[allow(dead_code)]
-    pub fn next_text_event(&mut self) -> Option<TextEvent> { self.text_events.pop_front() }
+    pub fn next_text_event(&mut self) -> Option<TextEvent> {
+        self.text_events.pop_front()
+    }
     /// Build and send a text message MeshPacket via ToRadio (feature gated).
     /// to: Some(node_id) for direct, None for broadcast
     /// channel: channel index (0 primary)
     #[cfg(feature = "meshtastic-proto")]
     #[allow(dead_code)]
     pub fn send_text_packet(&mut self, to: Option<u32>, channel: u32, text: &str) -> Result<()> {
-        use proto::{ToRadio, MeshPacket, Data, PortNum};
-        use proto::to_radio::PayloadVariant as TRPayload;
-        use proto::mesh_packet::PayloadVariant as MPPayload;
         use prost::Message;
+        use proto::mesh_packet::PayloadVariant as MPPayload;
+        use proto::to_radio::PayloadVariant as TRPayload;
+        use proto::{Data, MeshPacket, PortNum, ToRadio};
         // Determine destination: broadcast if None
         let dest = to.unwrap_or(0xffffffff);
         // Populate Data payload
@@ -1074,21 +1303,25 @@ impl MeshtasticDevice {
             emoji: 0,
             bitfield: None,
         };
-        let from_node = self.our_node_id.ok_or_else(|| 
-            anyhow!("Cannot send message: our_node_id not yet known (device may not have provided MYINFO)")
+        let from_node = self.our_node_id.ok_or_else(||
+            anyhow!(
+                "Cannot send message: our_node_id not yet known (device may not have provided MYINFO)"
+            )
         )?;
-        
+
         // For direct messages (DMs), use reliable delivery to try to force immediate transmission
         let is_dm = to.is_some() && dest != 0xffffffff;
-        let packet_id = if is_dm { 
+        let packet_id = if is_dm {
             // Generate unique ID for reliable packets (required for want_ack)
             use std::time::{SystemTime, UNIX_EPOCH};
-            let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+            let since_epoch = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
             (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos()) // Simple ID generation
-        } else { 
+        } else {
             0 // Broadcast packets don't need ID
         };
-        
+
         let pkt = MeshPacket {
             from: from_node,
             to: dest,
@@ -1097,42 +1330,68 @@ impl MeshtasticDevice {
             id: packet_id,
             rx_time: 0,
             rx_snr: 0.0,
-            hop_limit: 3, // Default hop limit for mesh routing
+            hop_limit: 3,                         // Default hop limit for mesh routing
             want_ack: is_dm, // Request ACK for DMs to trigger immediate transmission
             priority: if is_dm { 70 } else { 0 }, // Use RELIABLE priority (70) for DMs, DEFAULT (0) for broadcasts
             ..Default::default()
         };
-        
 
-        
-        let toradio = ToRadio { payload_variant: Some(TRPayload::Packet(pkt)) };
+        let toradio = ToRadio {
+            payload_variant: Some(TRPayload::Packet(pkt)),
+        };
         // Encode and send using existing framing helper
         #[cfg(feature = "serial")]
         if let Some(ref mut port) = self.port {
             let mut payload = Vec::with_capacity(128);
             toradio.encode(&mut payload)?;
-            let mut hdr = [0u8;4]; hdr[0]=0x94; hdr[1]=0xC3; hdr[2]=((payload.len()>>8)&0xFF) as u8; hdr[3]=(payload.len()&0xFF) as u8;
-            port.write_all(&hdr)?; port.write_all(&payload)?; port.flush()?;
-            
+            let mut hdr = [0u8; 4];
+            hdr[0] = 0x94;
+            hdr[1] = 0xC3;
+            hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
+            hdr[3] = (payload.len() & 0xFF) as u8;
+            port.write_all(&hdr)?;
+            port.write_all(&payload)?;
+            port.flush()?;
+
             // Add a small delay to allow the OS to flush the serial buffer.
             std::thread::sleep(std::time::Duration::from_millis(50));
 
-            let display_text = if text.len() > 80 { truncate_for_log(text, 80) } else { escape_log(text) };
+            let display_text = if text.len() > 80 {
+                truncate_for_log(text, 80)
+            } else {
+                escape_log(text)
+            };
             let msg_type = if is_dm { "DM (reliable)" } else { "broadcast" };
-            debug!("Sent TextPacket ({}): from=0x{:08x} to=0x{:08x} channel={} id={} want_ack={} priority={} ({} bytes payload) text='{}'", 
-                  msg_type, self.our_node_id.unwrap_or(0), dest, channel, packet_id, is_dm, 
-                  if is_dm { 70 } else { 0 }, payload.len(), display_text);
+            debug!(
+                "Sent TextPacket ({}): from=0x{:08x} to=0x{:08x} channel={} id={} want_ack={} priority={} ({} bytes payload) text='{}'",
+                msg_type,
+                self.our_node_id.unwrap_or(0),
+                dest,
+                channel,
+                packet_id,
+                is_dm,
+                if is_dm { 70 } else { 0 },
+                payload.len(),
+                display_text
+            );
             if log::log_enabled!(log::Level::Trace) {
-                let mut hex = String::with_capacity(payload.len()*2);
-                for b in &payload { use std::fmt::Write; let _=write!(&mut hex, "{:02x}", b); }
+                let mut hex = String::with_capacity(payload.len() * 2);
+                for b in &payload {
+                    use std::fmt::Write;
+                    let _ = write!(&mut hex, "{:02x}", b);
+                }
                 trace!("ToRadio payload hex:{}", hex);
             }
         }
         #[cfg(not(feature = "serial"))]
         {
-            debug!("(mock) Would send TextPacket to 0x{:08x}: '{}'", dest, escape_log(text));
+            debug!(
+                "(mock) Would send TextPacket to 0x{:08x}: '{}'",
+                dest,
+                escape_log(text)
+            );
         }
-        
+
         // For DMs, send a heartbeat immediately after to try to trigger radio transmission
         if is_dm {
             if let Err(e) = self.send_heartbeat() {
@@ -1141,7 +1400,7 @@ impl MeshtasticDevice {
                 trace!("Sent heartbeat after DM to trigger radio activity");
             }
         }
-        
+
         Ok(())
     }
 }
@@ -1153,20 +1412,30 @@ impl MeshtasticDevice {
     /// Send a ToRadio.WantConfigId request to trigger the node database/config push.
     pub fn send_want_config(&mut self, request_id: u32) -> Result<()> {
         use proto::to_radio::PayloadVariant;
-        let msg = proto::ToRadio { payload_variant: Some(PayloadVariant::WantConfigId(request_id)) };
+        let msg = proto::ToRadio {
+            payload_variant: Some(PayloadVariant::WantConfigId(request_id)),
+        };
         #[cfg(feature = "meshtastic-proto")]
-        { self.last_want_config_sent = Some(std::time::Instant::now()); }
+        {
+            self.last_want_config_sent = Some(std::time::Instant::now());
+        }
         self.send_toradio(msg)
     }
 
     /// Send a heartbeat frame (optional, can help keep link active)
     pub fn send_heartbeat(&mut self) -> Result<()> {
-        use proto::{Heartbeat, ToRadio};
         use proto::to_radio::PayloadVariant;
+        use proto::{Heartbeat, ToRadio};
         // nonce can be any incrementing value; for now just use a simple timestamp-based low bits
-        let nonce = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() & 0xffff) as u32;
+        let nonce = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            & 0xffff) as u32;
         let hb = Heartbeat { nonce };
-        let msg = ToRadio { payload_variant: Some(PayloadVariant::Heartbeat(hb)) };
+        let msg = ToRadio {
+            payload_variant: Some(PayloadVariant::Heartbeat(hb)),
+        };
         self.send_toradio(msg)
     }
 
@@ -1176,9 +1445,17 @@ impl MeshtasticDevice {
         if let Some(ref mut port) = self.port {
             let mut payload = Vec::with_capacity(256);
             msg.encode(&mut payload)?;
-            if payload.len() > u16::MAX as usize { return Err(anyhow!("payload too large")); }
-            let mut hdr = [0u8;4]; hdr[0]=0x94; hdr[1]=0xC3; hdr[2]=((payload.len()>>8)&0xFF) as u8; hdr[3]=(payload.len()&0xFF) as u8;
-            port.write_all(&hdr)?; port.write_all(&payload)?; port.flush()?;
+            if payload.len() > u16::MAX as usize {
+                return Err(anyhow!("payload too large"));
+            }
+            let mut hdr = [0u8; 4];
+            hdr[0] = 0x94;
+            hdr[1] = 0xC3;
+            hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
+            hdr[3] = (payload.len() & 0xFF) as u8;
+            port.write_all(&hdr)?;
+            port.write_all(&payload)?;
+            port.flush()?;
             debug!("Sent ToRadio LEN frame ({} bytes payload)", payload.len());
         }
         Ok(())
@@ -1187,51 +1464,65 @@ impl MeshtasticDevice {
     #[cfg(feature = "meshtastic-proto")]
     pub fn ensure_want_config(&mut self) -> Result<()> {
         if self.config_request_id.is_none() {
-            let mut id: u32 = rand::random(); if id == 0 { id = 1; }
+            let mut id: u32 = rand::random();
+            if id == 0 {
+                id = 1;
+            }
             self.config_request_id = Some(id);
             debug!("Generated config_request_id=0x{:08x}", id);
             self.send_want_config(id)?;
             return Ok(());
         }
-        if self.initial_sync_complete() { return Ok(()); }
-        if let Some(last) = self.last_want_config_sent { if last.elapsed() > std::time::Duration::from_secs(7) {
-            let id = self.config_request_id.unwrap();
-            debug!("Resending want_config_id=0x{:08x}", id);
-            self.send_want_config(id)?;
-        }}
+        if self.initial_sync_complete() {
+            return Ok(());
+        }
+        if let Some(last) = self.last_want_config_sent {
+            if last.elapsed() > std::time::Duration::from_secs(7) {
+                let id = self.config_request_id.unwrap();
+                debug!("Resending want_config_id=0x{:08x}", id);
+                self.send_want_config(id)?;
+            }
+        }
         Ok(())
     }
 }
 
 /// Create a shared serial port connection for both reader and writer
 #[cfg(feature = "serial")]
-async fn create_shared_serial_port(port_name: &str, baud_rate: u32) -> Result<Arc<Mutex<Box<dyn SerialPort>>>> {
-    debug!("Opening shared serial port {} at {} baud", port_name, baud_rate);
-    
-    let mut builder = serialport::new(port_name, baud_rate)
-        .timeout(Duration::from_millis(500));
-    #[cfg(unix)] { 
-        builder = builder.data_bits(serialport::DataBits::Eight)
+async fn create_shared_serial_port(
+    port_name: &str,
+    baud_rate: u32,
+) -> Result<Arc<Mutex<Box<dyn SerialPort>>>> {
+    debug!(
+        "Opening shared serial port {} at {} baud",
+        port_name, baud_rate
+    );
+
+    let mut builder = serialport::new(port_name, baud_rate).timeout(Duration::from_millis(500));
+    #[cfg(unix)]
+    {
+        builder = builder
+            .data_bits(serialport::DataBits::Eight)
             .stop_bits(serialport::StopBits::One)
-            .parity(serialport::Parity::None); 
+            .parity(serialport::Parity::None);
     }
     let mut port = builder
         .open()
         .map_err(|e| anyhow!("Failed to open serial port {}: {}", port_name, e))?;
-    
+
     // Toggle DTR/RTS to reset/ensure device wakes
     let _ = port.write_data_terminal_ready(true);
     let _ = port.write_request_to_send(true);
     sleep(Duration::from_millis(150)).await;
-    
+
     // Clear any existing buffered startup text
     let mut purge_buf = [0u8; 512];
-    if let Ok(available) = port.bytes_to_read() { 
-        if available > 0 { 
-            let _ = port.read(&mut purge_buf); 
-        } 
+    if let Ok(available) = port.bytes_to_read() {
+        if available > 0 {
+            let _ = port.read(&mut purge_buf);
+        }
     }
-    
+
     debug!("Shared serial port initialized successfully");
     Ok(Arc::new(Mutex::new(port)))
 }
@@ -1246,8 +1537,8 @@ impl MeshtasticReader {
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
         node_id_tx: mpsc::UnboundedSender<u32>,
     ) -> Result<Self> {
-    debug!("Initializing Meshtastic reader with shared port");
-        
+        debug!("Initializing Meshtastic reader with shared port");
+
         Ok(MeshtasticReader {
             #[cfg(feature = "serial")]
             port: shared_port,
@@ -1264,7 +1555,7 @@ impl MeshtasticReader {
             binary_frames_seen: false,
         })
     }
-    
+
     /// Create a mock reader for non-serial builds
     #[cfg(not(feature = "serial"))]
     pub async fn new_mock(
@@ -1274,7 +1565,7 @@ impl MeshtasticReader {
         node_id_tx: mpsc::UnboundedSender<u32>,
     ) -> Result<Self> {
         info!("Initializing mock Meshtastic reader");
-        
+
         Ok(MeshtasticReader {
             slip: slip::SlipDecoder::new(),
             rx_buf: Vec::new(),
@@ -1293,14 +1584,14 @@ impl MeshtasticReader {
     /// Run the continuous reading task
     pub async fn run(mut self) -> Result<()> {
         info!("Starting Meshtastic reader task");
-        
+
         // Load node cache
         if let Err(e) = self.load_node_cache() {
             warn!("Failed to load node cache: {}", e);
         }
-        
+
         let mut interval = tokio::time::interval(Duration::from_millis(10));
-        
+
         loop {
             tokio::select! {
                 // Check for control messages
@@ -1311,7 +1602,7 @@ impl MeshtasticReader {
                             break;
                         }
                         Some(ControlMessage::DeviceStatus) => {
-                            debug!("Reader: binary_frames_seen={}, our_node_id={:?}, node_count={}", 
+                            debug!("Reader: binary_frames_seen={}, our_node_id={:?}, node_count={}",
                                    self.binary_frames_seen, self.our_node_id, self.nodes.len());
                         }
                         Some(_) => {
@@ -1323,7 +1614,7 @@ impl MeshtasticReader {
                         }
                     }
                 }
-                
+
                 // Read from device
                 _ = interval.tick() => {
                     if let Err(e) = self.read_and_process().await {
@@ -1343,7 +1634,7 @@ impl MeshtasticReader {
                 }
             }
         }
-        
+
         info!("Meshtastic reader task shutting down");
         Ok(())
     }
@@ -1356,26 +1647,26 @@ impl MeshtasticReader {
                 let mut port = self.port.lock().unwrap();
                 port.read(&mut buffer)
             };
-            
+
             match read_result {
                 Ok(bytes_read) if bytes_read > 0 => {
                     let raw_slice = &buffer[..bytes_read];
                     trace!("RAW {} bytes: {}", bytes_read, hex_snippet(raw_slice, 64));
-                    
+
                     // Try length-prefixed framing first: 0x94 0xC3 len_hi len_lo
                     self.rx_buf.extend_from_slice(raw_slice);
                     self.process_framed_messages().await?;
-                    
+
                     // Try SLIP framing
                     let frames = self.slip.push(raw_slice);
-                    if !frames.is_empty() { 
-                        self.binary_frames_seen = true; 
+                    if !frames.is_empty() {
+                        self.binary_frames_seen = true;
                     }
                     for frame in frames {
                         trace!("SLIP frame {} bytes", frame.len());
                         self.process_protobuf_frame(&frame).await?;
                     }
-                    
+
                     // Fallback: treat as text for legacy compatibility
                     let message = String::from_utf8_lossy(raw_slice);
                     if let Some(parsed) = self.parse_legacy_text(&message) {
@@ -1400,45 +1691,52 @@ impl MeshtasticReader {
                 }
             }
         }
-        
+
         #[cfg(not(feature = "serial"))]
         {
             // Mock implementation for testing
             sleep(Duration::from_millis(100)).await;
         }
-        
+
         Ok(())
     }
 
     async fn process_framed_messages(&mut self) -> Result<()> {
         loop {
-            if self.rx_buf.len() < 4 { break; }
-            
+            if self.rx_buf.len() < 4 {
+                break;
+            }
+
             // Realign to header if needed
             if !(self.rx_buf[0] == 0x94 && self.rx_buf[1] == 0xC3) {
-                if let Some(pos) = self.rx_buf.iter().position(|&b| b == 0x94) { 
-                    if pos > 0 { 
-                        self.rx_buf.drain(0..pos); 
-                    } 
+                if let Some(pos) = self.rx_buf.iter().position(|&b| b == 0x94) {
+                    if pos > 0 {
+                        self.rx_buf.drain(0..pos);
+                    }
+                } else {
+                    self.rx_buf.clear();
+                    break;
                 }
-                else { 
-                    self.rx_buf.clear(); 
-                    break; 
+                if self.rx_buf.len() < 4 {
+                    break;
                 }
-                if self.rx_buf.len() < 4 { break; }
-                if !(self.rx_buf[0]==0x94 && self.rx_buf[1]==0xC3) { continue; }
+                if !(self.rx_buf[0] == 0x94 && self.rx_buf[1] == 0xC3) {
+                    continue;
+                }
             }
-            
+
             let declared = ((self.rx_buf[2] as usize) << 8) | (self.rx_buf[3] as usize);
-            if declared == 0 || declared > 8192 { 
-                self.rx_buf.drain(0..1); 
-                continue; 
+            if declared == 0 || declared > 8192 {
+                self.rx_buf.drain(0..1);
+                continue;
             }
-            if self.rx_buf.len() < 4 + declared { break; }
-            
-            let frame: Vec<u8> = self.rx_buf[4..4+declared].to_vec();
-            self.rx_buf.drain(0..4+declared);
-            
+            if self.rx_buf.len() < 4 + declared {
+                break;
+            }
+
+            let frame: Vec<u8> = self.rx_buf[4..4 + declared].to_vec();
+            self.rx_buf.drain(0..4 + declared);
+
             self.binary_frames_seen = true;
             self.process_protobuf_frame(&frame).await?;
         }
@@ -1446,11 +1744,11 @@ impl MeshtasticReader {
     }
 
     async fn process_protobuf_frame(&mut self, data: &[u8]) -> Result<()> {
-        use proto::{FromRadio, PortNum};
+        use prost::Message;
         use proto::from_radio::PayloadVariant as FRPayload;
         use proto::mesh_packet::PayloadVariant as MPPayload;
-        use prost::Message;
-        
+        use proto::{FromRadio, PortNum};
+
         let bytes = BytesMut::from(data);
         if let Ok(msg) = FromRadio::decode(&mut bytes.freeze()) {
             match msg.payload_variant.as_ref() {
@@ -1459,7 +1757,8 @@ impl MeshtasticReader {
                 }
                 Some(FRPayload::Packet(pkt)) => {
                     if let Some(MPPayload::Decoded(data_msg)) = &pkt.payload_variant {
-                        let port = PortNum::try_from(data_msg.portnum).unwrap_or(PortNum::UnknownApp);
+                        let port =
+                            PortNum::try_from(data_msg.portnum).unwrap_or(PortNum::UnknownApp);
 
                         // Correlate explicit ACKs (priority=ACK and reply_id set)
                         if pkt.priority == 120 && data_msg.reply_id != 0 {
@@ -1467,17 +1766,23 @@ impl MeshtasticReader {
                                 "ACK received: id={} from=0x{:08x} to=0x{:08x} port={:?}",
                                 data_msg.reply_id, pkt.from, pkt.to, port
                             );
-                            let _ = self.writer_control_tx.send(ControlMessage::AckReceived(data_msg.reply_id));
+                            let _ = self
+                                .writer_control_tx
+                                .send(ControlMessage::AckReceived(data_msg.reply_id));
                         }
 
                         // Decode routing control messages and report errors tied to a specific id
                         if matches!(port, PortNum::RoutingApp) {
                             let mut b = BytesMut::from(&data_msg.payload[..]).freeze();
                             if let Ok(routing) = proto::Routing::decode(&mut b) {
-                                use proto::routing::{Variant as RVar, Error as RErr};
+                                use proto::routing::{Error as RErr, Variant as RVar};
                                 if let Some(RVar::ErrorReason(e)) = routing.variant {
                                     if let Ok(err) = RErr::try_from(e) {
-                                        let corr_id = if data_msg.request_id != 0 { data_msg.request_id } else { data_msg.reply_id };
+                                        let corr_id = if data_msg.request_id != 0 {
+                                            data_msg.request_id
+                                        } else {
+                                            data_msg.reply_id
+                                        };
                                         match err {
                                             RErr::None => {
                                                 // Treat OK as delivery confirmation for the correlated id
@@ -1486,7 +1791,9 @@ impl MeshtasticReader {
                                                     corr_id, pkt.from, pkt.to
                                                 );
                                                 if corr_id != 0 {
-                                                    let _ = self.writer_control_tx.send(ControlMessage::AckReceived(corr_id));
+                                                    let _ = self
+                                                        .writer_control_tx
+                                                        .send(ControlMessage::AckReceived(corr_id));
                                                 }
                                             }
                                             _ => {
@@ -1494,7 +1801,12 @@ impl MeshtasticReader {
                                                     "Routing error for id={} from=0x{:08x} to=0x{:08x}: {:?}",
                                                     corr_id, pkt.from, pkt.to, err
                                                 );
-                                                let _ = self.writer_control_tx.send(ControlMessage::RoutingError { id: corr_id, reason: e });
+                                                let _ = self.writer_control_tx.send(
+                                                    ControlMessage::RoutingError {
+                                                        id: corr_id,
+                                                        reason: e,
+                                                    },
+                                                );
                                             }
                                         }
                                     }
@@ -1507,47 +1819,62 @@ impl MeshtasticReader {
                                     let dest = if pkt.to != 0 { Some(pkt.to) } else { None };
                                     let is_direct = matches!((dest, self.our_node_id), (Some(d), Some(our)) if d == our);
                                     let channel = Some(pkt.channel);
-                                    
-                                    let event = TextEvent { 
-                                        source: pkt.from, 
-                                        dest, 
-                                        is_direct, 
-                                        channel, 
-                                        content: text.to_string() 
+
+                                    let event = TextEvent {
+                                        source: pkt.from,
+                                        dest,
+                                        is_direct,
+                                        channel,
+                                        content: text.to_string(),
                                     };
-                                    
+
                                     let _ = self.text_event_tx.send(event);
                                 }
                             }
                             PortNum::TextMessageCompressedApp => {
                                 // Handle compressed text messages
-                                let maybe_text = if data_msg.payload.iter().all(|b| b.is_ascii() && !b.is_ascii_control()) {
+                                let maybe_text = if data_msg
+                                    .payload
+                                    .iter()
+                                    .all(|b| b.is_ascii() && !b.is_ascii_control())
+                                {
                                     Some(String::from_utf8_lossy(&data_msg.payload).to_string())
-                                } else { 
-                                    None 
+                                } else {
+                                    None
                                 };
-                                
+
                                 if let Some(text) = maybe_text {
                                     let dest = if pkt.to != 0 { Some(pkt.to) } else { None };
                                     let is_direct = matches!((dest, self.our_node_id), (Some(d), Some(our)) if d == our);
                                     let channel = Some(pkt.channel);
-                                    
-                                    let event = TextEvent { 
-                                        source: pkt.from, 
-                                        dest, 
-                                        is_direct, 
-                                        channel, 
-                                        content: text
+
+                                    let event = TextEvent {
+                                        source: pkt.from,
+                                        dest,
+                                        is_direct,
+                                        channel,
+                                        content: text,
                                     };
-                                    
+
                                     let _ = self.text_event_tx.send(event);
                                 }
                             }
                             _ => {
-                                if let Some(summary) = summarize_known_port_payload(port, &data_msg.payload) {
-                                    debug!("Non-text packet from {}: port={:?} {}", pkt.from, port, summary);
+                                if let Some(summary) =
+                                    summarize_known_port_payload(port, &data_msg.payload)
+                                {
+                                    debug!(
+                                        "Non-text packet from {}: port={:?} {}",
+                                        pkt.from, port, summary
+                                    );
                                 } else {
-                                    debug!("Non-text packet from {}: port={:?} len={} hex={}...", pkt.from, port, data_msg.payload.len(), hex_snippet(&data_msg.payload, 16));
+                                    debug!(
+                                        "Non-text packet from {}: port={:?} len={} hex={}...",
+                                        pkt.from,
+                                        port,
+                                        data_msg.payload.len(),
+                                        hex_snippet(&data_msg.payload, 16)
+                                    );
                                 }
                             }
                         }
@@ -1558,9 +1885,12 @@ impl MeshtasticReader {
                     if self.our_node_id.is_none() {
                         self.our_node_id = Some(info.my_node_num);
                         debug!("Got our node ID: {}", info.my_node_num);
-                        
+
                         // Notify the writer about our node ID (first time only)
-                        if let Err(e) = self.writer_control_tx.send(ControlMessage::SetNodeId(info.my_node_num)) {
+                        if let Err(e) = self
+                            .writer_control_tx
+                            .send(ControlMessage::SetNodeId(info.my_node_num))
+                        {
                             warn!("Failed to send node ID to writer: {}", e);
                         } else {
                             debug!("Sent node ID {} to writer", info.my_node_num);
@@ -1579,16 +1909,19 @@ impl MeshtasticReader {
                     if let Some(user) = &n.user {
                         let long_name = user.long_name.clone();
                         let short_name = user.short_name.clone();
-                        
+
                         self.nodes.insert(n.num, n.clone());
                         self.node_cache.update_node(n.num, long_name, short_name);
-                        
+
                         // Save cache (best effort)
                         if let Err(e) = self.save_node_cache() {
                             debug!("Failed to save node cache: {}", e);
                         }
-                        
-                        debug!("Updated node info for {}: {} ({})", n.num, user.long_name, user.short_name);
+
+                        debug!(
+                            "Updated node info for {}: {} ({})",
+                            n.num, user.long_name, user.short_name
+                        );
                     }
                 }
                 Some(FRPayload::Config(config)) => {
@@ -1617,29 +1950,57 @@ impl MeshtasticReader {
                     let module_type = match &module_config.payload_variant {
                         Some(proto::module_config::PayloadVariant::Mqtt(_)) => "mqtt",
                         Some(proto::module_config::PayloadVariant::Serial(_)) => "serial",
-                        Some(proto::module_config::PayloadVariant::ExternalNotification(_)) => "external_notification",
-                        Some(proto::module_config::PayloadVariant::StoreForward(_)) => "store_forward",
+                        Some(proto::module_config::PayloadVariant::ExternalNotification(_)) => {
+                            "external_notification"
+                        }
+                        Some(proto::module_config::PayloadVariant::StoreForward(_)) => {
+                            "store_forward"
+                        }
                         Some(proto::module_config::PayloadVariant::RangeTest(_)) => "range_test",
                         Some(proto::module_config::PayloadVariant::Telemetry(_)) => "telemetry",
-                        Some(proto::module_config::PayloadVariant::CannedMessage(_)) => "canned_message",
+                        Some(proto::module_config::PayloadVariant::CannedMessage(_)) => {
+                            "canned_message"
+                        }
                         Some(proto::module_config::PayloadVariant::Audio(_)) => "audio",
-                        Some(proto::module_config::PayloadVariant::RemoteHardware(_)) => "remote_hardware",
-                        Some(proto::module_config::PayloadVariant::NeighborInfo(_)) => "neighbor_info",
-                        Some(proto::module_config::PayloadVariant::AmbientLighting(_)) => "ambient_lighting",
-                        Some(proto::module_config::PayloadVariant::DetectionSensor(_)) => "detection_sensor",
+                        Some(proto::module_config::PayloadVariant::RemoteHardware(_)) => {
+                            "remote_hardware"
+                        }
+                        Some(proto::module_config::PayloadVariant::NeighborInfo(_)) => {
+                            "neighbor_info"
+                        }
+                        Some(proto::module_config::PayloadVariant::AmbientLighting(_)) => {
+                            "ambient_lighting"
+                        }
+                        Some(proto::module_config::PayloadVariant::DetectionSensor(_)) => {
+                            "detection_sensor"
+                        }
                         Some(proto::module_config::PayloadVariant::Paxcounter(_)) => "paxcounter",
                         None => "unknown",
                     };
                     debug!("Received moduleConfig: {}", module_type);
                 }
                 Some(FRPayload::Channel(channel)) => {
-                    let channel_name = channel.settings.as_ref()
-                        .map(|s| if s.name.is_empty() { "Default".to_string() } else { s.name.clone() })
+                    let channel_name = channel
+                        .settings
+                        .as_ref()
+                        .map(|s| {
+                            if s.name.is_empty() {
+                                "Default".to_string()
+                            } else {
+                                s.name.clone()
+                            }
+                        })
                         .unwrap_or_else(|| "Disabled".to_string());
-                    debug!("Received channel: index={} name='{}'", channel.index, channel_name);
+                    debug!(
+                        "Received channel: index={} name='{}'",
+                        channel.index, channel_name
+                    );
                 }
                 Some(FRPayload::FileInfo(file_info)) => {
-                    debug!("Received fileInfo: '{}' ({} bytes)", file_info.file_name, file_info.size_bytes);
+                    debug!(
+                        "Received fileInfo: '{}' ({} bytes)",
+                        file_info.file_name, file_info.size_bytes
+                    );
                 }
                 Some(FRPayload::QueueStatus(qs)) => {
                     // res is an error/status code; free/maxlen reflect outgoing queue capacity
@@ -1681,18 +2042,20 @@ impl MeshtasticReader {
 
     fn parse_legacy_text(&self, message: &str) -> Option<String> {
         let message = message.trim();
-        
+
         // Look for text message format: FROM:1234567890 MSG:Hello World
         if let Some(from_start) = message.find("FROM:") {
             if let Some(msg_start) = message.find("MSG:") {
-                let from_end = message[from_start + 5..].find(' ').unwrap_or(message.len() - from_start - 5);
+                let from_end = message[from_start + 5..]
+                    .find(' ')
+                    .unwrap_or(message.len() - from_start - 5);
                 let from_node = &message[from_start + 5..from_start + 5 + from_end];
                 let msg_content = &message[msg_start + 4..];
-                
+
                 return Some(format!("{}:{}", from_node, msg_content));
             }
         }
-        
+
         None
     }
 
@@ -1701,11 +2064,11 @@ impl MeshtasticReader {
         if let Some(colon_pos) = text.find(':') {
             let (from_str, content) = text.split_at(colon_pos);
             let content = &content[1..]; // Remove the colon
-            
+
             if let Ok(source) = from_str.parse::<u32>() {
                 return Some(TextEvent {
                     source,
-                    dest: None, // Legacy messages don't have explicit dest
+                    dest: None,       // Legacy messages don't have explicit dest
                     is_direct: false, // Assume public for legacy
                     channel: Some(0), // Assume primary channel
                     content: content.to_string(),
@@ -1719,7 +2082,11 @@ impl MeshtasticReader {
         if std::path::Path::new(&self.cache_file_path).exists() {
             match NodeCache::load_from_file(&self.cache_file_path) {
                 Ok(cache) => {
-                    debug!("Loaded {} cached nodes from {}", cache.nodes.len(), self.cache_file_path);
+                    debug!(
+                        "Loaded {} cached nodes from {}",
+                        cache.nodes.len(),
+                        self.cache_file_path
+                    );
                     // Merge cached nodes into runtime nodes
                     for (node_id, cached_node) in &cache.nodes {
                         if !self.nodes.contains_key(node_id) {
@@ -1737,14 +2104,17 @@ impl MeshtasticReader {
                     }
                     self.node_cache = cache;
                     Ok(())
-                },
+                }
                 Err(e) => {
                     warn!("Failed to load node cache: {}", e);
                     Ok(()) // Continue without cache
                 }
             }
         } else {
-            debug!("No node cache file found at {}, starting fresh", self.cache_file_path);
+            debug!(
+                "No node cache file found at {}, starting fresh",
+                self.cache_file_path
+            );
             Ok(())
         }
     }
@@ -1767,8 +2137,8 @@ impl MeshtasticWriter {
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         tuning: WriterTuning,
     ) -> Result<Self> {
-    debug!("Initializing Meshtastic writer with shared port");
-        
+        debug!("Initializing Meshtastic writer with shared port");
+
         Ok(MeshtasticWriter {
             #[cfg(feature = "serial")]
             port: shared_port,
@@ -1785,7 +2155,7 @@ impl MeshtasticWriter {
             scheduler: None,
         })
     }
-    
+
     /// Create a mock writer for non-serial builds
     #[cfg(not(feature = "serial"))]
     pub async fn new_mock(
@@ -1793,8 +2163,8 @@ impl MeshtasticWriter {
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         tuning: WriterTuning,
     ) -> Result<Self> {
-    debug!("Initializing mock Meshtastic writer");
-        
+        debug!("Initializing mock Meshtastic writer");
+
         Ok(MeshtasticWriter {
             outgoing_rx,
             control_rx,
@@ -1812,21 +2182,26 @@ impl MeshtasticWriter {
 
     /// Run the writer task
     pub async fn run(mut self) -> Result<()> {
-    info!("Starting Meshtastic writer task");
-        
+        info!("Starting Meshtastic writer task");
+
         // Send a single WantConfigId at startup to fetch node db and config
         if self.config_request_id.is_none() {
             let mut id: u32 = rand::random();
-            if id == 0 { id = 1; }
+            if id == 0 {
+                id = 1;
+            }
             self.config_request_id = Some(id);
-            info!("Requesting initial config from radio (want_config_id=0x{:08x})", id);
+            info!(
+                "Requesting initial config from radio (want_config_id=0x{:08x})",
+                id
+            );
             if let Err(e) = self.send_want_config(id) {
                 warn!("Initial config request failed: {}", e);
             }
         }
 
         let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
-        
+
         loop {
             tokio::select! {
                 // Handle outgoing messages
@@ -1906,7 +2281,7 @@ impl MeshtasticWriter {
                         }
                     }
                 }
-                
+
                 // Handle control messages
                 control_msg = self.control_rx.recv() => {
                     match control_msg {
@@ -1999,7 +2374,7 @@ impl MeshtasticWriter {
                         }
                     }
                 }
-                
+
                 // Periodic heartbeat
                 _ = heartbeat_interval.tick() => {
                     // periodic heartbeat
@@ -2029,25 +2404,26 @@ impl MeshtasticWriter {
                         }
                     }
                 }
-                
+
             }
         }
-        
+
         info!("Meshtastic writer task shutting down");
         Ok(())
     }
 
     async fn send_message(&mut self, msg: &OutgoingMessage) -> Result<()> {
-    // Enforce a minimum gap between text packet transmissions across the queue
-    let min_gap = std::cmp::max(self.tuning.min_send_gap_ms, 2000);
-    self.enforce_min_send_gap(Duration::from_millis(min_gap)).await;
-        use proto::{ToRadio, MeshPacket, Data, PortNum};
-        use proto::to_radio::PayloadVariant as TRPayload;
-        use proto::mesh_packet::PayloadVariant as MPPayload;
+        // Enforce a minimum gap between text packet transmissions across the queue
+        let min_gap = std::cmp::max(self.tuning.min_send_gap_ms, 2000);
+        self.enforce_min_send_gap(Duration::from_millis(min_gap))
+            .await;
         use prost::Message;
-        
+        use proto::mesh_packet::PayloadVariant as MPPayload;
+        use proto::to_radio::PayloadVariant as TRPayload;
+        use proto::{Data, MeshPacket, PortNum, ToRadio};
+
         let dest = msg.to_node.unwrap_or(0xffffffff);
-        
+
         let data_msg = Data {
             portnum: PortNum::TextMessageApp as i32,
             payload: msg.content.as_bytes().to_vec().into(),
@@ -2059,22 +2435,27 @@ impl MeshtasticWriter {
             emoji: 0,
             bitfield: None,
         };
-        
-        let from_node = self.our_node_id.ok_or_else(|| 
-            anyhow!("Cannot send message: our_node_id not yet known")
-        )?;
-        
+
+        let from_node = self
+            .our_node_id
+            .ok_or_else(|| anyhow!("Cannot send message: our_node_id not yet known"))?;
+
         let is_dm = msg.to_node.is_some() && dest != 0xffffffff;
         let wants_ack_broadcast = !is_dm && dest == 0xffffffff && msg.request_ack;
         let packet_id = if is_dm || wants_ack_broadcast {
             use std::time::{SystemTime, UNIX_EPOCH};
-            let since_epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+            let since_epoch = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
             (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos())
         } else {
             0
         };
-        
-        let priority = match msg.priority { MessagePriority::High => 70, MessagePriority::Normal => 0 };
+
+        let priority = match msg.priority {
+            MessagePriority::High => 70,
+            MessagePriority::Normal => 0,
+        };
 
         // Pacing to reduce airtime fairness rate limiting
         // - If a reliable DM was just sent, delay a normal-priority broadcast slightly
@@ -2083,10 +2464,14 @@ impl MeshtasticWriter {
             let elapsed = last_hi.elapsed();
             if priority == 0 {
                 // Normal broadcast shortly after a reliable DM: configurable delay
-                let target_gap = std::time::Duration::from_millis(self.tuning.post_dm_broadcast_gap_ms);
+                let target_gap =
+                    std::time::Duration::from_millis(self.tuning.post_dm_broadcast_gap_ms);
                 if elapsed < target_gap {
                     let wait = target_gap - elapsed;
-                    debug!("Pacing: delaying broadcast by {}ms after recent reliable DM", wait.as_millis());
+                    debug!(
+                        "Pacing: delaying broadcast by {}ms after recent reliable DM",
+                        wait.as_millis()
+                    );
                     sleep(wait).await;
                 }
             } else if priority == 70 {
@@ -2094,12 +2479,15 @@ impl MeshtasticWriter {
                 let target_gap = std::time::Duration::from_millis(self.tuning.dm_to_dm_gap_ms);
                 if elapsed < target_gap {
                     let wait = target_gap - elapsed;
-                    debug!("Pacing: delaying reliable DM by {}ms to avoid rate limit", wait.as_millis());
+                    debug!(
+                        "Pacing: delaying reliable DM by {}ms to avoid rate limit",
+                        wait.as_millis()
+                    );
                     sleep(wait).await;
                 }
             }
         }
-        
+
         let pkt = MeshPacket {
             from: from_node,
             to: dest,
@@ -2113,9 +2501,11 @@ impl MeshtasticWriter {
             priority,
             ..Default::default()
         };
-        
-        let toradio = ToRadio { payload_variant: Some(TRPayload::Packet(pkt)) };
-        
+
+        let toradio = ToRadio {
+            payload_variant: Some(TRPayload::Packet(pkt)),
+        };
+
         #[cfg(feature = "serial")]
         {
             let mut payload = Vec::with_capacity(128);
@@ -2125,22 +2515,32 @@ impl MeshtasticWriter {
             hdr[1] = 0xC3;
             hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
             hdr[3] = (payload.len() & 0xFF) as u8;
-            
+
             {
                 let mut port = self.port.lock().unwrap();
                 port.write_all(&hdr)?;
                 port.write_all(&payload)?;
                 port.flush()?;
             }
-            
+
             // Small delay to allow OS to flush the serial buffer
             sleep(Duration::from_millis(50)).await;
             // Record the time of this text packet send for gating
             self.last_text_send = Some(std::time::Instant::now());
-            
-            let display_text = if msg.content.len() > 80 { truncate_for_log(&msg.content, 80) } else { escape_log(&msg.content) };
-            
-            let msg_type = if is_dm { "DM (reliable)" } else if wants_ack_broadcast { "broadcast (want_ack)" } else { "broadcast" };
+
+            let display_text = if msg.content.len() > 80 {
+                truncate_for_log(&msg.content, 80)
+            } else {
+                escape_log(&msg.content)
+            };
+
+            let msg_type = if is_dm {
+                "DM (reliable)"
+            } else if wants_ack_broadcast {
+                "broadcast (want_ack)"
+            } else {
+                "broadcast"
+            };
             debug!(
                 "Sent TextPacket ({}): to=0x{:08x} channel={} id={} want_ack={} priority={} ({} bytes) text='{}'",
                 msg_type,
@@ -2156,24 +2556,36 @@ impl MeshtasticWriter {
             // For DMs, record pending and proactively send a heartbeat to nudge immediate radio TX
             if is_dm {
                 // capture a small preview for logging
-                let preview = if msg.content.len() > 40 { truncate_for_log(&msg.content, 40) } else { escape_log(&msg.content) };
+                let preview = if msg.content.len() > 40 {
+                    truncate_for_log(&msg.content, 40)
+                } else {
+                    escape_log(&msg.content)
+                };
                 let now = std::time::Instant::now();
-                self.pending.insert(packet_id, PendingSend {
-                    to: dest,
-                    channel: msg.channel,
-                    full_content: msg.content.clone(),
-                    content_preview: preview,
-                    attempts: 1,
-                    // First retry scheduled after the first configured backoff stage
-                    next_due: now + std::time::Duration::from_secs(*self.tuning.dm_resend_backoff_seconds.first().unwrap_or(&4)),
-                    backoff_idx: 0,
-                    sent_at: now,
-                });
+                self.pending.insert(
+                    packet_id,
+                    PendingSend {
+                        to: dest,
+                        channel: msg.channel,
+                        full_content: msg.content.clone(),
+                        content_preview: preview,
+                        attempts: 1,
+                        // First retry scheduled after the first configured backoff stage
+                        next_due: now
+                            + std::time::Duration::from_secs(
+                                *self.tuning.dm_resend_backoff_seconds.first().unwrap_or(&4),
+                            ),
+                        backoff_idx: 0,
+                        sent_at: now,
+                    },
+                );
                 metrics::inc_reliable_sent();
                 // Schedule first retry envelope via central scheduler (Retry category) if handle attached
                 if let Some(sched) = &self.scheduler {
-                    use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
-                    let delay = std::time::Duration::from_secs(*self.tuning.dm_resend_backoff_seconds.first().unwrap_or(&4));
+                    use crate::bbs::dispatch::{MessageCategory, MessageEnvelope, Priority};
+                    let delay = std::time::Duration::from_secs(
+                        *self.tuning.dm_resend_backoff_seconds.first().unwrap_or(&4),
+                    );
                     let retry_env = MessageEnvelope::new(
                         MessageCategory::Retry,
                         Priority::High, // treat retries as high to avoid starvation (can revisit fairness)
@@ -2185,7 +2597,7 @@ impl MeshtasticWriter {
                             priority: MessagePriority::High,
                             kind: OutgoingKind::Retry { id: packet_id },
                             request_ack: false,
-                        }
+                        },
                     );
                     sched.enqueue(retry_env);
                 }
@@ -2198,31 +2610,53 @@ impl MeshtasticWriter {
                 self.last_high_priority_sent = Some(std::time::Instant::now());
             } else if wants_ack_broadcast {
                 // Track this broadcast awaiting at-least-one ack; no retries, short TTL
-                let preview = if msg.content.len() > 40 { truncate_for_log(&msg.content, 40) } else { escape_log(&msg.content) };
+                let preview = if msg.content.len() > 40 {
+                    truncate_for_log(&msg.content, 40)
+                } else {
+                    escape_log(&msg.content)
+                };
                 let ttl = std::time::Duration::from_secs(10);
-                self.pending_broadcast.insert(packet_id, BroadcastPending { channel: msg.channel, preview, expires_at: std::time::Instant::now() + ttl });
+                self.pending_broadcast.insert(
+                    packet_id,
+                    BroadcastPending {
+                        channel: msg.channel,
+                        preview,
+                        expires_at: std::time::Instant::now() + ttl,
+                    },
+                );
             } else if priority == 0 {
                 // For broadcasts without ack request, do not update high-priority marker
             }
         }
-        
+
         #[cfg(not(feature = "serial"))]
         {
-            debug!("(mock) Would send TextPacket to 0x{:08x}: '{}'", dest, msg.content);
+            debug!(
+                "(mock) Would send TextPacket to 0x{:08x}: '{}'",
+                dest, msg.content
+            );
         }
-        
+
         Ok(())
     }
 
     /// Re-send a previously attempted reliable text packet with the same id
     #[cfg(feature = "meshtastic-proto")]
-    async fn resend_text_packet(&mut self, packet_id: u32, dest: u32, channel: u32, content: &str) -> Result<()> {
-        use proto::{ToRadio, MeshPacket, Data, PortNum};
-        use proto::to_radio::PayloadVariant as TRPayload;
-        use proto::mesh_packet::PayloadVariant as MPPayload;
+    async fn resend_text_packet(
+        &mut self,
+        packet_id: u32,
+        dest: u32,
+        channel: u32,
+        content: &str,
+    ) -> Result<()> {
         use prost::Message;
+        use proto::mesh_packet::PayloadVariant as MPPayload;
+        use proto::to_radio::PayloadVariant as TRPayload;
+        use proto::{Data, MeshPacket, PortNum, ToRadio};
 
-        let from_node = self.our_node_id.ok_or_else(|| anyhow!("Cannot resend: our_node_id not yet known"))?;
+        let from_node = self
+            .our_node_id
+            .ok_or_else(|| anyhow!("Cannot resend: our_node_id not yet known"))?;
 
         let data_msg = Data {
             portnum: PortNum::TextMessageApp as i32,
@@ -2248,22 +2682,34 @@ impl MeshtasticWriter {
             priority: 70,
             ..Default::default()
         };
-        let toradio = ToRadio { payload_variant: Some(TRPayload::Packet(pkt)) };
+        let toradio = ToRadio {
+            payload_variant: Some(TRPayload::Packet(pkt)),
+        };
 
         #[cfg(feature = "serial")]
         {
             // Enforce minimum gap between text packet transmissions
             let min_gap = std::cmp::max(self.tuning.min_send_gap_ms, 2000);
-            self.enforce_min_send_gap(Duration::from_millis(min_gap)).await;
+            self.enforce_min_send_gap(Duration::from_millis(min_gap))
+                .await;
             let mut payload = Vec::with_capacity(128);
             toradio.encode(&mut payload)?;
             let mut hdr = [0u8; 4];
-            hdr[0] = 0x94; hdr[1] = 0xC3;
+            hdr[0] = 0x94;
+            hdr[1] = 0xC3;
             hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
             hdr[3] = (payload.len() & 0xFF) as u8;
             let mut port = self.port.lock().unwrap();
-            port.write_all(&hdr)?; port.write_all(&payload)?; port.flush()?;
-            debug!("Re-sent TextPacket DM: to=0x{:08x} channel={} id={} priority=70 ({} bytes)", dest, channel, packet_id, payload.len());
+            port.write_all(&hdr)?;
+            port.write_all(&payload)?;
+            port.flush()?;
+            debug!(
+                "Re-sent TextPacket DM: to=0x{:08x} channel={} id={} priority=70 ({} bytes)",
+                dest,
+                channel,
+                packet_id,
+                payload.len()
+            );
             self.last_text_send = Some(std::time::Instant::now());
         }
         Ok(())
@@ -2287,43 +2733,50 @@ impl MeshtasticWriter {
 
     fn send_want_config(&mut self, request_id: u32) -> Result<()> {
         use proto::to_radio::PayloadVariant;
-        let msg = proto::ToRadio { payload_variant: Some(PayloadVariant::WantConfigId(request_id)) };
+        let msg = proto::ToRadio {
+            payload_variant: Some(PayloadVariant::WantConfigId(request_id)),
+        };
         self.last_want_config_sent = Some(std::time::Instant::now());
         self.send_toradio(msg)
     }
 
     fn send_heartbeat(&mut self) -> Result<()> {
-        use proto::{Heartbeat, ToRadio};
         use proto::to_radio::PayloadVariant;
-        
-        let nonce = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            .unwrap().as_millis() & 0xffff) as u32;
+        use proto::{Heartbeat, ToRadio};
+
+        let nonce = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            & 0xffff) as u32;
         let hb = Heartbeat { nonce };
-        let msg = ToRadio { payload_variant: Some(PayloadVariant::Heartbeat(hb)) };
+        let msg = ToRadio {
+            payload_variant: Some(PayloadVariant::Heartbeat(hb)),
+        };
         self.send_toradio(msg)
     }
 
     fn send_toradio(&mut self, msg: proto::ToRadio) -> Result<()> {
         use prost::Message;
-        
+
         #[cfg(feature = "serial")]
         {
             let mut payload = Vec::with_capacity(256);
             msg.encode(&mut payload)?;
-            if payload.len() > u16::MAX as usize { 
-                return Err(anyhow!("payload too large")); 
+            if payload.len() > u16::MAX as usize {
+                return Err(anyhow!("payload too large"));
             }
             let mut hdr = [0u8; 4];
             hdr[0] = 0x94;
             hdr[1] = 0xC3;
             hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
             hdr[3] = (payload.len() & 0xFF) as u8;
-            
+
             let mut port = self.port.lock().unwrap();
             port.write_all(&hdr)?;
             port.write_all(&payload)?;
             port.flush()?;
-            
+
             debug!("Sent ToRadio LEN frame ({} bytes payload)", payload.len());
         }
         Ok(())
@@ -2356,7 +2809,7 @@ pub async fn create_reader_writer_system(
     // Create shared serial port
     #[cfg(feature = "serial")]
     let shared_port = create_shared_serial_port(port_name, baud_rate).await?;
-    
+
     // Create channels
     let (text_event_tx, text_event_rx) = mpsc::unbounded_channel::<TextEvent>();
     let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel::<OutgoingMessage>();
@@ -2366,18 +2819,40 @@ pub async fn create_reader_writer_system(
 
     // Create reader and writer with shared port
     #[cfg(feature = "serial")]
-    let reader = MeshtasticReader::new(shared_port.clone(), text_event_tx, reader_control_rx, writer_control_tx.clone(), node_id_tx.clone()).await?;
+    let reader = MeshtasticReader::new(
+        shared_port.clone(),
+        text_event_tx,
+        reader_control_rx,
+        writer_control_tx.clone(),
+        node_id_tx.clone(),
+    )
+    .await?;
     #[cfg(feature = "serial")]
-    let writer = MeshtasticWriter::new(shared_port, outgoing_rx, writer_control_rx, tuning.clone()).await?;
+    let writer =
+        MeshtasticWriter::new(shared_port, outgoing_rx, writer_control_rx, tuning.clone()).await?;
 
     #[cfg(not(feature = "serial"))]
     let (reader, writer) = {
         warn!("Serial not available, using mock reader/writer");
         (
-            MeshtasticReader::new_mock(text_event_tx, reader_control_rx, writer_control_tx.clone(), node_id_tx.clone()).await?,
+            MeshtasticReader::new_mock(
+                text_event_tx,
+                reader_control_rx,
+                writer_control_tx.clone(),
+                node_id_tx.clone(),
+            )
+            .await?,
             MeshtasticWriter::new_mock(outgoing_rx, writer_control_rx, tuning).await?,
         )
     };
 
-    Ok((reader, writer, text_event_rx, outgoing_tx, reader_control_tx, writer_control_tx, node_id_rx))
+    Ok((
+        reader,
+        writer,
+        text_event_rx,
+        outgoing_tx,
+        reader_control_tx,
+        writer_control_tx,
+        node_id_rx,
+    ))
 }

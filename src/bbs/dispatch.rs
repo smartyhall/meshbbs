@@ -40,19 +40,24 @@ use crate::meshtastic::OutgoingMessage;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[allow(dead_code)] // Some categories not yet emitted in Phase 2; reserved for Phase 3+ (retries, system, maintenance)
 pub enum MessageCategory {
-    Direct,          // Direct user DM (interactive)
-    Broadcast,       // Public/channel broadcast
-    System,          // System/service messages (welcome, prompts)
-    Admin,           // Administrative notices / moderation actions
-    Retry,           // Retries / re-sends (future Phase 3)
-    Maintenance,     // Background sync / housekeeping
-    HelpBroadcast,   // Specific labelled variant (can be merged into Broadcast later)
-    DirectHelp,      // Specific labelled variant for help DM (High priority labeling aid)
+    Direct,        // Direct user DM (interactive)
+    Broadcast,     // Public/channel broadcast
+    System,        // System/service messages (welcome, prompts)
+    Admin,         // Administrative notices / moderation actions
+    Retry,         // Retries / re-sends (future Phase 3)
+    Maintenance,   // Background sync / housekeeping
+    HelpBroadcast, // Specific labelled variant (can be merged into Broadcast later)
+    DirectHelp,    // Specific labelled variant for help DM (High priority labeling aid)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[allow(dead_code)] // Background priority reserved for future maintenance tasks
-pub enum Priority { High, Normal, Low, Background }
+pub enum Priority {
+    High,
+    Normal,
+    Low,
+    Background,
+}
 
 #[derive(Debug)]
 pub struct MessageEnvelope {
@@ -65,9 +70,20 @@ pub struct MessageEnvelope {
 }
 
 impl MessageEnvelope {
-    pub fn new(category: MessageCategory, priority: Priority, delay: Duration, msg: OutgoingMessage) -> Self {
+    pub fn new(
+        category: MessageCategory,
+        priority: Priority,
+        delay: Duration,
+        msg: OutgoingMessage,
+    ) -> Self {
         let now = Instant::now();
-        Self { category, priority, earliest: now + delay, enqueued_at: now, msg }
+        Self {
+            category,
+            priority,
+            earliest: now + delay,
+            enqueued_at: now,
+            msg,
+        }
     }
 }
 
@@ -88,19 +104,26 @@ impl SchedulerConfig {
         let composite = self.min_send_gap_ms + self.post_dm_broadcast_gap_ms;
         Duration::from_millis(self.help_broadcast_delay_ms.max(composite))
     }
-    pub fn aging_threshold(&self) -> Duration { Duration::from_millis(self.aging_threshold_ms) }
-    pub fn stats_interval(&self) -> Duration { Duration::from_millis(self.stats_interval_ms) }
+    pub fn aging_threshold(&self) -> Duration {
+        Duration::from_millis(self.aging_threshold_ms)
+    }
+    pub fn stats_interval(&self) -> Duration {
+        Duration::from_millis(self.stats_interval_ms)
+    }
 }
 
 pub enum ScheduleCommand {
     Enqueue(MessageEnvelope),
-    #[allow(dead_code)] Snapshot(oneshot::Sender<SchedulerStats>),
-    #[allow(dead_code)] Shutdown(oneshot::Sender<()>),
+    #[allow(dead_code)]
+    Snapshot(oneshot::Sender<SchedulerStats>),
+    #[allow(dead_code)]
+    Shutdown(oneshot::Sender<()>),
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SchedulerStats {
-    #[allow(dead_code)] pub queued: usize,
+    #[allow(dead_code)]
+    pub queued: usize,
     pub dispatched_total: u64,
     pub dropped_total: u64,
     pub dropped_overflow: u64,
@@ -113,9 +136,24 @@ pub struct SchedulerHandle {
 }
 
 impl SchedulerHandle {
-    pub fn enqueue(&self, env: MessageEnvelope) { let _ = self.tx.send(ScheduleCommand::Enqueue(env)); }
-    #[allow(dead_code)] pub async fn shutdown(&self) { let (tx, rx) = oneshot::channel(); let _ = self.tx.send(ScheduleCommand::Shutdown(tx)); let _ = rx.await; }
-    #[allow(dead_code)] pub async fn snapshot(&self) -> Option<SchedulerStats> { let (tx, rx) = oneshot::channel(); if self.tx.send(ScheduleCommand::Snapshot(tx)).is_ok() { rx.await.ok() } else { None } }
+    pub fn enqueue(&self, env: MessageEnvelope) {
+        let _ = self.tx.send(ScheduleCommand::Enqueue(env));
+    }
+    #[allow(dead_code)]
+    pub async fn shutdown(&self) {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.tx.send(ScheduleCommand::Shutdown(tx));
+        let _ = rx.await;
+    }
+    #[allow(dead_code)]
+    pub async fn snapshot(&self) -> Option<SchedulerStats> {
+        let (tx, rx) = oneshot::channel();
+        if self.tx.send(ScheduleCommand::Snapshot(tx)).is_ok() {
+            rx.await.ok()
+        } else {
+            None
+        }
+    }
 }
 
 pub fn start_scheduler(
@@ -159,37 +197,62 @@ pub fn start_scheduler(
                 }
                 _ = tokio::time::sleep(TICK) => {}
             }
-            if queue.is_empty() { continue; }
+            if queue.is_empty() {
+                continue;
+            }
             let now = Instant::now();
 
             // Periodic stats logging
-            if cfg.stats_interval_ms > 0 && now.duration_since(last_stats_log) >= cfg.stats_interval() {
+            if cfg.stats_interval_ms > 0
+                && now.duration_since(last_stats_log) >= cfg.stats_interval()
+            {
                 log::debug!("scheduler stats: queued={} dispatched_total={} dropped_total={} overflow={} escalations={}", queue.len(), stats.dispatched_total, stats.dropped_total, stats.dropped_overflow, stats.escalations);
                 last_stats_log = now;
             }
 
             // Adjust priorities for aging (copy-on-write approach to keep simple)
             for env in queue.iter_mut() {
-                if env.priority != Priority::High { // can't escalate above High
+                if env.priority != Priority::High {
+                    // can't escalate above High
                     if now.duration_since(env.enqueued_at) >= cfg.aging_threshold() {
                         // Single-step escalation
                         let old = env.priority;
-                        env.priority = match env.priority { Priority::Background => Priority::Low, Priority::Low => Priority::Normal, Priority::Normal => Priority::High, Priority::High => Priority::High };
-                        if env.priority != old { stats.escalations += 1; }
+                        env.priority = match env.priority {
+                            Priority::Background => Priority::Low,
+                            Priority::Low => Priority::Normal,
+                            Priority::Normal => Priority::High,
+                            Priority::High => Priority::High,
+                        };
+                        if env.priority != old {
+                            stats.escalations += 1;
+                        }
                     }
                 }
             }
 
             // Sort after potential escalations
-            queue.sort_by(|a,b| a.priority.cmp(&b.priority).then(a.earliest.cmp(&b.earliest)));
+            queue.sort_by(|a, b| {
+                a.priority
+                    .cmp(&b.priority)
+                    .then(a.earliest.cmp(&b.earliest))
+            });
 
             // Find first eligible item (earliest <= now)
             if let Some(pos) = queue.iter().position(|e| e.earliest <= now) {
                 // Enforce min gap
-                if let Some(last) = last_sent { if now < last + Duration::from_millis(cfg.min_send_gap_ms) { continue; } }
+                if let Some(last) = last_sent {
+                    if now < last + Duration::from_millis(cfg.min_send_gap_ms) {
+                        continue;
+                    }
+                }
                 let ready = queue.remove(pos);
-                if outgoing.send(ready.msg).is_err() { log::warn!("outgoing channel closed; dropping message"); stats.dropped_total += 1; }
-                else { stats.dispatched_total += 1; last_sent = Some(now); }
+                if outgoing.send(ready.msg).is_err() {
+                    log::warn!("outgoing channel closed; dropping message");
+                    stats.dropped_total += 1;
+                } else {
+                    stats.dispatched_total += 1;
+                    last_sent = Some(now);
+                }
             }
         }
         log::debug!("scheduler loop terminated");

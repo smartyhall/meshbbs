@@ -1,6 +1,6 @@
 use std::env;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 fn main() {
     // Only run if feature is enabled
@@ -43,7 +43,9 @@ fn main() {
     let mut placeholder_only = false;
     if protos.len() == 1 {
         if let Some(fname) = protos[0].file_name().and_then(|f| f.to_str()) {
-            if fname == "meshtastic_placeholder.proto" { placeholder_only = true; }
+            if fname == "meshtastic_placeholder.proto" {
+                placeholder_only = true;
+            }
         }
     }
 
@@ -53,7 +55,11 @@ fn main() {
             let mut fallback_protos = Vec::new();
             collect_protos(&fallback_dir, &mut fallback_protos);
             if !fallback_protos.is_empty() {
-                eprintln!("build.rs: using Meshtastic submodule protos from '{}' (found {} files)", fallback_dir.display(), fallback_protos.len());
+                eprintln!(
+                    "build.rs: using Meshtastic submodule protos from '{}' (found {} files)",
+                    fallback_dir.display(),
+                    fallback_protos.len()
+                );
                 protos = fallback_protos;
                 active_proto_root = fallback_dir; // switch active root so include path logic below is correct
             }
@@ -65,8 +71,8 @@ fn main() {
         // same package name (meshtastic) that the real protos use so the rest
         // of the code can consistently include the generated file
         // `meshtastic.rs`.
-    let fallback = proto_path.join("meshtastic_placeholder.proto");
-    std::fs::create_dir_all(&proto_path).expect("create proto dir");
+        let fallback = proto_path.join("meshtastic_placeholder.proto");
+        std::fs::create_dir_all(&proto_path).expect("create proto dir");
         std::fs::write(
             &fallback,
             b"syntax = \"proto3\"; package meshtastic; message Placeholder { string note = 1; }",
@@ -109,7 +115,9 @@ fn main() {
     unique.dedup();
 
     eprintln!("build.rs: Compiling {} proto files", unique.len());
-    for p in &unique { eprintln!("  proto: {}", p.display()); }
+    for p in &unique {
+        eprintln!("  proto: {}", p.display());
+    }
 
     config
         .compile_protos(&unique, &includes)

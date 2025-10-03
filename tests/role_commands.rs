@@ -1,13 +1,52 @@
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig, IdentBeaconConfig, GamesConfig};
 use meshbbs::bbs::server::BbsServer;
+use meshbbs::config::{
+    BbsConfig, Config, GamesConfig, IdentBeaconConfig, LoggingConfig, MeshtasticConfig,
+    StorageConfig,
+};
 
 async fn base_config() -> Config {
     Config {
-    bbs: BbsConfig { name: "Test".into(), sysop: "sysop".into(), location: "loc".into(), description: "d".into(), max_users: 10, session_timeout: 10, welcome_message: "w".into(), sysop_password_hash: None, public_command_prefix: None },
-    meshtastic: MeshtasticConfig { port: "".into(), baud_rate: 115200, node_id: "".into(), channel: 0, min_send_gap_ms: None, dm_resend_backoff_seconds: None, post_dm_broadcast_gap_ms: None, dm_to_dm_gap_ms: None, help_broadcast_delay_ms: None, scheduler_max_queue: None, scheduler_aging_threshold_ms: None, scheduler_stats_interval_ms: None },
-        storage: StorageConfig { data_dir: tempfile::tempdir().unwrap().path().join("data").to_str().unwrap().to_string(), max_message_size: 1024 },
+        bbs: BbsConfig {
+            name: "Test".into(),
+            sysop: "sysop".into(),
+            location: "loc".into(),
+            description: "d".into(),
+            max_users: 10,
+            session_timeout: 10,
+            welcome_message: "w".into(),
+            sysop_password_hash: None,
+            public_command_prefix: None,
+        },
+        meshtastic: MeshtasticConfig {
+            port: "".into(),
+            baud_rate: 115200,
+            node_id: "".into(),
+            channel: 0,
+            min_send_gap_ms: None,
+            dm_resend_backoff_seconds: None,
+            post_dm_broadcast_gap_ms: None,
+            dm_to_dm_gap_ms: None,
+            help_broadcast_delay_ms: None,
+            scheduler_max_queue: None,
+            scheduler_aging_threshold_ms: None,
+            scheduler_stats_interval_ms: None,
+        },
+        storage: StorageConfig {
+            data_dir: tempfile::tempdir()
+                .unwrap()
+                .path()
+                .join("data")
+                .to_str()
+                .unwrap()
+                .to_string(),
+            max_message_size: 1024,
+        },
         message_topics: std::collections::HashMap::new(),
-    logging: LoggingConfig { level: "error".into(), file: None, security_file: None },
+        logging: LoggingConfig {
+            level: "error".into(),
+            file: None,
+            security_file: None,
+        },
         security: None,
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
@@ -33,7 +72,10 @@ async fn non_sysop_cannot_promote() {
 async fn sysop_promote_idempotent() {
     let mut cfg = base_config().await;
     // Provide sysop password so seeding occurs
-    cfg.bbs.sysop_password_hash = Some("$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$1YF/Tl6vhfVqlhK/SXxPxq8np5xpoE2mR7BfrpsbR9g".into());
+    cfg.bbs.sysop_password_hash = Some(
+        "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$1YF/Tl6vhfVqlhK/SXxPxq8np5xpoE2mR7BfrpsbR9g"
+            .into(),
+    );
     let mut server = BbsServer::new(cfg).await.unwrap();
     server.seed_sysop().await.unwrap();
     server.test_register("alice", "Password123").await.unwrap();
@@ -50,7 +92,10 @@ async fn sysop_promote_idempotent() {
 #[tokio::test]
 async fn cannot_modify_sysop() {
     let mut cfg = base_config().await;
-    cfg.bbs.sysop_password_hash = Some("$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$1YF/Tl6vhfVqlhK/SXxPxq8np5xpoE2mR7BfrpsbR9g".into());
+    cfg.bbs.sysop_password_hash = Some(
+        "$argon2id$v=19$m=65536,t=2,p=1$c29tZXNhbHQ$1YF/Tl6vhfVqlhK/SXxPxq8np5xpoE2mR7BfrpsbR9g"
+            .into(),
+    );
     let mut server = BbsServer::new(cfg).await.unwrap();
     server.seed_sysop().await.unwrap();
     let sysop = server.get_user("sysop").await.unwrap().unwrap();
@@ -65,13 +110,27 @@ async fn argon2_params_applied() {
     use meshbbs::config::{Argon2Config, SecurityConfig};
     // Configure small custom params for test speed
     let mut cfg = base_config().await;
-    cfg.security = Some(SecurityConfig { argon2: Some(Argon2Config { memory_kib: Some(8192), time_cost: Some(2), parallelism: Some(1) }) });
+    cfg.security = Some(SecurityConfig {
+        argon2: Some(Argon2Config {
+            memory_kib: Some(8192),
+            time_cost: Some(2),
+            parallelism: Some(1),
+        }),
+    });
     let mut server = BbsServer::new(cfg).await.unwrap();
     server.test_register("bob", "Password123").await.unwrap();
     let u = server.get_user("bob").await.unwrap().unwrap();
     let hash = u.password_hash.unwrap();
     // Argon2 encoded hash segments contain m=,t=,p= parameters; assert ours present
-    assert!(hash.contains("m=8192"), "hash missing memory param: {}", hash);
+    assert!(
+        hash.contains("m=8192"),
+        "hash missing memory param: {}",
+        hash
+    );
     assert!(hash.contains("t=2"), "hash missing time param: {}", hash);
-    assert!(hash.contains("p=1"), "hash missing parallelism param: {}", hash);
+    assert!(
+        hash.contains("p=1"),
+        "hash missing parallelism param: {}",
+        hash
+    );
 }

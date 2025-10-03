@@ -33,20 +33,30 @@ async fn help_shortcuts_once_and_help_plus_chunks() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     // Issue abbreviated HELP
-    server.route_test_text_direct(&node_key, "HELP").await.unwrap();
+    server.route_test_text_direct(&node_key, "H").await.unwrap();
     let first = server.test_messages().last().unwrap().1.clone();
     assert!(first.contains("Shortcuts: M=areas U=user Q=quit"));
     // Second HELP should omit shortcuts
-    server.route_test_text_direct(&node_key, "HELP").await.unwrap();
+    server.route_test_text_direct(&node_key, "H").await.unwrap();
     let second = server.test_messages().last().unwrap().1.clone();
     assert!(!second.contains("Shortcuts:"));
     // HELP+ should produce multiple chunks with prompt only on last
-    server.route_test_text_direct(&node_key, "HELP+").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "HELP+")
+        .await
+        .unwrap();
     // Collect last N messages (unknown exact count; assert at least 2)
-    let verbose_msgs: Vec<_> = server.test_messages().iter().filter(|(to,_msg)| to==&node_key).map(|(_,m)| m.clone()).collect();
+    let verbose_msgs: Vec<_> = server
+        .test_messages()
+        .iter()
+        .filter(|(to, _msg)| to == &node_key)
+        .map(|(_, m)| m.clone())
+        .collect();
     let help_plus_msgs: Vec<_> = verbose_msgs.into_iter().rev().take(10).collect(); // larger window for longer help
-    // Ensure at least one chunk contains Extended Help header
-    assert!(help_plus_msgs.iter().any(|m| m.contains("Meshbbs Extended Help")));
+                                                                                    // Ensure at least one chunk contains Extended Help header
+    assert!(help_plus_msgs
+        .iter()
+        .any(|m| m.contains("Meshbbs Extended Help")));
 }
 
 #[tokio::test]
@@ -58,10 +68,21 @@ async fn unknown_command_reply() {
     session.login("carol".into(), 1).await.unwrap();
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
-    server.route_test_text_direct(&node_key, "NOPE").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "NOPE")
+        .await
+        .unwrap();
     let last = server.test_messages().last().unwrap().1.clone();
     // Message now includes prompt after the newline. Validate prefix & prompt presence.
-    assert!(last.starts_with("Invalid command \"NOPE\"\n"), "unexpected prefix: {}", last);
+    assert!(
+        last.starts_with("Invalid command \"NOPE\"\n"),
+        "unexpected prefix: {}",
+        last
+    );
     assert!(last.contains("carol (lvl1)>"), "prompt missing: {}", last);
-    assert!(last.len() <= 230 + 40, "sanity: message + prompt unexpectedly large ({} bytes)", last.len());
+    assert!(
+        last.len() <= 230 + 40,
+        "sanity: message + prompt unexpectedly large ({} bytes)",
+        last.len()
+    );
 }

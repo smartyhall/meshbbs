@@ -1,8 +1,8 @@
 //! Integration tests for weather service with real API calls
 //! These tests require a valid OpenWeatherMap API key in config.toml
 
-use meshbbs::config::{Config, WeatherConfig};
 use meshbbs::bbs::weather::WeatherService;
+use meshbbs::config::{Config, WeatherConfig};
 
 /// Test weather service with real API (requires config.toml with valid API key)
 #[tokio::test]
@@ -14,15 +14,15 @@ async fn test_weather_service_real_api() {
         println!("Skipping integration test: no config.toml file found");
         return;
     }
-    
+
     let config = config_result.unwrap();
     if config.weather.api_key.is_empty() {
         println!("Skipping integration test: no API key in config.toml");
         return;
     }
-    
+
     let mut service = WeatherService::new(config.weather.clone());
-    
+
     // Test fetching weather for default location
     match service.get_weather().await {
         Ok(weather) => {
@@ -49,13 +49,13 @@ fn test_weather_config_validation() {
         timeout_seconds: 5,
         enabled: true,
     };
-    
+
     let service = WeatherService::new(valid_config);
     assert!(service.is_configured());
 }
 
 /// Test weather service URL building
-#[test]  
+#[test]
 fn test_weather_url_building() {
     let config = WeatherConfig {
         api_key: "test_api_key".to_string(),
@@ -66,9 +66,9 @@ fn test_weather_url_building() {
         timeout_seconds: 5,
         enabled: true,
     };
-    
+
     let service = WeatherService::new(config);
-    
+
     // Test city URL building
     let url = service.build_api_url("New York").unwrap();
     assert!(url.contains("q=New%20York%2CUS"));
@@ -88,7 +88,7 @@ fn test_zipcode_url_building() {
         timeout_seconds: 5,
         enabled: true,
     };
-    
+
     let service = WeatherService::new(config);
     let url = service.build_api_url("10001").unwrap();
     assert!(url.contains("zip=10001%2CUS"));

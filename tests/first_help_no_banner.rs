@@ -10,17 +10,40 @@ async fn first_help_no_banner() {
     let mut server = BbsServer::new(cfg).await.unwrap();
 
     let node: u32 = 0x12345678;
-    let help_event = TextEvent { source: node, dest: None, is_direct: true, channel: None, content: "HELP".into() };
+    let help_event = TextEvent {
+        source: node,
+        dest: None,
+        is_direct: true,
+        channel: None,
+        content: "H".into(),
+    };
     server.route_text_event(help_event).await.unwrap();
 
     // Collect messages for this node
     let node_key = node.to_string();
-    let collected: Vec<String> = server.test_messages().iter()
-        .filter(|(to,_m)| to == &node_key)
-        .map(|(_,m)| m.clone()).collect();
+    let collected: Vec<String> = server
+        .test_messages()
+        .iter()
+        .filter(|(to, _m)| to == &node_key)
+        .map(|(_, m)| m.clone())
+        .collect();
 
-    assert_eq!(collected.len(), 1, "Expected exactly one initial HELP response, got {}: {:?}", collected.len(), collected);
+    assert_eq!(
+        collected.len(),
+        1,
+        "Expected exactly one initial HELP response, got {}: {:?}",
+        collected.len(),
+        collected
+    );
     let body = &collected[0];
-    assert!(body.contains("Auth: REGISTER <user> <pass> or LOGIN <user> [pass]"), "Missing menu block: {}", body);
-    assert!(!body.contains("Use REGISTER <name> <pass>"), "Legacy banner text should be absent: {}", body);
+    assert!(
+        body.contains("Auth: REGISTER <user> <pass> or LOGIN <user> [pass]"),
+        "Missing menu block: {}",
+        body
+    );
+    assert!(
+        !body.contains("Use REGISTER <name> <pass>"),
+        "Legacy banner text should be absent: {}",
+        body
+    );
 }

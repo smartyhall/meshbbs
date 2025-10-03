@@ -2,14 +2,21 @@ use meshbbs::bbs::BbsServer;
 use meshbbs::config::Config;
 
 fn msgs_for<'a>(msgs: &'a [(String, String)], node: &str) -> Vec<&'a String> {
-    msgs.iter().filter(|(to, _)| to == node).map(|(_, m)| m).collect()
+    msgs.iter()
+        .filter(|(to, _)| to == node)
+        .map(|(_, m)| m)
+        .collect()
 }
 
 #[tokio::test]
 async fn thread_read_is_chunked_and_prompt_on_last() {
     // Arrange: small frame budget to force chunking during read view
     let mut cfg = Config::default();
-    cfg.storage.data_dir = tempfile::tempdir().unwrap().path().to_string_lossy().to_string();
+    cfg.storage.data_dir = tempfile::tempdir()
+        .unwrap()
+        .path()
+        .to_string_lossy()
+        .to_string();
     cfg.storage.max_message_size = 20; // extremely small to guarantee chunking regardless of content
     let mut server = BbsServer::new(cfg).await.expect("server");
 
@@ -51,17 +58,14 @@ async fn thread_read_is_chunked_and_prompt_on_last() {
         .test_get_messages("general", 1) // force storage init; not strictly needed
         .await
         .ok();
-    let all_topics = server
-        .test_list_topics()
-        .await
-        .expect("list topics");
+    let all_topics = server.test_list_topics().await.expect("list topics");
     let pos = all_topics
         .iter()
         .position(|t| t == "hello")
         .expect("hello topic present");
     let target_page = pos / 5 + 1;
     let select_num = (pos % 5) + 1; // 1..5
-    // Advance pages if needed
+                                    // Advance pages if needed
     for _ in 1..target_page {
         server
             .route_test_text_direct(node, "L")
@@ -79,11 +83,18 @@ async fn thread_read_is_chunked_and_prompt_on_last() {
         .expect("read thread");
     let msgs = msgs_for(server.test_messages(), node);
     let after = msgs.len();
-    assert!(after > before, "expected new messages to be sent when reading");
+    assert!(
+        after > before,
+        "expected new messages to be sent when reading"
+    );
 
     // Find the new messages from the read action
     let new_msgs = &msgs[before..after];
-    assert!(new_msgs.len() >= 2, "expected multiple chunks for long read (got {})", new_msgs.len());
+    assert!(
+        new_msgs.len() >= 2,
+        "expected multiple chunks for long read (got {})",
+        new_msgs.len()
+    );
 
     // Intermediate chunks should not end with the prompt; final chunk should include it
     // Prompt format while reading: "alice@hello>"
@@ -91,7 +102,11 @@ async fn thread_read_is_chunked_and_prompt_on_last() {
     for (i, m) in new_msgs.iter().enumerate() {
         let is_last = i + 1 == new_msgs.len();
         if is_last {
-            assert!(m.ends_with(prompt), "final chunk must end with prompt; got: {}", m);
+            assert!(
+                m.ends_with(prompt),
+                "final chunk must end with prompt; got: {}",
+                m
+            );
         } else {
             assert!(
                 !m.ends_with(prompt),
@@ -100,6 +115,6 @@ async fn thread_read_is_chunked_and_prompt_on_last() {
             );
         }
         // Budget guard
-    assert!(m.len() <= 20, "chunk exceeds 20 bytes ({}): {}", m.len(), m);
+        assert!(m.len() <= 20, "chunk exceeds 20 bytes ({}): {}", m.len(), m);
     }
 }

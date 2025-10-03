@@ -1,6 +1,6 @@
 //! Integration tests for the weather service
-use meshbbs::config::WeatherConfig;
 use meshbbs::bbs::weather::WeatherService;
+use meshbbs::config::WeatherConfig;
 
 #[tokio::test]
 async fn test_weather_service_disabled() {

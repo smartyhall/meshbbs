@@ -1,11 +1,20 @@
-use meshbbs::bbs::public::{PublicCommandParser, PublicCommand};
+use meshbbs::bbs::public::{PublicCommand, PublicCommandParser};
 
 #[test]
 fn parse_fortune_command() {
     let parser = PublicCommandParser::new();
-    match parser.parse("^fortune") { PublicCommand::Fortune => {}, other => panic!("Expected Fortune, got {:?}", other) }
-    match parser.parse("^FORTUNE") { PublicCommand::Fortune => {}, other => panic!("Expected Fortune uppercase, got {:?}", other) }
-    match parser.parse("^Fortune") { PublicCommand::Fortune => {}, other => panic!("Expected Fortune mixed case, got {:?}", other) }
+    match parser.parse("^fortune") {
+        PublicCommand::Fortune => {}
+        other => panic!("Expected Fortune, got {:?}", other),
+    }
+    match parser.parse("^FORTUNE") {
+        PublicCommand::Fortune => {}
+        other => panic!("Expected Fortune uppercase, got {:?}", other),
+    }
+    match parser.parse("^Fortune") {
+        PublicCommand::Fortune => {}
+        other => panic!("Expected Fortune mixed case, got {:?}", other),
+    }
 }
 
 #[test]
@@ -24,5 +33,9 @@ fn fortune_returns_different_values() {
         fortunes.insert(meshbbs::bbs::fortune::get_fortune());
     }
     // Should get at least a few different fortunes
-    assert!(fortunes.len() >= 5, "Expected variety in fortune responses, got only {} unique", fortunes.len());
+    assert!(
+        fortunes.len() >= 5,
+        "Expected variety in fortune responses, got only {} unique",
+        fortunes.len()
+    );
 }

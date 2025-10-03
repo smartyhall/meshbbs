@@ -2,7 +2,11 @@ use meshbbs::bbs::BbsServer;
 use meshbbs::config::Config;
 
 fn last_for_node<'a>(msgs: &'a [(String, String)], node: &str) -> Option<&'a String> {
-    for (to, m) in msgs.iter().rev() { if to == node { return Some(m); } }
+    for (to, m) in msgs.iter().rev() {
+        if to == node {
+            return Some(m);
+        }
+    }
     None
 }
 
@@ -10,7 +14,11 @@ fn last_for_node<'a>(msgs: &'a [(String, String)], node: &str) -> Option<&'a Str
 async fn compact_flow_topics_threads_read_compose_reply() {
     // Arrange: fresh server in temp storage; create one topic
     let mut cfg = Config::default();
-    cfg.storage.data_dir = tempfile::tempdir().unwrap().path().to_string_lossy().to_string();
+    cfg.storage.data_dir = tempfile::tempdir()
+        .unwrap()
+        .path()
+        .to_string_lossy()
+        .to_string();
     let mut server = BbsServer::new(cfg).await.expect("server");
     server
         .test_create_topic(
@@ -40,7 +48,11 @@ async fn compact_flow_topics_threads_read_compose_reply() {
         .await
         .expect("topics");
     let m = last_for_node(server.test_messages(), node).expect("topics msg");
-    assert!(m.contains("Topics") && m.contains("Type number to select topic"), "topics list: {}", m);
+    assert!(
+        m.contains("Topics") && m.contains("Type number to select topic"),
+        "topics list: {}",
+        m
+    );
 
     // 1 → Threads in hello
     server
@@ -72,7 +84,11 @@ async fn compact_flow_topics_threads_read_compose_reply() {
         .await
         .expect("body input");
     let m = last_for_node(server.test_messages(), node).expect("threads after post");
-    assert!(m.contains("Messages in") && m.contains("Test Title"), "threads list after post: {}", m);
+    assert!(
+        m.contains("Messages in") && m.contains("Test Title"),
+        "threads list after post: {}",
+        m
+    );
 
     // Read the thread
     server
@@ -80,7 +96,11 @@ async fn compact_flow_topics_threads_read_compose_reply() {
         .await
         .expect("read thread");
     let m = last_for_node(server.test_messages(), node).expect("read view");
-    assert!(m.contains("Reply:") && m.contains("This is the body"), "read view: {}", m);
+    assert!(
+        m.contains("Reply:") && m.contains("This is the body"),
+        "read view: {}",
+        m
+    );
 
     // Reply flow
     server
@@ -95,12 +115,21 @@ async fn compact_flow_topics_threads_read_compose_reply() {
         .await
         .expect("post reply");
     let m = last_for_node(server.test_messages(), node).expect("read after reply");
-    assert!(m.contains("— ") && m.contains("Thanks!"), "read shows reply: {}", m);
+    assert!(
+        m.contains("— ") && m.contains("Thanks!"),
+        "read shows reply: {}",
+        m
+    );
 
     // Budget guard: All emitted messages for this node must be <= 230 bytes
     for (_to, msg) in server.test_messages().iter() {
         if _to == node {
-            assert!(msg.len() <= 230, "message exceeds 230 bytes ({}): {}", msg.len(), msg);
+            assert!(
+                msg.len() <= 230,
+                "message exceeds 230 bytes ({}): {}",
+                msg.len(),
+                msg
+            );
         }
     }
 }

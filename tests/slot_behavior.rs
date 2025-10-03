@@ -13,14 +13,32 @@ async fn slot_broadcasts_and_not_dm() {
 
     use meshbbs::meshtastic::TextEvent;
     let node_id = 5150u32;
-    let public_evt = TextEvent { source: node_id, dest: None, is_direct: false, channel: None, content: "^SLOT".into() };
-    server.route_text_event(public_evt).await.expect("route public slot");
+    let public_evt = TextEvent {
+        source: node_id,
+        dest: None,
+        is_direct: false,
+        channel: None,
+        content: "^SLOT".into(),
+    };
+    server
+        .route_text_event(public_evt)
+        .await
+        .expect("route public slot");
 
     // Inspect recorded outbound messages
     let msgs = server.test_messages();
-    assert!(msgs.iter().any(|(to, body)| to == "BCAST" && body.starts_with("^SLOT ⟶ ")), "expected ^SLOT broadcast in test_messages, got {:?}", msgs);
+    assert!(
+        msgs.iter()
+            .any(|(to, body)| to == "BCAST" && body.starts_with("^SLOT ⟶ ")),
+        "expected ^SLOT broadcast in test_messages, got {:?}",
+        msgs
+    );
     // Ensure no DM was sent to the origin node
-    assert!(!msgs.iter().any(|(to, _)| to == &node_id.to_string()), "did not expect DM to {}", node_id);
+    assert!(
+        !msgs.iter().any(|(to, _)| to == &node_id.to_string()),
+        "did not expect DM to {}",
+        node_id
+    );
 }
 
 #[cfg(not(feature = "meshtastic-proto"))]

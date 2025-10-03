@@ -9,8 +9,8 @@
 //!
 //! See the library crate docs for module‑level details: `meshbbs::`.
 use anyhow::Result;
-use log::{info, warn};
 use clap::{Parser, Subcommand};
+use log::{info, warn};
 
 // Use the published library crate modules instead of redefining them here.
 use meshbbs::bbs::BbsServer;
@@ -24,11 +24,11 @@ use meshbbs::storage::Storage;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    
+
     /// Configuration file path (can be used before or after subcommand)
     #[arg(short, long, default_value = "config.toml", global = true)]
     config: String,
-    
+
     /// Verbose logging (-v, -vv for more; may appear before or after subcommand)
     #[arg(short, long, action = clap::ArgAction::Count, global = true)]
     verbose: u8,
@@ -65,9 +65,12 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     // Load config early to configure logging (except for Init which writes default later)
-    let pre_config = match cli.command { Commands::Init => None, _ => Config::load(&cli.config).await.ok() };
+    let pre_config = match cli.command {
+        Commands::Init => None,
+        _ => Config::load(&cli.config).await.ok(),
+    };
     init_logging(&pre_config, cli.verbose);
 
     info!("Starting Meshbbs v{}", env!("CARGO_PKG_VERSION"));
@@ -82,7 +85,13 @@ async fn main() -> Result<()> {
             // Determine which port to use: CLI overrides config; fallback to config when CLI absent
             let chosen_port = match port {
                 Some(cli_port) => Some(cli_port),
-                None => if !configured_port.is_empty() { Some(configured_port) } else { None },
+                None => {
+                    if !configured_port.is_empty() {
+                        Some(configured_port)
+                    } else {
+                        None
+                    }
+                }
             };
 
             if let Some(port_path) = chosen_port {
@@ -90,7 +99,10 @@ async fn main() -> Result<()> {
                     Ok(_) => info!("Connected to Meshtastic device on {}", port_path),
                     Err(e) => {
                         // Fail fast? For now we warn and continue so the BBS can still run (e.g., for web or offline ops)
-                        warn!("Failed to connect to device on {}: {} (BBS continuing without device)", port_path, e);
+                        warn!(
+                            "Failed to connect to device on {}: {} (BBS continuing without device)",
+                            port_path, e
+                        );
                     }
                 }
             } else {
@@ -113,9 +125,17 @@ async fn main() -> Result<()> {
             let data_dir = cfg.storage.data_dir.clone();
             let mut storage = Storage::new(&data_dir).await?;
             let defaults = vec![
-                ("technical", "Technical", "Tech, hardware, and administrative discussions"),
+                (
+                    "technical",
+                    "Technical",
+                    "Tech, hardware, and administrative discussions",
+                ),
                 ("general", "General", "General discussions"),
-                ("community", "Community", "Events, meet-ups, and community discussions"),
+                (
+                    "community",
+                    "Community",
+                    "Events, meet-ups, and community discussions",
+                ),
             ];
             for (id, name, desc) in defaults {
                 if !storage.topic_exists(id) {
@@ -130,28 +150,47 @@ async fn main() -> Result<()> {
             bbs.show_status().await?;
         }
         Commands::SysopPasswd => {
-            use password_hash::{PasswordHasher, SaltString};
             use argon2::Argon2;
+            use password_hash::{PasswordHasher, SaltString};
             // Read existing config
             let mut config = pre_config.unwrap_or(Config::load(&cli.config).await?);
             println!("Setting sysop password for '{}'.", config.bbs.sysop);
             // Prompt twice without echo
             let pass1 = rpassword::prompt_password("New password: ")?;
-            if pass1.len() < 8 { println!("Error: password too short (min 8)." ); return Ok(()); }
-            if pass1.len() > 128 { println!("Error: password too long." ); return Ok(()); }
+            if pass1.len() < 8 {
+                println!("Error: password too short (min 8).");
+                return Ok(());
+            }
+            if pass1.len() > 128 {
+                println!("Error: password too long.");
+                return Ok(());
+            }
             let pass2 = rpassword::prompt_password("Confirm password: ")?;
-            if pass1 != pass2 { println!("Error: passwords do not match." ); return Ok(()); }
+            if pass1 != pass2 {
+                println!("Error: passwords do not match.");
+                return Ok(());
+            }
             // Hash
             let salt = SaltString::generate(&mut rand::thread_rng());
             let argon = Argon2::default();
-            let hash = match argon.hash_password(pass1.as_bytes(), &salt) { Ok(h) => h.to_string(), Err(e) => { println!("Hash error: {e}" ); return Ok(()); } };
+            let hash = match argon.hash_password(pass1.as_bytes(), &salt) {
+                Ok(h) => h.to_string(),
+                Err(e) => {
+                    println!("Hash error: {e}");
+                    return Ok(());
+                }
+            };
             config.bbs.sysop_password_hash = Some(hash);
             // Persist updated config (overwrite file)
             let serialized = toml::to_string_pretty(&config)?;
             tokio::fs::write(&cli.config, serialized).await?;
             println!("Sysop password updated successfully.");
         }
-    Commands::SmokeTest { port, baud, timeout } => {
+        Commands::SmokeTest {
+            port,
+            baud,
+            timeout,
+        } => {
             #[cfg(not(all(feature = "serial", feature = "meshtastic-proto")))]
             {
                 error!("SmokeTest requires 'serial' and 'meshtastic-proto' features");
@@ -159,8 +198,8 @@ async fn main() -> Result<()> {
             }
             #[cfg(all(feature = "serial", feature = "meshtastic-proto"))]
             {
-                use tokio::time::{Instant, Duration, sleep};
                 use meshbbs::meshtastic::MeshtasticDevice;
+                use tokio::time::{sleep, Duration, Instant};
                 let mut device = MeshtasticDevice::new(&port, baud).await?;
                 info!("Starting smoke test on {} @ {} baud", port, baud);
                 let mut last_hb = Instant::now();
@@ -176,7 +215,9 @@ async fn main() -> Result<()> {
                         last_hb = Instant::now();
                     }
                     if let Some(_summary) = device.receive_message().await? {
-                        if device.initial_sync_complete() { break; }
+                        if device.initial_sync_complete() {
+                            break;
+                        }
                     } else {
                         sleep(Duration::from_millis(40)).await;
                     }
@@ -212,21 +253,35 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
     use std::io::Write;
     let mut builder = env_logger::Builder::new();
     // Base level from CLI verbosity overrides config
-    let base_level = match verbosity { 0 => log::LevelFilter::Info, 1 => log::LevelFilter::Debug, _ => log::LevelFilter::Trace };
+    let base_level = match verbosity {
+        0 => log::LevelFilter::Info,
+        1 => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Trace,
+    };
     builder.filter_level(base_level);
     if let Some(cfg) = config {
         let security_path = cfg.logging.security_file.clone();
         if let Some(ref file) = cfg.logging.file {
-            if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(file) {
+            if let Ok(f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(file)
+            {
                 let mutex = std::sync::Arc::new(std::sync::Mutex::new(f));
                 let write_mutex = mutex.clone();
                 builder.format(move |fmt, record| {
                     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
                     let line = format!("{} [{}] {}", ts, record.level(), record.args());
-                    if let Ok(mut guard) = write_mutex.lock() { let _ = writeln!(guard, "{}", line); }
+                    if let Ok(mut guard) = write_mutex.lock() {
+                        let _ = writeln!(guard, "{}", line);
+                    }
                     if record.target() == "security" {
                         if let Some(ref sec_path) = security_path {
-                            if let Ok(mut sf) = std::fs::OpenOptions::new().create(true).append(true).open(sec_path) {
+                            if let Ok(mut sf) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(sec_path)
+                            {
                                 let _ = writeln!(sf, "{}", line);
                             }
                         }
@@ -235,7 +290,13 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
                 });
             } else {
                 builder.format(|fmt, record| {
-                    writeln!(fmt, "{} [{}] {}", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"), record.level(), record.args())
+                    writeln!(
+                        fmt,
+                        "{} [{}] {}",
+                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"),
+                        record.level(),
+                        record.args()
+                    )
                 });
             }
         } else {
@@ -246,7 +307,13 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
         }
     } else {
         builder.format(|fmt, record| {
-            writeln!(fmt, "{} [{}] {}", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"), record.level(), record.args())
+            writeln!(
+                fmt,
+                "{} [{}] {}",
+                chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"),
+                record.level(),
+                record.args()
+            )
         });
     }
     let _ = builder.try_init();

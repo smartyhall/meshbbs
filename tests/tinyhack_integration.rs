@@ -26,16 +26,18 @@ async fn tinyhack_enter_play_persist() {
     let before = server.test_messages().len();
     server.route_test_text_direct(&node_key, "T").await.unwrap();
     // Collect all chunks produced by this command for our node and join them
-    let first_chunks: Vec<String> = server
-        .test_messages()[before..]
+    let first_chunks: Vec<String> = server.test_messages()[before..]
         .iter()
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
         .collect();
     // First chunk should contain the welcome text, second should begin with status line (L..)
     assert!(
-        first_chunks.iter().any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
-        "expected a separate welcome message chunk; got: {:?}", first_chunks
+        first_chunks
+            .iter()
+            .any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
+        "expected a separate welcome message chunk; got: {:?}",
+        first_chunks
     );
     assert!(
         first_chunks.iter().any(|m| m.starts_with("L")),
@@ -46,20 +48,37 @@ async fn tinyhack_enter_play_persist() {
     // Issue a couple of turns: move east, rest
     server.route_test_text_direct(&node_key, "E").await.unwrap();
     let after_e = server.test_messages().last().unwrap().1.clone();
-    assert!(after_e.ends_with("alice (lvl1)>") , "screen should end with session prompt: {}", after_e);
+    assert!(
+        after_e.ends_with("alice (lvl1)>"),
+        "screen should end with session prompt: {}",
+        after_e
+    );
 
     server.route_test_text_direct(&node_key, "R").await.unwrap();
     let after_r = server.test_messages().last().unwrap().1.clone();
-    assert!(after_r.ends_with("alice (lvl1)>") , "screen should end with session prompt: {}", after_r);
+    assert!(
+        after_r.ends_with("alice (lvl1)>"),
+        "screen should end with session prompt: {}",
+        after_r
+    );
 
     // Validate save file written and contains JSON with gid
     // Since server.config is private, reconstruct expected path: cfg.storage.data_dir + "/tinyhack/alice.json"
-    let save_path = Path::new(&cfg.storage.data_dir).join("tinyhack").join("alice.json");
+    let save_path = Path::new(&cfg.storage.data_dir)
+        .join("tinyhack")
+        .join("alice.json");
     let content = fs::read_to_string(&save_path).expect("save exists");
-    assert!(content.contains("\"gid\":"), "save should contain gid: {}", content);
+    assert!(
+        content.contains("\"gid\":"),
+        "save should contain gid: {}",
+        content
+    );
     // Parse JSON gid and turn
     #[derive(serde::Deserialize)]
-    struct SaveHead { gid: u32, turn: u32 }
+    struct SaveHead {
+        gid: u32,
+        turn: u32,
+    }
     let head: SaveHead = serde_json::from_str(&content).expect("valid json");
 
     // Leave game then re-enter; gid should persist and saved turn should match re-entry state
@@ -68,8 +87,7 @@ async fn tinyhack_enter_play_persist() {
     assert!(back_to_menu.contains("Main Menu:"));
     let before2 = server.test_messages().len();
     server.route_test_text_direct(&node_key, "T").await.unwrap();
-    let re_chunks: Vec<String> = server
-        .test_messages()[before2..]
+    let re_chunks: Vec<String> = server.test_messages()[before2..]
         .iter()
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
@@ -80,12 +98,19 @@ async fn tinyhack_enter_play_persist() {
         re_chunks
     );
     assert!(
-        re_chunks.iter().any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
+        re_chunks
+            .iter()
+            .any(|m| m.contains("Welcome to TinyHack: a compact, turn-based dungeon crawl.")),
         "re-entry should include the welcome message"
     );
     // Re-read save file and ensure gid remains and turn didn’t regress
     let content2 = fs::read_to_string(&save_path).expect("save exists");
     let head2: SaveHead = serde_json::from_str(&content2).expect("valid json");
     assert_eq!(head2.gid, head.gid, "gid should persist across re-entry");
-    assert!(head2.turn >= head.turn, "turn should not regress: {} -> {}", head.turn, head2.turn);
+    assert!(
+        head2.turn >= head.turn,
+        "turn should not regress: {} -> {}",
+        head.turn,
+        head2.turn
+    );
 }

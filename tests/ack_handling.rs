@@ -16,22 +16,36 @@ async fn ack_clears_pending() {
 
     // Ensure scheduler exists by simulating device connect skip; we only need outgoing_tx
     // Send a DM
-    server.send_message("123456789", "Test reliable DM").await.expect("send");
+    server
+        .send_message("123456789", "Test reliable DM")
+        .await
+        .expect("send");
 
     // Placeholder: ensure metrics snapshot accessible.
     let snap_before = meshbbs::metrics::snapshot();
     // Read individual fields to exercise struct usage (avoids dead_code field warnings when tests are compiled).
-    let _tot = snap_before.reliable_sent
+    let _tot = snap_before
+        .reliable_sent
         .saturating_add(snap_before.reliable_acked)
         .saturating_add(snap_before.reliable_failed)
         .saturating_add(snap_before.reliable_retries)
         .saturating_add(snap_before.ack_latency_avg_ms.unwrap_or(0));
     // Basic invariants: no acks or failures should be recorded yet; ack latency absent; acked cannot exceed sent.
-    assert!(snap_before.reliable_acked <= snap_before.reliable_sent, "acked count exceeds sent count");
-    assert_eq!(snap_before.reliable_failed, 0, "no failures expected in smoke path");
-    assert!(snap_before.ack_latency_avg_ms.is_none(), "no ack latency expected without ack events");
+    assert!(
+        snap_before.reliable_acked <= snap_before.reliable_sent,
+        "acked count exceeds sent count"
+    );
+    assert_eq!(
+        snap_before.reliable_failed, 0,
+        "no failures expected in smoke path"
+    );
+    assert!(
+        snap_before.ack_latency_avg_ms.is_none(),
+        "no ack latency expected without ack events"
+    );
 }
 
 #[cfg(not(feature = "meshtastic-proto"))]
 #[test]
-fn ack_clears_pending_noop() { /* feature gated no-op */ }
+fn ack_clears_pending_noop() { /* feature gated no-op */
+}

@@ -1,5 +1,5 @@
-use meshbbs::config::Config;
 use meshbbs::bbs::BbsServer;
+use meshbbs::config::Config;
 mod common;
 #[cfg(feature = "meshtastic-proto")]
 use meshbbs::meshtastic::TextEvent;
@@ -17,9 +17,21 @@ async fn welcome_message_sent_on_login() {
     let mut server = BbsServer::new(cfg).await.expect("server");
 
     // Simulate public login then DM to finalize
-    let public = TextEvent { source: 42, dest: None, is_direct: false, channel: None, content: "^LOGIN alice".into() };
+    let public = TextEvent {
+        source: 42,
+        dest: None,
+        is_direct: false,
+        channel: None,
+        content: "^LOGIN alice".into(),
+    };
     server.route_text_event(public).await.expect("public");
-    let dm_login = TextEvent { source: 42, dest: Some(99), is_direct: true, channel: None, content: "LOGIN alice".into() };
+    let dm_login = TextEvent {
+        source: 42,
+        dest: Some(99),
+        is_direct: true,
+        channel: None,
+        content: "LOGIN alice".into(),
+    };
     server.route_text_event(dm_login).await.expect("dm login");
 
     // New behavior: pending public login finalization should NOT send the full banner, only the welcome + unread summary.
@@ -28,7 +40,10 @@ async fn welcome_message_sent_on_login() {
     for (_to, msg) in server.test_messages() {
         if msg.contains("Welcome, alice you are now logged in.") {
             // Should also contain unread summary line (no new messages for new user)
-            assert!(msg.contains("There are no new messages."), "login response missing unread summary: {msg}");
+            assert!(
+                msg.contains("There are no new messages."),
+                "login response missing unread summary: {msg}"
+            );
             found = true;
         }
     }

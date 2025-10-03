@@ -16,14 +16,36 @@ async fn compact_registration_message_fits() {
     let mut server = BbsServer::new(cfg).await.unwrap();
     let node: u32 = 0xABCDEF01;
     let cmd = format!("REGISTER {} passw0rd8", long_user);
-    let ev = TextEvent { source: node, dest: None, is_direct: true, channel: None, content: cmd };
+    let ev = TextEvent {
+        source: node,
+        dest: None,
+        is_direct: true,
+        channel: None,
+        content: cmd,
+    };
     server.route_text_event(ev).await.unwrap();
 
     let key = node.to_string();
     let mut combined = String::new();
-    for (to,msg) in server.test_messages() { if to == &key { combined.push_str(msg); } }
+    for (to, msg) in server.test_messages() {
+        if to == &key {
+            combined.push_str(msg);
+        }
+    }
 
-    assert!(combined.contains("Registered as"), "Registration phrase missing: {combined}");
-    assert!(!combined.contains("HELP+"), "Should not reference HELP+: {combined}");
-    assert!(combined.len() <= max, "Registration message length {} exceeds max {}: '{}'", combined.len(), max, combined);
+    assert!(
+        combined.contains("Registered as"),
+        "Registration phrase missing: {combined}"
+    );
+    assert!(
+        !combined.contains("HELP+"),
+        "Should not reference HELP+: {combined}"
+    );
+    assert!(
+        combined.len() <= max,
+        "Registration message length {} exceeds max {}: '{}'",
+        combined.len(),
+        max,
+        combined
+    );
 }

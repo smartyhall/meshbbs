@@ -7,16 +7,41 @@ async fn main_menu_single_letter_aliases() {
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
     let mut session = meshbbs::bbs::session::Session::new("s_mm".into(), "node_mm".into());
     // Transition to MainMenu
-    let _banner = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "anything", &mut storage, &cfg).await.unwrap();
+    let _banner = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "anything", &mut storage, &cfg)
+        .await
+        .unwrap();
 
-    let help_full = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "HELP", &mut storage, &cfg).await.unwrap();
-    let help_single = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "h", &mut storage, &cfg).await.unwrap();
-    assert_eq!(help_full, help_single, "H/h should equal HELP output (guest)");
+    let help_base = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "H", &mut storage, &cfg)
+        .await
+        .unwrap();
+    for variant in ["h", "?"] {
+        let help_variant = meshbbs::bbs::commands::CommandProcessor::new()
+            .process(&mut session, variant, &mut storage, &cfg)
+            .await
+            .unwrap();
+        assert_eq!(
+            help_base, help_variant,
+            "Variant '{variant}' should mirror 'H'"
+        );
+    }
 
-    // M vs MESSAGES
-    let m_full = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session, "MESSAGES", &mut storage, &cfg).await.unwrap();
-    let mut session2 = meshbbs::bbs::session::Session::new("s_mm2".into(), "node_mm2".into());
-    let _banner2 = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session2, "ignored", &mut storage, &cfg).await.unwrap();
-    let m_short = meshbbs::bbs::commands::CommandProcessor::new().process(&mut session2, "m", &mut storage, &cfg).await.unwrap();
-    assert_eq!(m_full, m_short, "M should equal MESSAGES");
+    let help_word = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "HELP", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        help_word.starts_with("Invalid command"),
+        "Long-form HELP should be rejected now"
+    );
+
+    let messages_word = meshbbs::bbs::commands::CommandProcessor::new()
+        .process(&mut session, "MESSAGES", &mut storage, &cfg)
+        .await
+        .unwrap();
+    assert!(
+        messages_word.starts_with("Invalid command"),
+        "Long-form MESSAGES should be rejected"
+    );
 }

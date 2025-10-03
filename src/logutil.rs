@@ -11,7 +11,10 @@ pub fn escape_log(s: &str) -> String {
     const MAX_PREVIEW: usize = 300; // generous for debug; adjust if needed
     let mut out = String::with_capacity(s.len().min(MAX_PREVIEW) + 8);
     for (count, ch) in s.chars().enumerate() {
-        if count >= MAX_PREVIEW { out.push('…'); break; }
+        if count >= MAX_PREVIEW {
+            out.push('…');
+            break;
+        }
         match ch {
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
@@ -19,9 +22,10 @@ pub fn escape_log(s: &str) -> String {
             '\t' => out.push_str("\\t"),
             c if c.is_control() => {
                 // Represent other control chars as hex \xNN
-                use std::fmt::Write; let _ = write!(&mut out, "\\x{:02X}", c as u32);
+                use std::fmt::Write;
+                let _ = write!(&mut out, "\\x{:02X}", c as u32);
             }
-            c => out.push(c)
+            c => out.push(c),
         }
     }
     out
