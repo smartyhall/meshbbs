@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.42--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.43--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,6 +25,11 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## 📝 Release notes
 
+- 1.0.43-beta (2025-10-03): **CRITICAL BUGFIX** - UTF-8 chunking crash
+   - Fixed panic when message chunking landed on multi-byte UTF-8 character boundaries (em-dash, emoji, etc.)
+   - Replaced incomplete manual UTF-8 check with Rust's `is_char_boundary()` method
+   - Added comprehensive regression tests for various multi-byte characters
+   - **Impact**: Prevented crashes during TinyHack gameplay and any message containing non-ASCII characters
 - 1.0.42-beta (2025-10-02): Navigation consistency improvements
    - Fixed navigation menu footers across Topics, Subtopics, and Threads to consistently show "B back. Q quit"
    - Standardized command behavior: B always returns to previous level/main menu, Q (or X) always quits/logs out

@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.43-beta] - 2025-10-03
+
+### Fixed
+- **CRITICAL**: UTF-8 boundary panic in message chunking that caused crashes when chunk boundaries landed in the middle of multi-byte UTF-8 characters
+  - Symptom: `panic: byte index 215 is not a char boundary; it is inside '—'`
+  - Root cause: Incomplete manual UTF-8 boundary checking in `src/bbs/server.rs`
+  - Solution: Replaced manual byte checking with Rust's `str::is_char_boundary()` method
+  - Impact: Prevented crashes during TinyHack gameplay and any messages with em-dashes, emoji, or other multi-byte characters
+
+### Added
+- Comprehensive regression test `tests/utf8_chunking_crash.rs` validating chunking behavior with:
+  - Em-dashes (3-byte UTF-8 characters)
+  - Emoji (4-byte UTF-8 characters)
+  - Chinese characters
+  - Cyrillic characters
+  - Mixed multi-byte content
+
+### Changed
+- Updated 10 test files to include `allow_public_login` field for compatibility with 1.0.41 config changes
+
 ## [1.0.42-beta] - 2025-10-02
 
 ### Fixed
