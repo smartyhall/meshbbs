@@ -35,7 +35,7 @@ async fn welcome_messages_on_registration_and_first_login() {
     // Check that registration response contains new compact welcome
     let mut found_registration_compact = false;
     for (_to, msg) in server.test_messages() {
-        if msg.contains("Registered as welcometest.") && msg.contains("HELP LIST READ POST WHO") {
+    if msg.contains("Registered as welcometest.") && msg.contains("Hint: M=messages") {
             found_registration_compact = true;
             break;
         }

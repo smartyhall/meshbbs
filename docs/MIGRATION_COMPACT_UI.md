@@ -2,7 +2,7 @@
 
 ## Overview
 
-Starting with version 1.0.36, MeshBBS emphasizes the compact, letter/number-driven interface as the primary user experience. Legacy long-word commands (`READ`, `POST`, `TOPICS`, `LIST`) remain functional for backward compatibility but are no longer advertised in the primary help system.
+Starting with version 1.0.36, MeshBBS emphasizes the compact, letter/number-driven interface as the primary user experience. As of the current release, the legacy long-word commands (`READ`, `POST`, `TOPICS`, `LIST`) have been fully removed in favor of the compact shortcuts.
 
 ## What Changed
 
@@ -19,15 +19,13 @@ Starting with version 1.0.36, MeshBBS emphasizes the compact, letter/number-driv
    Hint: M=messages H=help
    ```
 
-3. **Verbose HELP** - Legacy commands moved to "Deprecated" section
-   - Still documented in `HELP+` or `HELP V`
-   - Clearly marked as "Deprecated (backward compat only - use M menu instead)"
+3. **Verbose HELP** - `HELP+` now mirrors compact help and no longer lists the removed legacy commands
 
 ### Technical Changes
 
-- Legacy commands (`READ <topic>`, `POST <topic>`, `TOPICS`, `LIST`) still work via `try_inline_message_command()`
-- No breaking changes to the command processing logic
-- Tests updated to reflect new help text format
+- Removed the `try_inline_message_command()` path and all supporting legacy command handlers
+- Command processor now exclusively routes compact shortcuts (single letters/digits)
+- Tests updated to reflect the compact-only behavior
 
 ## Recommended User Flow
 
@@ -39,17 +37,17 @@ Starting with version 1.0.36, MeshBBS emphasizes the compact, letter/number-driv
 5. Press **1-9** to select topics
 6. Use single-letter navigation: **U** (up), **B** (back), **L** (more)
 
-### Legacy Users
-- All existing commands continue to work
-- `READ general`, `POST general hello`, `TOPICS` still functional
-- Use `HELP+` to see full command reference including deprecated commands
+### Automation & Script Considerations
+- Any external tooling that previously issued `READ`, `POST`, `TOPICS`, or `LIST` must be updated to use the compact equivalents (for example: `M`, topic digits, `P`, `R`)
+- Public command prefixes continue to function unchanged
 
 ## Benefits
 
 ✅ **Simplified onboarding** - New users see one clear interface  
 ✅ **Bandwidth optimized** - Fewer bytes in help text  
-✅ **Backward compatible** - Existing scripts/workflows unaffected  
-✅ **Progressive enhancement** - Easy to learn basics, advanced users can use shortcuts  
+✅ **Baseline simplicity** - One interface to learn and document  
+✅ **Bandwidth optimized** - Fewer bytes in help text  
+✅ **Streamlined automation** - Consistent command set for bots and scripts  
 
 ## For Documentation Writers
 
@@ -58,24 +56,19 @@ Update user guides and tutorials to emphasize:
 - Use digits **1-9** to select items (not `READ <topic>`)
 - Single-letter navigation: **U**, **B**, **L**, **H**, **Q**
 
-Legacy commands can be documented in "Advanced" or "Command Reference" sections.
+Remove references to legacy commands from tutorials and reference material—they are no longer available.
 
 ## For Sysops
 
-No configuration changes required. To completely disable legacy commands in a future version, you can:
-1. Remove calls to `try_inline_message_command()` 
-2. Remove the legacy command handlers in `commands.rs`
-3. Update tests to remove legacy command assertions
-
-For now, both interfaces coexist peacefully.
+No configuration changes are required. If you previously customized documentation or onboarding messages, update them to reflect the compact commands.
 
 ## Timeline
 
 - **v1.0.35 and earlier**: Both UIs advertised equally
 - **v1.0.36**: Compact UI emphasized, legacy moved to verbose help
-- **v1.1.0** (planned): Consider config flag `legacy_commands_enabled`
-- **v2.0.0** (planned): Potentially remove legacy commands entirely
+- **v1.0.37**: Legacy command handlers removed; compact shortcuts are required
+- **Future**: Continue iterating on compact UX (configurable shortcuts, additional hints)
 
 ## Questions?
 
-See the [Command Reference](user-guide/commands.md) for complete documentation of both the compact UI and legacy commands.
+See the [Command Reference](user-guide/commands.md) for the authoritative compact command list.

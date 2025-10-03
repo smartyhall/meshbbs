@@ -8,15 +8,27 @@ Meshbbs organizes discussions into topics and optional subtopics.
 
 ## Navigation
 
-- `M` — open Topics
-- `1-9` — pick an item on the current page
-- `L` — show more
+- `M` — open Topics (root topics only)
+- `1-9` — pick an item on the current page (topics, subtopics, threads)
+- `L` — show the next page of results (Topics, Subtopics, or Threads)
+- `H` — show contextual help for the current view
 - `U` / `B` — go up/back; climbs from Threads → Subtopics → Topics
+- `X` — exit the session immediately (same as logging out)
+- `WHERE` / `W` — print your breadcrumb (e.g., `Meshbbs > Topics > general > Threads`)
+
+## Reading threads
+
+- `1-9` — open the corresponding thread in the current list
+- `+` / `-` — move to the next or previous thread while reading
+- `F <text>` — filter thread titles in the Threads view (`F` with no text clears)
 
 ## Posting
 
-- `POST <topic> <message>` — quick one-line post
-- `POST <topic>` — enter multi-line mode, end with a single `.`
+- `N` — start a new thread from the Threads view
+	1. Enter a title (≤32 characters)
+	2. Enter the body as a single message (230 bytes max)
+- `Y` — reply to the currently open thread while reading; the reply is captured in one message
+- Replies and new threads respect topic locks and permissions; locked topics show `[locked]` in the header
 
 ## Moderation
 

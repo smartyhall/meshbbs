@@ -333,34 +333,46 @@ SETPASS <new>             # Set initial password (passwordless accounts)
 **Navigation & Help:**
 ```bash
 HELP / H / ?              # Compact help with shortcuts
-HELP+ / HELP V            # Detailed verbose help with examples
-M                         # Quick navigation to message topics
+HELP+ / HELP V            # Verbose help (chunked if needed)
+M                         # Open message topics list
+1-9                       # Pick a topic/thread from the current page
+L                         # Load more topics/threads (next page)
 WHERE / W                 # Show current breadcrumb path
-U / B                     # Up/back (to parent)
+U / B                     # Up/back (to parent menu)
 Q                         # Quit/logout
 ```
 
-**Message Commands:**
+**Message & Thread Actions:**
 ```bash
-TOPICS / LIST             # List available message topics
-READ <topic>              # Read recent messages from topic
-POST <topic> <message>    # Post a message to topic
-POST <topic>              # Start multi-line post (end with '.' on new line)
+R                         # View recent messages in the current topic
+P                         # Compose a new post in the current topic
+N                         # Start a new thread from the threads list
+Y                         # Reply when reading a thread
+F <text>                  # Filter topics/threads by text
++ / -                     # Next/previous page within lists
+.                         # Finish posting (if text already sent) or cancel
 ```
 
 **Moderator Commands** (level ≥5):
 ```bash
-DELETE <topic> <id>       # Remove a message
-LOCK <topic>              # Prevent new posts
-UNLOCK <topic>            # Allow posts again  
-DELLOG [page] / DL [page] # View deletion audit entries
+D<n>                      # Delete the nth thread/message (with confirm)
+P<n>                      # Pin/unpin the nth thread
+R<n> <title>              # Rename a thread
+K                         # Toggle topic lock in the current area
+DL [page] / DELLOG [p]    # View deletion audit entries
 ```
 
 **Sysop Commands** (level 10):
 ```bash
-PROMOTE <user>            # Promote user level
-DEMOTE <user>             # Demote user level
-SYSLOG <lvl> <msg>        # Write a message to the admin/security log
+G @user=LEVEL|ROLE        # Grant a level (1/5/10) or role (USER/MOD/SYSOP)
+USERS [pattern]           # List users (optional filter)
+USERINFO <user>           # Show details for a user
+WHO                       # List currently logged-in users
+SESSIONS                  # Show active sessions
+KICK <user>               # Disconnect a user session
+BROADCAST <message>       # Send a broadcast to all users
+SYSLOG <INFO|WARN|ERROR> <msg>  # Write to the admin/security log
+ADMIN / DASHBOARD         # Summary of system statistics
 ```
 </details>
 

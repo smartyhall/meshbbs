@@ -9,17 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **UX Streamlining**: Compact help (HELP) no longer shows legacy long-word commands (READ/POST/TOPICS)
+- **Command Set**: Removed legacy long-form commands (READ, POST, TOPICS, LIST); compact shortcuts are now the only supported interface
 - **Login Experience**: New users now see a helpful hint after login: "Hint: M=messages H=help"
-- **Verbose Help**: Legacy commands moved to "Deprecated" section in HELP+ output
+- **Verbose Help**: Verbose output now mirrors compact help, reinforcing the single shortcut-driven interface
 - Primary interface now emphasizes letter/number-driven navigation: [M]essages, [T]inyhack, etc.
 
 ### Documentation
 - Added `docs/MIGRATION_COMPACT_UI.md` explaining the UX transition
-- Legacy commands (READ, POST, TOPICS, LIST) remain functional for backward compatibility but are de-emphasized
+- Documented the removal of legacy long-form commands and the new hints shown during onboarding
 
 ### Technical
-- No breaking changes to command processing
-- Legacy command handlers remain active via `try_inline_message_command()`
+- Removed legacy command handler plumbing (`try_inline_message_command`) in favor of compact-only flows
 - All tests pass with updated help text expectations
 
 This file records notable changes for meshbbs. Starting with the 1.0.0 BETA baseline, new entries will be added above this section over time (e.g., 1.0.1, 1.0.2).

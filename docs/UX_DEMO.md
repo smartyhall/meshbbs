@@ -85,76 +85,25 @@ alice@general>
 
 ---
 
-## Scenario: Bob (Advanced User) Using Legacy Commands
+## Scenario: Bob (Power User) Adapts Automation
 
-### Bob Knows the Old Way
+### Bob updates his macros
 ```
-bob (lvl1)> TOPICS
-Topics:
-- general - General discussion
-- community - Community events
-- technical - Technical support
->
-bob (lvl1)>
-```
+// Previous macro sequence (legacy)
+// READ general
+// POST general Hello world!
 
-**Still Works**: Legacy commands function but aren't advertised
-
-### Bob Posts the Old Way
-```
-bob (lvl1)> POST general Hello everyone!
-Posted to general.
-bob (lvl1)>
+// Updated compact-friendly macro
+M          # enter Topics
+1          # pick "general"
+N          # start a new thread
+Mesh News  # title (≤32 chars)
+MeshBBS is live!  # body (single message)
+B          # back to Topics
+1          # reopen the first thread if you want to read it
 ```
 
-**Still Works**: No changes to existing workflows
-
-### Bob Wants Full Command List
-```
-bob (lvl1)> HELP+
-[... verbose help in multiple chunks ...]
-
-Deprecated (backward compat only - use M menu instead):
-  TOPICS / LIST           List topics
-  READ <topic>            Read recent messages
-  POST <topic> <text>     Post a message
-
-Misc:
-  HELP        Compact help
-  HELP+ / HELP V  Verbose help (this)
-  ...
-bob (lvl1)>
-```
-
-**Clear Guidance**: Legacy commands marked as deprecated, alternatives shown
-
----
-
-## Comparison: Same Task, Two Approaches
-
-### Task: Read Messages in "general" Topic
-
-#### New User (Alice) - Guided by Compact UI
-```
-1. alice (lvl1)> M                    # [Follows hint]
-2. [Meshbbs] Topics                   # [Sees numbered list]
-   1. general (2)  2. community...
-3. alice (lvl1)> 1                    # [Presses digit]
-4. [Threads shown]                    # [Success in 3 keystrokes!]
-```
-
-**Keystrokes**: 3 (M, Enter, 1, Enter)  
-**Mental Model**: Navigate menus with letters/numbers
-
-#### Legacy User (Bob) - Uses Old Commands
-```
-1. bob (lvl1)> READ general           # [Types full command]
-2. Messages in general:               # [Success!]
-   [Messages shown]
-```
-
-**Keystrokes**: 12+ (typing "READ general")  
-**Mental Model**: Command-line interface with keywords
+**Outcome**: Bob keeps his fast workflow while matching the modern command set.
 
 ---
 
@@ -165,16 +114,16 @@ bob (lvl1)>
 - **After**: "Hint says M=messages. I'll press M!"
 
 ### Help System
-- **Before**: 82 bytes showing both approaches
-- **After**: 52 bytes showing primary approach (-37%)
+- **Before**: 82 bytes showing two paradigms
+- **After**: 52 bytes showing one paradigm (-37%)
 
 ### Learning Curve
-- **Before**: Two paradigms to learn
-- **After**: One clear paradigm, second is optional advanced feature
+- **Before**: Two command sets to memorize
+- **After**: One concise set for everyone
 
-### Discoverability
-- **Before**: Both approaches equally visible
-- **After**: Primary approach emphasized, legacy discoverable via HELP+
+### Automation
+- **Before**: Scripts had to choose between compact vs. legacy commands
+- **After**: Scripts send the same shortcuts humans see in help outputs
 
 ---
 
@@ -184,13 +133,13 @@ bob (lvl1)>
 > "The hint after login was really helpful! I just pressed M and everything made sense from there."
 
 ### 👍 Existing Users
-> "I can still use READ/POST if I want, but the new menu system is actually faster."
+> "Once I updated my cheat sheet to the shortcuts, everything felt faster."
 
 ### 🤔 Power Users
-> "HELP+ still shows all the commands I need. Good to know the legacy stuff isn't going away yet."
+> "I like that the command list and my macros finally line up. No more duplicating flows."
 
 ### 🎯 Sysops
-> "Fewer support questions about 'how do I post a message.' The interface is self-documenting now."
+> "Support tickets about READ/POST vanished. The compact instructions are easy to forward."
 
 ---
 
@@ -207,12 +156,10 @@ Over a low-bandwidth Meshtastic link, every byte counts!
 
 ### Future Flexibility
 ```
-v1.0.36: Both systems coexist
-v1.1.0:  Config flag to disable legacy
-v2.0.0:  Clean removal possible
+v1.0.36: Compact UI emphasized, legacy commands deprecated
+v1.0.37: Legacy commands removed; compact shortcuts required
+Future: Optional shortcut customization and richer onboarding hints
 ```
-
-Progressive enhancement with clear migration path.
 
 ---
 

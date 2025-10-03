@@ -62,14 +62,15 @@ Legacy commands (compat):
 ### After (v1.0.36+)
 ```
 ...
-Deprecated (backward compat only - use M menu instead):
-  TOPICS / LIST           List topics
-  READ <topic>            Read recent messages
-  POST <topic> <text>     Post a message
+Compact commands only:
+  M / digits              Navigate topics and threads
+  P                       Open preferences
+  WHERE                   Show breadcrumb
+  HELP / HELP+            Compact help (same output)
 ...
 ```
 
-**Improvement**: Explicitly marks these as deprecated and suggests the alternative (M menu).
+**Improvement**: Verbose help now reinforces the single compact command set without referencing removed long-form commands.
 
 ---
 
@@ -93,28 +94,18 @@ Deprecated (backward compat only - use M menu instead):
 
 ---
 
-## Backward Compatibility
+## Command Set Summary
 
-### What Still Works (v1.0.36+)
-✅ `READ general` - Works silently  
-✅ `POST general hello` - Works silently  
-✅ `TOPICS` or `LIST` - Works silently  
-✅ All existing scripts/automation unaffected  
-
-### What Changed
-❌ These commands no longer appear in compact HELP  
-❌ Verbose HELP marks them as "Deprecated"  
-✅ New users guided to compact UI  
-✅ Advanced users can still use shortcuts if they know them  
-
----
+- **Before**: Compact shortcuts and legacy long-form commands operated side by side
+- **After**: Only compact shortcuts remain (`M`, digits, `P`, `R`, `B`, etc.)
+- **Result**: Lower cognitive load, fewer bytes on the wire, and simpler docs/support
 
 ## Design Philosophy
 
 **Before**: Two equal interfaces competing for user attention  
-**After**: One primary interface (compact UI) with legacy fallback  
+**After**: A single, compact interface for every user path  
 
-**Goal**: Reduce cognitive load for new users while maintaining backward compatibility for existing workflows.
+**Goal**: Reduce cognitive load for new users while keeping navigation fast and predictable.
 
 ---
 
@@ -127,18 +118,17 @@ Deprecated (backward compat only - use M menu instead):
 
 ### User Onboarding
 - **Before**: 3 different ways to list topics (M, TOPICS, LIST)
-- **After**: One clear way (M), others work but hidden
+- **After**: One clear way (M and digits) with no legacy fallbacks
 - **Benefit**: Faster learning curve, less confusion
 
 ---
 
 ## For Sysops
 
-If you have users who rely on legacy commands:
-1. Educate them about the new compact UI
-2. Assure them old commands still work
-3. Point them to `HELP+` to see full command reference
-4. Consider the migration timeline (v1.1.0 config flag, v2.0.0 removal)
+Action items:
+1. Educate users and moderators about the compact-only command set
+2. Update any SOPs, scripts, or cheat sheets referencing long-form commands
+3. Encourage use of `HELP`/`HELP+` for quick refresher on shortcuts
 
 ---
 

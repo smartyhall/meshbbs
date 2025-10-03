@@ -73,8 +73,8 @@ Check:
 
 Expect:
 - [ ] Single‑frame compact help including:
-  - ACCT: `SETPASS`, `CHPASS`, `LOGOUT`
-  - MSG navigation hints (`M` topics; digits pick; `+`/`-`; `F`; `READ`/`POST`/`TOPICS`)
+  - ACCT: `P` menu with `[C]hange/[N]ew pass` guidance, `LOGOUT`
+  - MSG navigation hints (`M` topics; digits pick; `+`/`-`; `F` filter)
   - OTHER: `WHERE | U | Q`
 - [ ] Fits in 230 bytes including prompt
 
@@ -82,7 +82,7 @@ Expect:
 
 Expect:
 - [ ] Multiple DM chunks; prompt appended to the last chunk only
-- [ ] Detailed sections for navigation, moderator/sysop, legacy commands
+- [ ] Detailed sections for navigation plus moderator/sysop tools (no legacy command references)
 
 ### `SETPASS newPassOnlyIfPasswordless` (only if the account had no password)
 
@@ -169,28 +169,33 @@ Expect:
 Expect:
 - [ ] Ends the session (`Goodbye! 73s`) and prompt no longer updates
 
-## Legacy inline commands (still supported)
+## Legacy inline commands (should reject)
+
+Verify that deprecated long-form commands are no longer accepted.
 
 ### `TOPICS` / `LIST`
 
 Expect:
-- [ ] A listing of topics and descriptions (respects read permissions)
+- [ ] Reply: `Invalid command "TOPICS"` (or `"LIST"`)
+- [ ] Prompt remains unchanged; use `M` to browse instead
 
 ### `READ general` (or another topic)
 
 Expect:
-- [ ] Lists recent messages from the topic (top N)
-- [ ] Format: `author | timestamp, content …` with separators
+- [ ] Reply: `Invalid command "READ general"` (truncated with `…` if needed)
+- [ ] No navigation side effects; compact digits still work afterward
 
 ### `POST general Hello world!`
 
 Expect:
-- [ ] Posted to that topic immediately (unless locked or permission denied)
+- [ ] Reply: `Invalid command "POST general Hello world!"`
+- [ ] No new thread appears in the Threads list
 
-### `POST general` (multi‑line)
+### `POST general` (multi-line)
 
 Expect:
-- [ ] Instructions for multi‑line; end with a dot on its own line to post
+- [ ] Reply: `Invalid command "POST general"`
+- [ ] Session stays in the same view (no hidden compose state)
 
 ### Unknown command (e.g., `NOPE`)
 
@@ -316,7 +321,7 @@ Expect:
 
 ### Over‑long post content
 
-Try to post a very long message via legacy `POST` (simulate >10KB) or with invalid characters.
+From Threads, use `N` (new thread) or `Y` (reply) and attempt to send an oversized message (>10 KB) or one containing invalid characters.
 
 Expect:
 - [ ] Error about invalid characters or size limit; no message stored

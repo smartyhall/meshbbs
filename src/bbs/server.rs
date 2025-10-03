@@ -136,11 +136,11 @@ fn verbose_help_with_prefix(pfx: char) -> String {
         "Meshbbs Extended Help\n",
         "Authentication:\n  REGISTER <name> <pass>  Create account\n  LOGIN <name> <pass>     Log in\n  SETPASS <new>           Set first password\n  CHPASS <old> <new>      Change password\n  LOGOUT                  End session\n\n",
         "Compact Navigation:\n  M       Topics menu (paged)\n  1-9     Pick item on page\n  L       More items\n  U/B     Up/back (to parent)\n  X       Exit\n  WHERE/W Where am I breadcrumb\n\n",
-        "Topics → Subtopics → Threads → Read:\n  In Subtopics: 1-9 pick, U up\n  In Threads:   1-9 read, N new, F <text> filter, U up\n  In Read:      + next, - prev, Y reply\n\n",
+    "Topics → Subtopics → Threads → Read:\n  In Subtopics: 1-9 pick, U up\n  In Threads:   1-9 read, N new, F <text> filter, U up\n  In Read:      + next, - prev, Y reply\n\n",
+    "Posting:\n  From Topics:  R recent messages  P compose  L list\n  While posting: type message text, '.' to finish or cancel\n\n",
         "Moderator (level 5+):\n  Threads:  D<n> delete  P<n> pin/unpin  R<n> <title> rename  K lock/unlock area\n  Read:     D delete     P pin/unpin     R <title>            K lock/unlock area\n\n",
         "Sysop (level 10):\n  G @user=LEVEL|ROLE      Grant level (1/5/10) or USER/MOD/SYSOP\n\n",
         "Administration (mod/sysop):\n  USERS [pattern]         List users (filter optional)\n  WHO                     Show logged-in users\n  USERINFO <user>         Detailed user info\n  SESSIONS                List all sessions\n  KICK <user>             Force logout user\n  BROADCAST <msg>         Broadcast to all\n  ADMIN / DASHBOARD       System overview\n\n",
-        "Deprecated (backward compat only - use M menu instead):\n  TOPICS / LIST           List topics\n  READ <topic>            Read recent messages\n  POST <topic> <text>     Post a message\n\n",
         "Misc:\n  HELP        Compact help\n  HELP+ / HELP V  Verbose help (this)\n  Weather (public)       Send WEATHER on public channel\n  Slot Machine (public)  {p}SLOT or {p}SLOTMACHINE to play\n  Slot Stats (public)    {p}SLOTSTATS\n  Magic 8-Ball (public)  {p}8BALL\n  Fortune (public)       {p}FORTUNE for classic Unix wisdom\n\n",
         "Limits:\n  Max frame ~230 bytes; verbose help auto-splits.\n"),
         p = pfx
@@ -1254,26 +1254,14 @@ impl BbsServer {
                                     session.unread_since = Some(Utc::now());
                                 }
                                 let summary = Self::format_unread_line(0);
-                                // Compact single-frame friendly welcome (omit BBS name & HELP+ reference)
-                                // Example (unread 0): "Registered as alice. 0 new msgs. HELP LIST READ POST WHO"
-                                // Keeps under 230 bytes even with 30-char username.
-                                let unread_snip = if summary.contains("no new")
-                                    || summary.contains("no new messages")
-                                {
-                                    // summary format_unread_line(0) typically "There are no new messages." -> shorten
-                                    "0 new msgs.".to_string()
-                                } else if let Some(num) = summary
-                                    .split_whitespace()
-                                    .find(|w| w.chars().all(|c| c.is_ascii_digit()))
-                                {
-                                    format!("{} unread msgs.", num)
-                                } else {
-                                    summary.trim().to_string()
-                                };
+                                let hint = "Hint: M=messages 1-9=select H=help\n";
+                                let menu = Self::format_main_menu(self.config.games.tinyhack_enabled);
                                 let full_welcome = format!(
-                                    "Registered as {u}. {unread} HELP LIST READ POST WHO\n",
+                                    "Registered as {u}.\n{summary}{hint}{menu}",
                                     u = user,
-                                    unread = unread_snip
+                                    summary = summary,
+                                    hint = hint,
+                                    menu = menu
                                 );
                                 let max_bytes = self.config.storage.max_message_size;
                                 let parts_vec = self.chunk_utf8(&full_welcome, max_bytes);

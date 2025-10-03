@@ -8,7 +8,6 @@
 //! - Stateless text commands that map to a [Session] state transition
 //! - Paged listings (max 5 items per page) to keep replies short
 //! - UTF‑8 safe truncation helpers to avoid splitting multi‑byte characters
-//! - Backwards‑compatible inline shortcuts like `READ <topic>` and `POST <topic> <text>`
 //!
 //! The primary entrypoint is [CommandProcessor::process], which routes commands to the
 //! appropriate handler based on [SessionState]. Handlers return fully rendered strings
@@ -29,7 +28,7 @@ use super::roles::LEVEL_MODERATOR;
 use super::session::{Session, SessionState};
 use crate::config::Config;
 use crate::storage::{ReplyEntry, Storage};
-use crate::validation::{sanitize_message_content, validate_topic_name, validate_user_name};
+use crate::validation::{sanitize_message_content, validate_user_name};
 
 /// UI rendering helpers for compact, 230-byte-safe outputs
 mod ui {
@@ -238,12 +237,9 @@ impl CommandProcessor {
     ) -> Result<String> {
         let raw = command.trim();
         let cmd_upper = raw.to_uppercase();
-        // Allow certain inline commands in any state for backward compatibility
-        if let Some(resp) = self
-            .try_inline_message_command(session, raw, &cmd_upper, storage, config)
-            .await?
-        {
-            return Ok(resp);
+        if cmd_upper == "WHERE" || cmd_upper == "W" {
+            let here = self.where_am_i(session, config);
+            return Ok(format!("[BBS] You are at: {}\n", here));
         }
         match session.state {
             SessionState::Connected => {
@@ -255,12 +251,6 @@ impl CommandProcessor {
                     .await
             }
             SessionState::MainMenu => {
-                if let Some(resp) = self
-                    .try_inline_message_command(session, raw, &cmd_upper, storage, config)
-                    .await?
-                {
-                    return Ok(resp);
-                }
                 self.handle_main_menu(session, &cmd_upper, storage, config)
                     .await
             }
@@ -316,12 +306,6 @@ impl CommandProcessor {
                     .await
             }
             SessionState::MessageTopics => {
-                if let Some(resp) = self
-                    .try_inline_message_command(session, raw, &cmd_upper, storage, config)
-                    .await?
-                {
-                    return Ok(resp);
-                }
                 self.handle_message_topics(session, &cmd_upper, storage, config)
                     .await
             }
@@ -351,126 +335,6 @@ impl CommandProcessor {
             }
             SessionState::Disconnected => Ok("Session disconnected.".to_string()),
         }
-    }
-
-    async fn try_inline_message_command(
-        &self,
-        session: &mut Session,
-        raw: &str,
-        upper: &str,
-        storage: &mut Storage,
-        config: &Config,
-    ) -> Result<Option<String>> {
-        // WHERE-AM-I breadcrumb (global)
-        if upper == "WHERE" || upper == "W" {
-            let here = self.where_am_i(session, config);
-            return Ok(Some(format!("[BBS] You are at: {}\n", here)));
-        }
-        if session.is_logged_in() {
-            // Legacy long-form message commands disabled for authenticated sessions
-            return Ok(None);
-        }
-        if upper.starts_with("READ") {
-            let raw_topic = raw.split_whitespace().nth(1).unwrap_or("general");
-
-            // Validate topic name before using it
-            let topic = match validate_topic_name(raw_topic) {
-                Ok(_) => raw_topic.to_lowercase(),
-                Err(_) => {
-                    return Ok(Some("Invalid topic name. Topic names must contain only letters, numbers, and underscores.\n".to_string()));
-                }
-            };
-
-            // Permission check
-            if !self_topic_can_read(session.user_level, &topic, storage) {
-                return Ok(Some("Permission denied.\n".into()));
-            }
-            session.current_topic = Some(topic.clone());
-            let messages = storage.get_messages(&topic, 10).await?;
-            let mut response = format!("Messages in {}:\n", topic);
-            for msg in messages {
-                response.push_str(&format!(
-                    "{} | {}\n{}\n---\n",
-                    msg.author,
-                    msg.timestamp.format("%m/%d %H:%M"),
-                    msg.content
-                ));
-            }
-            response.push_str(">\n");
-            return Ok(Some(response));
-        }
-        if upper.starts_with("POST ") {
-            let mut parts = raw.splitn(3, ' ');
-            parts.next(); // skip "POST"
-            let second = parts.next();
-
-            // Parse topic and message content
-            let (raw_topic, text) = if let Some(s) = second {
-                if let Some(rest) = parts.next() {
-                    (s, rest)
-                } else {
-                    (session.current_topic.as_deref().unwrap_or("general"), s)
-                }
-            } else {
-                (session.current_topic.as_deref().unwrap_or("general"), "")
-            };
-
-            // Validate topic name
-            let topic = match validate_topic_name(raw_topic) {
-                Ok(_) => raw_topic.to_lowercase(),
-                Err(_) => {
-                    return Ok(Some("Invalid topic name. Topic names must contain only letters, numbers, and underscores.\n".to_string()));
-                }
-            };
-
-            // Sanitize message content
-            let sanitized_content = match sanitize_message_content(text, 10000) {
-                // 10KB limit
-                Ok(content) => content,
-                Err(_) => {
-                    return Ok(Some(
-                        "Message content contains invalid characters or exceeds size limit.\n"
-                            .to_string(),
-                    ))
-                }
-            };
-
-            if sanitized_content.trim().is_empty() {
-                return Ok(Some(
-                    "Message content cannot be empty after sanitization.\n".to_string(),
-                ));
-            }
-
-            if storage.is_topic_locked(&topic) {
-                return Ok(Some("Topic locked.\n".into()));
-            }
-
-            if !self_topic_can_post(session.user_level, &topic, storage) {
-                return Ok(Some("Permission denied.\n".into()));
-            }
-
-            let author = session.display_name();
-            storage
-                .store_message(&topic, &author, &sanitized_content)
-                .await?;
-            return Ok(Some(format!("Posted to {}.\n", topic)));
-        }
-        if upper == "TOPICS" || upper == "LIST" {
-            let topics = storage.list_message_topics().await?;
-            let mut response = "Topics:\n".to_string();
-            for t in topics {
-                if self_topic_can_read(session.user_level, &t, storage) {
-                    if let Some(topic_config) = config.message_topics.get(&t) {
-                        response.push_str(&format!("- {} - {}\n", t, topic_config.description));
-                    } else {
-                        response.push_str(&format!("- {}\n", t));
-                    }
-                }
-            }
-            response.push_str(">\n");
-            return Ok(Some(response));
-        }
-        Ok(None)
     }
 
     async fn handle_initial_connection(

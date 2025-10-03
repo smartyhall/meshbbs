@@ -34,79 +34,125 @@ After using `<prefix>LOGIN` (default `^LOGIN`) on the public channel, open a dir
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `LOGIN username [password]` | Log in (sets password if first time) | `LOGIN alice mypass` |
-| `REGISTER username password` | Create new account | `REGISTER bob secret123` |
-| `LOGOUT` | End current session | `LOGOUT` |
-| `CHPASS old new` | Change password | `CHPASS oldpass newpass` |
-| `SETPASS new` | Set password (for passwordless accounts) | `SETPASS mypassword` |
-
-### Help and Navigation
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `HELP` or `H` or `?` | Show compact help | `HELP` |
-| `HELP+` or `HELP V` | Show detailed help with examples | `HELP+` |
-| `M` | Quick navigation to message topics | `M` |
-| `WHERE` or `W` | Show current breadcrumb path | `WHERE` |
-| `U` or `B` | Up/back (to parent) | `U` |
-| `Q` | Quit/logout | `Q` |
-| `B` | Back to previous menu | `B` |
-
-### Message Topics
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `TOPICS` or `LIST` | List available message topics | `TOPICS` |
-| `READ topic` | Read recent messages from topic | `READ general` |
-| `POST topic message` | Post a message to topic | `POST general Hello everyone!` |
-| `POST topic` | Start multi-line post | `POST general` |
-
-#### Topics and Subtopics (Compact UI)
-
-- Press `M` to open Topics (root topics only are shown)
-- Items with children show a `›` marker; selecting opens Subtopics
-- In Subtopics:
-	- `1-9` pick subtopic on current page; nested levels are supported
-	- `U` or `B` goes up one level; `M` returns to root Topics; `L` shows more
-	- Selecting a leaf subtopic enters Threads
-
-#### Multi-line Posting
-
-When using `POST topic` without a message, you enter multi-line mode:
-
-```
-> POST general
-Enter your message. End with '.' on a new line:
-This is a multi-line message.
-You can write several lines.
-End with a period on its own line.
-.
-Message posted successfully!
-```
-
-### User Commands
-
-| Command | Description | Example |
-|---------|-------------|---------|
+| `LOGIN username [password]` | Log in (sets password the first time) | `LOGIN alice mypass` |
+| `REGISTER username password` | Create a new account | `REGISTER bob secret123` |
+| `LOGOUT` | End the current session | `LOGOUT` |
 | `CHPASS old new` | Change your password | `CHPASS oldpass newpass` |
-| `SETPASS new` | Set initial password | `SETPASS mypassword` |
+| `SETPASS new` | Set an initial password for passwordless accounts | `SETPASS mypassword` |
 
-## Moderator Commands (Level 5+)
+### Global shortcuts
 
-Available to users with moderator privileges:
+| Command | Description | Notes |
+|---------|-------------|-------|
+| `HELP` / `H` / `?` | Show compact help | Fits within one frame (≤230 bytes) and adapts to your role |
+| `HELP+` / `HELP V` | Show verbose help | Multi-part reply with full command explanations |
+| `WHERE` / `W` | Show your breadcrumb | Displays the current location (e.g., `Meshbbs > Topics > general > Threads`) |
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `DELETE topic id` | Remove a message | `DELETE general msg123` |
-| `LOCK topic` | Prevent new posts in topic | `LOCK general` |
-| `UNLOCK topic` | Allow posts in topic again | `UNLOCK general` |
-| `DELLOG [page]` / `DL [page]` | View deletion audit log | `DELLOG`, `DL`, or `DL 2` |
-| `USERS [pattern]` | List users (optional filter) | `USERS`, `USERS al*` |
-| `WHO` | Show logged-in users | `WHO` |
-| `USERINFO user` | Detailed user info | `USERINFO alice` |
-| `SESSIONS` | List all sessions | `SESSIONS` |
-| `KICK user` | Force logout a user | `KICK bob` |
-| `BROADCAST message` | Send a server broadcast | `BROADCAST Maintenance at 18:00` |
+### Main menu shortcuts
+
+| Command | Description |
+|---------|-------------|
+| `M` | Open the Topics view (paged list of root areas) |
+| `P` | Open the Preferences menu (account & stats) |
+| `T` | Launch Tinyhack (only shown if the game is enabled) |
+| `Q` | Log out and end the session (`Goodbye! 73s`) |
+
+### Topics navigation (compact UI)
+
+The compact UI uses single-letter commands and digits to navigate topics, threads, and messages quickly.
+
+#### Topics view
+
+- `1-9` — open the corresponding topic on the current page
+- `L` — load the next page of topics (5 items per page)
+- `H` — show inline help for the Topics view
+- `B` / `Q` — return to the main menu
+- `X` — exit the session immediately
+
+#### Subtopics view
+
+- `1-9` — open the selected subtopic; nested branches stay in Subtopics until a leaf is chosen
+- `L` — load more subtopics
+- `U` / `B` — go up one level (back to parent topics)
+- `M` — jump directly back to the root Topics view
+- `X` — exit the session
+
+#### Threads view
+
+- `1-9` — open the thread shown in that slot
+- `N` — start a new thread (prompts for title, then body)
+- `L` — load more threads (pinned items stay at the top)
+- `F <text>` — filter thread titles (send `F` with no text to clear)
+- `B` — go back (to Subtopics or Topics depending on hierarchy)
+- `M` — return to Topics
+- `Q` — return to the main menu; `X` exits the session
+
+#### Reading a thread
+
+- `+` / `-` — jump to the next/previous thread in the current topic
+- `Y` — reply to the thread (single-message reply)
+- `B` — return to the Threads list
+- `H` — show inline help for available shortcuts
+- `M` — return to Topics; `Q` returns to the main menu
+
+### Posting threads and replies
+
+- `N` (from Threads) — create a new thread. You will:
+  1. Enter a title (truncated at 32 characters if longer)
+  2. Enter the body as a single message (230-byte limit)
+- `Y` (while reading) — reply to the current thread in one message
+- Locked topics show `[locked]` in the header; posting or replying is blocked until unlocked
+
+### Filtering threads
+
+- `F <text>` — filter thread titles to those containing `<text>` (case-insensitive)
+- `F` — clear the active filter and redisplay the full list
+- Unread threads show a trailing `*`; pinned threads include a `📌` marker
+
+### Preferences menu (`P`)
+
+- `I` — view user details (username, node ID, level, session duration)
+- `S` — view high-level BBS statistics (total users, messages, recent registrations)
+- `C` — change password (prompts for current then new password; only when one exists)
+- `N` — set an initial password (when no password is set yet)
+- `L` — log out from the preferences screen
+- `B` — return to the main menu while staying logged in
+
+## Moderator tools (Level 5+)
+
+Moderators gain additional actions in the compact UI plus access to administrative utilities.
+
+### Threads view actions
+
+| Command | Description |
+|---------|-------------|
+| `D<n>` | Delete the nth thread on the current page (prompts for confirmation) |
+| `P<n>` | Toggle pinned state for the nth thread |
+| `R<n> <new title>` | Rename the nth thread (title truncated to 32 characters) |
+| `K` | Lock or unlock the current topic |
+
+### Read view actions
+
+| Command | Description |
+|---------|-------------|
+| `D` | Delete the currently open thread (prompts for confirmation) |
+| `P` | Pin or unpin the current thread |
+| `R <new title>` | Rename the current thread while reading it |
+| `K` | Lock or unlock the current topic |
+
+### Moderation utilities
+
+| Command | Description | Notes |
+|---------|-------------|-------|
+| `DELLOG [page]` / `DL [page]` | View the deletion audit log | Optional page number (defaults to 1) |
+| `USERS [pattern]` | List registered users, optionally filtered | Pattern matches against usernames (case-insensitive) |
+| `WHO` | Show logged-in users | Returns a placeholder list in offline mode |
+| `USERINFO user` | View detailed info (role, posts, registration date) | Requires an exact username |
+| `SESSIONS` | List active sessions | Returns a placeholder list in offline mode |
+| `KICK user` | Request that a user be logged out | Action is deferred for safety |
+| `BROADCAST message` | Send a system broadcast to all users | Message is sanitized and limited to 5 KB |
+| `LOCK topic` / `UNLOCK topic` | Lock or unlock a topic by name | Useful for automation scripts |
+| `ADMIN` / `DASHBOARD` | Show aggregate statistics | Mirrors the Preferences `S` view with additional detail |
 
 ## Sysop Commands (Level 10)
 
@@ -114,8 +160,9 @@ Available only to system operators:
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `PROMOTE user` | Increase user's access level | `PROMOTE alice` |
-| `DEMOTE user` | Decrease user's access level | `DEMOTE bob` |
+| `PROMOTE user` | Increase a user's access level by one tier | `PROMOTE alice` |
+| `DEMOTE user` | Decrease a user's access level by one tier | `DEMOTE bob` |
+| `G @user=LEVEL\|ROLE` | Set level directly (1/5/10 or USER/MOD/SYSOP) | `G @alice=5` |
 | `SYSLOG level message` | Write to the admin/security log | `SYSLOG info System check OK` |
 
 ## Dynamic Prompts
@@ -148,7 +195,7 @@ Common error messages and their meanings:
 |-------|---------|----------|
 | `Invalid username` | Username doesn't meet requirements | Use 2-20 chars, letters/numbers/underscore only |
 | `Wrong password` | Incorrect password provided | Check password or use `SETPASS` if passwordless |
-| `Topic not found` | Message topic doesn't exist | Use `TOPICS` to see available topics |
+| `Topic not found` | Message topic doesn't exist or you lack access | Use `M` to browse available topics or check permissions |
 | `Access denied` | Insufficient privileges | Check your user level with sysop |
 | `Message too long` | Message exceeds 230 byte limit | Shorten your message |
 | `Session timeout` | Inactive too long | Log in again |
@@ -205,15 +252,37 @@ Public channel (using the configured prefix; default shown):
 
 Direct message:
 > LOGIN alice mypassword
-< Welcome alice! Type HELP for commands.
-alice (lvl1)> TOPICS
-< Available areas: general, community, technical
-alice (lvl1)> READ general
-< [Recent messages from general area...]
-alice@general> POST general Hello everyone from the mesh!
-< Message posted successfully!
-alice@general> Q
-< Goodbye!
+< Welcome, alice you are now logged in.
+< There are no new messages.
+< Hint: M=messages H=help
+< Main Menu:
+< [M]essages [P]references [Q]uit
+alice (lvl1)> M
+< [Meshbbs] Topics
+< 1. general  2. community  3. technical
+< Type number to select topic. L more. H help. X exit
+alice (lvl1)> 1
+< Messages in general:
+< [BBS][general] Threads
+< 1. Welcome
+< Reply: 1-9 read, N new, L more, B back, F <text> filter
+alice@general> N
+< [BBS] New thread title (≤32):
+post@general>
+> Mesh meetup
+< Body: (single message)
+post@general>
+> Meet at 18:00 on main channel.
+< Messages in general:
+< [BBS][general] Threads
+< 1. Mesh meetup
+< Reply: 1-9 read, N new, L more, B back, F <text> filter
+alice@general> B
+< [Meshbbs] Topics
+< 1. general  2. community  3. technical
+< Type number to select topic. L more. H help. X exit
+alice (lvl1)> Q
+< Goodbye! 73s
 ```
 
 ### Moderator Example

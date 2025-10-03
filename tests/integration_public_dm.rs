@@ -8,7 +8,7 @@ use meshbbs::config::Config;
 // methods where possible. If deeper mocking is needed, future refactor should abstract device IO.
 
 #[tokio::test]
-async fn public_login_then_dm_session_inline_commands() {
+async fn public_login_then_dm_session_compact_flow() {
     // Build a default config (assuming Config::default or similar). If not available, construct manually.
     // For now we assume a basic constructor exists; adapt if necessary.
     let mut config = Config::default();
@@ -18,22 +18,6 @@ async fn public_login_then_dm_session_inline_commands() {
 
     // Initialize server (without actual device)
     let mut server = BbsServer::new(config).await.expect("server");
-
-    // Create the topic that will be used in the POST command, ignore if it already exists
-    if (server
-        .test_create_topic(
-            "hello",
-            "Hello Topic",
-            "A test topic for hello messages",
-            0,
-            0,
-            "sysop",
-        )
-        .await)
-        .is_err()
-    {
-        // Topic already exists, which is fine for this test
-    }
 
     // Simulate a public LOGIN (would normally arrive via TextEvent)
     use meshbbs::meshtastic::TextEvent; // re-export not present, path adjust if needed
@@ -55,29 +39,75 @@ async fn public_login_then_dm_session_inline_commands() {
         dest: Some(999),
         is_direct: true,
         channel: None,
-        content: "READ".into(),
+        content: "M".into(),
     };
-    server.route_text_event(dm_event).await.expect("dm read");
+    server
+        .route_text_event(dm_event)
+        .await
+        .expect("dm main menu -> topics");
 
-    // Post a message inline
-    let dm_post = TextEvent {
+    // Select the first topic and then return to MessageTopics menu
+    let dm_select_topic = TextEvent {
         source: 123,
         dest: Some(999),
         is_direct: true,
         channel: None,
-        content: "POST Hello world from inline".into(),
+        content: "1".into(),
     };
-    server.route_text_event(dm_post).await.expect("dm post");
+    server
+        .route_text_event(dm_select_topic)
+        .await
+        .expect("dm select topic");
 
-    // Read again to confirm (basic success path; deeper assertions would require exposing responses)
-    let dm_read2 = TextEvent {
+    let dm_back_to_topics = TextEvent {
         source: 123,
         dest: Some(999),
         is_direct: true,
         channel: None,
-        content: "READ".into(),
+        content: "B".into(),
     };
-    server.route_text_event(dm_read2).await.expect("dm read2");
+    server
+        .route_text_event(dm_back_to_topics)
+        .await
+        .expect("dm back to topics");
+
+    // Start posting a message using compact flow
+    let dm_post_begin = TextEvent {
+        source: 123,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "P".into(),
+    };
+    server
+        .route_text_event(dm_post_begin)
+        .await
+        .expect("dm start post");
+
+    let dm_post_body = TextEvent {
+        source: 123,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "Hello world from compact UI".into(),
+    };
+    server
+        .route_text_event(dm_post_body)
+        .await
+        .expect("dm post body");
+
+    // Read recent messages in the current topic to confirm flow reaches reading state
+    let dm_read_recent = TextEvent {
+        source: 123,
+        dest: Some(999),
+        is_direct: true,
+        channel: None,
+        content: "R".into(),
+    };
+    server
+        .route_text_event(dm_read_recent)
+        .await
+        .expect("dm read recent");
 
     // At this stage we at least validated no panics and state transitions executed.
     // Future improvement: Capture outbound messages by injecting a mock device.
