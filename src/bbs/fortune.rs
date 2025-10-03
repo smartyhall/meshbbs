@@ -2,7 +2,7 @@
 //!
 //! This module provides a stateless fortune cookie system inspired by the classic Unix
 //! `fortune` command. It contains a curated database of user‑provided fortunes: witty,
-//! funny, thoughtful, and clean—each under 200 characters.
+//! funny, thoughtful, and clean-each under 200 characters.
 //! Humor, proverbs, haiku, limericks, and motivational messages.
 
 use rand::Rng;

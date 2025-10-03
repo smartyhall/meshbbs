@@ -116,7 +116,7 @@ async fn compact_flow_topics_threads_read_compose_reply() {
         .expect("post reply");
     let m = last_for_node(server.test_messages(), node).expect("read after reply");
     assert!(
-        m.contains("— ") && m.contains("Thanks!"),
+        m.contains("- ") && m.contains("Thanks!"),
         "read shows reply: {}",
         m
     );

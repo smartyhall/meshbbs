@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.44--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.45--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -19,12 +19,13 @@
 
 ## 🌟 Overview
 
-Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bulletin Board System experience to Meshtastic devices. Exchange messages, participate in forums, and build communities over long-range, low-power radio networks—all without traditional internet infrastructure.
+Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bulletin Board System experience to Meshtastic devices. Exchange messages, participate in forums, and build communities over long-range, low-power radio networks, all without traditional internet infrastructure.
 
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
 
+- 1.0.45-beta (2025-10-02): The "Hyphen Intervention" release—every em-dash was asked to leave before it ate another byte.
 - 1.0.44-beta (2025-10-03): TinyHack mini-map feature
    - Added **M** command to display compact ASCII mini-map with fog of war (~165 chars)
    - Shows 6×6 grid with player position (@), unexplored areas (#), and room types (monsters, chests, doors, etc.)
@@ -327,7 +328,7 @@ Once logged in via DM, use the compact, single-letter flow:
    - L: more, B: back (to Subtopics or Topics), M: topics, H: help
 - Read view
    - +: next, -: prev, Y: reply, B: back, H: help
-   - Shows the latest reply preview (prefixed with "— ")
+   - Shows the latest reply preview (prefixed with "- ")
 
 Shortcuts:
 - HELP / HELP+: compact vs. verbose help
@@ -635,12 +636,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 This project is licensed under the **Creative Commons Attribution-NonCommercial 4.0 International License**.
 
 **You are free to:**
-- ✅ **Share** — copy and redistribute in any medium or format
-- ✅ **Adapt** — remix, transform, and build upon the material
+- ✅ **Share** - copy and redistribute in any medium or format
+- ✅ **Adapt** - remix, transform, and build upon the material
 
 **Under these terms:**
-- 🏷️ **Attribution** — Give appropriate credit and indicate changes
-- 🚫 **NonCommercial** — No commercial use without permission
+- 🏷️ **Attribution** - Give appropriate credit and indicate changes
+- 🚫 **NonCommercial** - No commercial use without permission
 
 See the [LICENSE](LICENSE) file or visit [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) for details.
 

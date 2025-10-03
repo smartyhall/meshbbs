@@ -8,11 +8,11 @@
 //! - Stats: total spins, wins, jackpots, last spin and last jackpot timestamps
 //!
 //! Public commands (handled by `bbs::server`):
-//! - `<prefix>SLOT` / `<prefix>SLOTMACHINE` — spin once and broadcast the result (broadcast-only; no DM fallback)
-//! - `<prefix>SLOTSTATS` — show per‑player stats and current coin balance
+//! - `<prefix>SLOT` / `<prefix>SLOTMACHINE` - spin once and broadcast the result (broadcast-only; no DM fallback)
+//! - `<prefix>SLOTSTATS` - show per‑player stats and current coin balance
 //!
 //! Payouts:
-//! - 7️⃣7️⃣7️⃣ = JACKPOT — pays the progressive pot (minimum 500 coins; grows by the bet amount (5 coins) for every losing spin across all players)
+//! - 7️⃣7️⃣7️⃣ = JACKPOT - pays the progressive pot (minimum 500 coins; grows by the bet amount (5 coins) for every losing spin across all players)
 //! - 🟦🟦🟦 = ×50
 //! - 🔔🔔🔔 = ×20
 //! - 🍇🍇🍇 = ×14

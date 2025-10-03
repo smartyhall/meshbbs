@@ -54,7 +54,7 @@ fn minimap_shows_fog_of_war() {
     );
     
     // Move south
-    let (mut gs5, _) = handle_turn(gs4, "S");
+    let (gs5, _) = handle_turn(gs4, "S");
     assert_eq!(gs5.player.y, 1, "Player should have moved south");
     let (_, map_output3) = handle_turn(gs5, "M");
     println!("=== After moving South ===\n{}", map_output3);

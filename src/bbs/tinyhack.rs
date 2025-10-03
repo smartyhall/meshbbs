@@ -1,4 +1,4 @@
-//! TinyHack v1 — a compact, ASCII-only roguelike mini-game designed for ~230-char messages.
+//! TinyHack v1 - a compact, ASCII-only roguelike mini-game designed for ~230-char messages.
 //!
 //! This module implements a small turn-based dungeon crawler with per-user save files.
 //! It renders a complete snapshot each turn and accepts terse one/two-token commands.
@@ -450,7 +450,7 @@ fn describe_room(gs: &GameState) -> String {
                 MonsterKind::Boss => "the dungeon boss",
             };
             format!(
-                "You are not alone—{} lurks here (HP {}). It eyes you hungrily.",
+                "You are not alone-{} lurks here (HP {}). It eyes you hungrily.",
                 name, hp
             )
         }
@@ -464,7 +464,7 @@ fn describe_room(gs: &GameState) -> String {
             if r.used {
                 "Scorched marks and sprung mechanisms suggest a trap was here.".to_string()
             } else {
-                "The floor tiles look uneven—a trap may be set in this hall.".to_string()
+                "The floor tiles look uneven-a trap may be set in this hall.".to_string()
             }
         }
         RoomKind::Vendor => {
@@ -481,7 +481,7 @@ fn describe_room(gs: &GameState) -> String {
             if r.used {
                 "A cracked fountain sits dry; its healing waters spent.".to_string()
             } else {
-                "A cracked stone fountain trickles—its waters seem restorative.".to_string()
+                "A cracked stone fountain trickles-its waters seem restorative.".to_string()
             }
         }
         RoomKind::Stairs => "A narrow stairwell leads out of this cursed place.".to_string(),
@@ -580,17 +580,17 @@ fn full_status_line(gs: &GameState) -> String {
 
 fn help_text() -> &'static str {
     "TinyHack Commands:\n\
-N)orth S)outh E)ast W)est — move between rooms\n\
-A)ttack — melee strike (crits possible); monster may retaliate\n\
-U)se P)otion — heal; U)se B)omb — blast door/foe (6 dmg)\n\
-C)ast F)ireball — burn a foe (5 dmg)\n\
-T)ake — loot a chest (gold, keys, items)\n\
-O)pen — unlock a locked door (needs a key)\n\
-PICK — try to pick a locked door (chance↑ with lockpicks; some risk)\n\
-R)est — recover a little HP (risk ambush)\n\
-I)nspect — show status and options again\n\
-M)ap — show mini-map with fog of war\n\
-B)ack — return to BBS menu; Q)uit — leave TinyHack\n\
+N)orth S)outh E)ast W)est - move between rooms\n\
+A)ttack - melee strike (crits possible); monster may retaliate\n\
+U)se P)otion - heal; U)se B)omb - blast door/foe (6 dmg)\n\
+C)ast F)ireball - burn a foe (5 dmg)\n\
+T)ake - loot a chest (gold, keys, items)\n\
+O)pen - unlock a locked door (needs a key)\n\
+PICK - try to pick a locked door (chance↑ with lockpicks; some risk)\n\
+R)est - recover a little HP (risk ambush)\n\
+I)nspect - show status and options again\n\
+M)ap - show mini-map with fog of war\n\
+B)ack - return to BBS menu; Q)uit - leave TinyHack\n\
 Vendor (at stall): BUY P/B/S/K/H/L, UPG W/A, MYST, LEAVE\n\
 Tip: 'U P'/'UP' uses a potion; 'U B'/'UB' uses a bomb; 'C F'/'CF' casts Fireball.\n\
 Also accepted: USE POTION/BOMB and CAST FIREBALL.\n\
@@ -861,7 +861,7 @@ fn use_bomb(gs: &mut GameState, rng: &mut StdRng) -> String {
             r.used = true;
             gs.player.gold += 3;
             gs.player.xp += 1;
-            "You set the charge—wood splinters; behind it, a small stash (+3g, +1 XP).\n".into()
+            "You set the charge-wood splinters; behind it, a small stash (+3g, +1 XP).\n".into()
         }
         RoomKind::Monster(mk) => {
             let hp = r.mon_hp.unwrap_or(0) - 6;
@@ -929,7 +929,7 @@ fn cast_fireball(gs: &mut GameState, rng: &mut StdRng) -> String {
         let msg = choose(
             rng,
             &[
-                "You conjure flame—your foe is reduced to ash.",
+                "You conjure flame-your foe is reduced to ash.",
                 "An inferno engulfs the monster.",
                 "Searing fire ends the fight.",
             ],
@@ -966,7 +966,7 @@ fn do_take(gs: &mut GameState, rng: &mut StdRng) -> String {
                 }
                 3 => {
                     gs.player.potions += 1;
-                    "A stoppered vial—one healing potion.\n".into()
+                    "A stoppered vial-one healing potion.\n".into()
                 }
                 4 => {
                     gs.player.bombs += 1;
@@ -1048,7 +1048,7 @@ fn do_pick_lock(gs: &mut GameState, rng: &mut StdRng) -> String {
         r.used = true;
         gs.player.gold += 2;
         gs.player.xp += 1;
-        "You finesse the tumblers—click. The door yields (+2g, +1 XP).\n".into()
+        "You finesse the tumblers-click. The door yields (+2g, +1 XP).\n".into()
     } else {
         if rng.gen_bool(0.5) {
             let dmg = rng.gen_range(1..=3);
@@ -1275,7 +1275,7 @@ fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
         }
         RoomKind::Chest if !gs.seen_chest => {
             gs.seen_chest = true;
-            hint = Some("Hint: T)ake to loot chests—keys, gear, or gold.\n".into());
+            hint = Some("Hint: T)ake to loot chests-keys, gear, or gold.\n".into());
         }
         RoomKind::Vendor if !gs.seen_vendor => {
             gs.seen_vendor = true;
@@ -1300,7 +1300,7 @@ fn on_enter_tile(gs: &mut GameState, rng: &mut StdRng) -> Option<String> {
             if gs.player.hp <= 0 {
                 return Some(death_text(gs));
             }
-            let mut s = format!("A hidden mechanism snaps—needles bite for {}.\n", dmg);
+            let mut s = format!("A hidden mechanism snaps-needles bite for {}.\n", dmg);
             if !gs.seen_trap {
                 gs.seen_trap = true;
                 s.push_str("Hint: Watch for uneven tiles; R)est to recover a bit.\n");

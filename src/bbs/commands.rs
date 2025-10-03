@@ -1287,7 +1287,7 @@ impl CommandProcessor {
                         format!("{} | {}: {}", stamp, r.author, r.content)
                     }
                 };
-                body.push_str("\n— ");
+                body.push_str("\n- ");
                 body.push_str(&rp);
             }
             let footer = "Reply: + next, - prev, Y reply, B back, H help";

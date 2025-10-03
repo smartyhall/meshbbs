@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.45-beta] - 2025-10-02
+
+### Changed
+- Replaced every em-dash with a plain hyphen after the punctuation union submitted a buffet bill for all those extra bytes—hyphen is now our cost-cutting consultant.
+
+### Fixed
+- TinyHack minimap tests no longer shout their internal monologue during CI; the southbound trip is silent but successful.
+
 ## [1.0.44-beta] - 2025-10-03
 
 ### Added

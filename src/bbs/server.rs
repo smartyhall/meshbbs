@@ -2488,12 +2488,12 @@ impl BbsServer {
                                 })
                                 .unwrap_or_default();
                             format!(
-                                "{p}SLOT ⟶ {} | {} | {}  — {}{}",
+                                "{p}SLOT ⟶ {} | {} | {}  - {}{}",
                                 outcome.r1, outcome.r2, outcome.r3, outcome.description, eta
                             )
                         } else if outcome.multiplier > 0 {
                             format!(
-                                "{p}SLOT ⟶ {} | {} | {}  — WIN x{} (+{} coins). Balance: {}",
+                                "{p}SLOT ⟶ {} | {} | {}  - WIN x{} (+{} coins). Balance: {}",
                                 outcome.r1,
                                 outcome.r2,
                                 outcome.r3,
@@ -2503,7 +2503,7 @@ impl BbsServer {
                             )
                         } else {
                             format!(
-                                "{p}SLOT ⟶ {} | {} | {}  — Loss (-{} coins). Balance: {}",
+                                "{p}SLOT ⟶ {} | {} | {}  - Loss (-{} coins). Balance: {}",
                                 outcome.r1,
                                 outcome.r2,
                                 outcome.r3,
@@ -2556,12 +2556,12 @@ impl BbsServer {
                         let jdate = j
                             .last_win_date
                             .map(|d| d.format("%Y-%m-%d").to_string())
-                            .unwrap_or_else(|| "—".into());
+                            .unwrap_or_else(|| "-".into());
                         let jwinner_short = if let Some(id_str) = j.last_win_node.as_deref() {
                             self.lookup_short_name_from_cache(id_str.parse().ok().unwrap_or(0))
                                 .unwrap_or_else(|| id_str.to_string())
                         } else {
-                            "—".to_string()
+                            "-".to_string()
                         };
                         let p = self.public_parser.primary_prefix_char();
                         let msg = if let Some(s) = summary {
