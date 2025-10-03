@@ -39,13 +39,6 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
    - Startup now logs the configured primary Meshtastic channel at INFO level for easier diagnostics.
    - Node cache maintenance: hourly cleanup of entries not seen in > 90 days; last_seen updates persisted when new node info is observed. Atomic save and resilient load already in place.
 
-- 1.0.32 (2025-09-29): Replace Fortune database with ~400 user‑provided fortunes (haiku, limericks, proverbs, jokes). Kept all entries mesh‑safe (<=200 chars) and updated tests to be count‑agnostic. Synced docs to describe the updated Fortune module.
-- 1.0.31 (2025-09-29): Robust persistence hardening: atomic write-then-rename with fsync for JSON data (users, runtime topics, NodeCache), plus read-side resilience that trims accidental leading NULs. Refactored sysop seeding to use centralized atomic storage helper; made NodeCache save/load fully atomic and resilient.
-- 1.0.30 (2025-09-29): Fix rare jackpot.json reset when updating the progressive pot (seek to start before truncate/write). Switch several integration tests to use writable temp fixture copies to avoid mutating tracked fixture JSONs.
-- 1.0.25 (2025-09-28): Reflect configurable public command prefix across all user-facing runtime messages (IDENT hint and public broadcasts for SLOT/8BALL/FORTUNE/SLOTSTATS) and documentation (README, user guides, getting-started, QA plan, rustdoc). No functional changes beyond message formatting; default prefix remains `^`.
-- 1.0.22 (2025-09-28): Add unit tests to verify UTF‑8 safe truncation of log previews (em‑dash and emoji boundaries). Reinforces the 1.0.21 fix and prevents regressions.
-- 1.0.21 (2025-09-28): Critical hotfix for a crash when logging long messages containing multibyte characters (e.g., em dashes/emoji). We now truncate previews using a UTF-8 safe helper and hardened parser slices to avoid invalid byte-boundary slicing. If you saw a panic like "byte index N is not a char boundary", update immediately.
-
 ## 📚 Documentation
 
 Comprehensive documentation is available in the [`docs/`](docs/) directory and hosted at [GitHub Pages](https://martinbogo.github.io/meshbbs):
