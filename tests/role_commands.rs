@@ -16,6 +16,7 @@ async fn base_config() -> Config {
             welcome_message: "w".into(),
             sysop_password_hash: None,
             public_command_prefix: None,
+            allow_public_login: true,
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

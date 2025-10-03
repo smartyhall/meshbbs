@@ -193,8 +193,8 @@ impl BbsServer {
             if end > bytes.len() {
                 end = bytes.len();
             }
-            // Retreat until on UTF-8 boundary
-            while end > 0 && (bytes[end - 1] & 0b1100_0000) == 0b1000_0000 {
+            // Retreat until on UTF-8 boundary using Rust's built-in check
+            while end > 0 && !remaining.is_char_boundary(end) {
                 end -= 1;
             }
             // Try newline preference within this slice (find last '\n')

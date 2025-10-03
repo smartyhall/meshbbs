@@ -45,6 +45,7 @@ async fn config_with_areas(dir: &str) -> Config {
             welcome_message: "w".into(),
             sysop_password_hash: None,
             public_command_prefix: None,
+            allow_public_login: true,
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

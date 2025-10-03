@@ -31,6 +31,7 @@ fn sysop_user_seeded_with_hash() {
                 welcome_message: "w".into(),
                 sysop_password_hash: Some(hash.clone()),
                 public_command_prefix: None,
+                allow_public_login: true,
             },
             meshtastic: MeshtasticConfig {
                 port: "".into(),

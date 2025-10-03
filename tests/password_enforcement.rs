@@ -20,6 +20,7 @@ async fn passwordless_user_prompt_and_set() {
             welcome_message: "Welcome".into(),
             sysop_password_hash: None,
             public_command_prefix: None,
+            allow_public_login: true,
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

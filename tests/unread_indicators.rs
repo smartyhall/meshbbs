@@ -32,6 +32,7 @@ async fn unread_indicators_topics_and_threads() {
             welcome_message: "Welcome".into(),
             sysop_password_hash: None,
             public_command_prefix: None,
+            allow_public_login: true,
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

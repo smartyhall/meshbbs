@@ -23,6 +23,7 @@ async fn unread_message_count_on_login() {
             welcome_message: "Welcome".into(),
             sysop_password_hash: None,
             public_command_prefix: None,
+            allow_public_login: true,
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),
