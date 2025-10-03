@@ -132,6 +132,9 @@ pub struct GameState {
     pub seen_door: bool,
     #[serde(default)]
     pub seen_trap: bool,
+    /// Visited rooms for fog-of-war mini-map. Backward-compatible default: empty.
+    #[serde(default)]
+    pub visited: Vec<bool>,
 }
 
 fn intro_shown_default_true() -> bool {
@@ -410,6 +413,9 @@ fn new_game(seed: u64, w: usize, h: usize) -> GameState {
     let mut rng = StdRng::seed_from_u64(seed);
     let mut map = vec![Room::default(); w * h];
     place_world(&mut rng, w, h, &mut map);
+    let mut visited = vec![false; w * h];
+    // Mark starting position as visited
+    visited[0] = true;
     GameState {
         gid: rng.gen(),
         turn: 1,
@@ -424,6 +430,7 @@ fn new_game(seed: u64, w: usize, h: usize) -> GameState {
         seen_vendor: false,
         seen_door: false,
         seen_trap: false,
+        visited,
     }
 }
 
@@ -535,6 +542,7 @@ fn compute_options(gs: &GameState) -> Vec<String> {
     }
     v.push("R".into());
     v.push("I".into());
+    v.push("M".into());
     v.push("?".into());
     v.push("Q".into());
     v
@@ -581,6 +589,7 @@ O)pen — unlock a locked door (needs a key)\n\
 PICK — try to pick a locked door (chance↑ with lockpicks; some risk)\n\
 R)est — recover a little HP (risk ambush)\n\
 I)nspect — show status and options again\n\
+M)ap — show mini-map with fog of war\n\
 B)ack — return to BBS menu; Q)uit — leave TinyHack\n\
 Vendor (at stall): BUY P/B/S/K/H/L, UPG W/A, MYST, LEAVE\n\
 Tip: 'U P'/'UP' uses a potion; 'U B'/'UB' uses a bomb; 'C F'/'CF' casts Fireball.\n\
@@ -626,6 +635,103 @@ pub fn render(gs: &GameState) -> String {
     msg.push('\n');
     // Do not include an in-game prompt; the server appends the session prompt on the last chunk.
     // Do not locally truncate: server will chunk and append the DM prompt on the last part.
+    msg
+}
+
+/// Render mini-map with fog of war. Compact ASCII, ~150-180 chars.
+pub fn render_map(gs: &GameState) -> String {
+    // Ensure visited vector is initialized (backward compatibility)
+    let has_visited = !gs.visited.is_empty();
+    
+    let mut msg = String::new();
+    // Compact status line
+    msg.push_str(&format!(
+        "L{} HP{}/{} G{} K{} P{}\n",
+        gs.player.lvl,
+        gs.player.hp,
+        gs.player.max_hp,
+        gs.player.gold,
+        gs.player.keys,
+        gs.player.potions
+    ));
+    
+    // Build 6x6 grid
+    for y in 0..gs.h {
+        for x in 0..gs.w {
+            let idx = gs.idx(x, y);
+            let is_player = gs.player.x == x && gs.player.y == y;
+            let is_visited = has_visited && idx < gs.visited.len() && gs.visited[idx];
+            
+            if is_player {
+                msg.push('@');
+            } else if !is_visited {
+                msg.push('#');
+            } else {
+                // Show room type for visited rooms
+                let room = &gs.map[idx];
+                let symbol = match room.kind {
+                    RoomKind::Empty => '.',
+                    RoomKind::Monster(_) => {
+                        if room.mon_hp.unwrap_or(0) > 0 {
+                            'M'
+                        } else {
+                            'X' // defeated
+                        }
+                    }
+                    RoomKind::Chest => {
+                        if room.used {
+                            '.'
+                        } else {
+                            'C'
+                        }
+                    }
+                    RoomKind::LockedDoor => {
+                        if room.used {
+                            '.'
+                        } else {
+                            'D'
+                        }
+                    }
+                    RoomKind::Trap => {
+                        if room.used {
+                            '.'
+                        } else {
+                            'T'
+                        }
+                    }
+                    RoomKind::Vendor => 'V',
+                    RoomKind::Shrine => {
+                        if room.used {
+                            '.'
+                        } else {
+                            'H'
+                        }
+                    }
+                    RoomKind::Fountain => {
+                        if room.used {
+                            '.'
+                        } else {
+                            'F'
+                        }
+                    }
+                    RoomKind::Stairs => 'S',
+                };
+                msg.push(symbol);
+            }
+            
+            // Add space between columns except last
+            if x < gs.w - 1 {
+                msg.push(' ');
+            }
+        }
+        msg.push('\n');
+    }
+    
+    // Compact legend - only show symbols currently on map
+    msg.push_str("@=You #=Fog .=Clear\n");
+    msg.push_str("M=Mon X=Dead C=Chest\n");
+    msg.push_str("D=Door V=Vendor S=Exit\n");
+    
     msg
 }
 
@@ -977,6 +1083,13 @@ fn do_move(gs: &mut GameState, dir: char) -> String {
     }
     gs.player.x = nx;
     gs.player.y = ny;
+    
+    // Mark new room as visited
+    let idx = gs.idx(nx, ny);
+    if !gs.visited.is_empty() && idx < gs.visited.len() {
+        gs.visited[idx] = true;
+    }
+    
     String::new()
 }
 
@@ -1331,6 +1444,11 @@ pub fn handle_turn(mut gs: GameState, cmd: &str) -> (GameState, String) {
             );
             return (gs, view);
         }
+        "M" => {
+            // Show mini-map (non-action, doesn't increment turn)
+            let map_view = render_map(&gs);
+            return (gs, map_view);
+        }
         "?" => {
             let view = format!(
                 "{}\n{}\n{}\n",
@@ -1421,6 +1539,15 @@ pub fn load_or_new_with_flag(base_dir: &str, username: &str) -> (GameState, Stri
                 if gs.player.y >= gs.h {
                     gs.player.y = gs.h.saturating_sub(1);
                 }
+                // Backward compatibility: initialize visited vector if missing
+                if gs.visited.is_empty() {
+                    gs.visited = vec![false; gs.w * gs.h];
+                    // Mark current position as visited
+                    let idx = gs.idx(gs.player.x, gs.player.y);
+                    if idx < gs.visited.len() {
+                        gs.visited[idx] = true;
+                    }
+                }
                 // Render view; do not change intro_shown here for old saves defaulting to true.
                 return (gs.clone(), render(&gs), false);
             }
@@ -1471,6 +1598,7 @@ mod tests {
             seen_vendor: false,
             seen_door: false,
             seen_trap: false,
+            visited: vec![false; w * h],
         }
     }
 
