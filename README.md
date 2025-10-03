@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.43--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.44--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,6 +25,12 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## 📝 Release notes
 
+- 1.0.44-beta (2025-10-03): TinyHack mini-map feature
+   - Added **M** command to display compact ASCII mini-map with fog of war (~165 chars)
+   - Shows 6×6 grid with player position (@), unexplored areas (#), and room types (monsters, chests, doors, etc.)
+   - Visited rooms tracked for persistent exploration progress
+   - Backward compatible with existing save files
+   - Greatly improves gameplay spatial awareness without external note-taking
 - 1.0.43-beta (2025-10-03): **CRITICAL BUGFIX** - UTF-8 chunking crash
    - Fixed panic when message chunking landed on multi-byte UTF-8 character boundaries (em-dash, emoji, etc.)
    - Replaced incomplete manual UTF-8 check with Rust's `is_char_boundary()` method

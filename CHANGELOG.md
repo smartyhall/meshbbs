@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.44-beta] - 2025-10-03
+
+### Added
+- **TinyHack mini-map feature** with fog of war exploration tracking
+  - New **M** command displays compact ASCII mini-map (~165 chars, fits in Meshtastic 230-char limit)
+  - 6×6 grid showing player position (@), unexplored fog (#), and room types
+  - Room symbols: M=monster, X=dead, C=chest, D=door, V=vendor, S=stairs, F=fountain, H=shrine, T=trap
+  - Visited rooms tracking persists across game sessions
+  - Non-action command (doesn't advance turn counter like I and ?)
+  - Backward compatible: old saves initialize visited vector on load
+
+### Changed
+- Updated TinyHack help text to document M (map) command
+- Added M to compute_options() so it appears in available command list
+- GameState now tracks visited rooms with Vec<bool> field (default empty for backward compat)
+
+### Technical
+- New `render_map()` function generates compact grid view
+- `do_move()` marks rooms as visited when player enters
+- `load_or_new_with_flag()` initializes visited vector for old saves
+- Added 3 comprehensive tests in `tests/tinyhack_minimap.rs`
+
 ## [1.0.43-beta] - 2025-10-03
 
 ### Fixed
