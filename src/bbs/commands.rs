@@ -417,7 +417,7 @@ impl CommandProcessor {
             }
             "Q" => {
                 session.logout().await?;
-                Ok("Goodbye! 73s".to_string())
+                Ok("Goodbye!".to_string())
             }
             "T" if config.games.tinyhack_enabled => {
                 // Enter TinyHack loop and render current snapshot (server may send separate welcome)
