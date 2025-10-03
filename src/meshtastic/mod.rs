@@ -38,8 +38,8 @@
 //!
 //! ## Event Types
 //!
-//! The module produces [`TextEvent`] instances that represent different types of
-//! communication from the mesh network:
+//! When the `meshtastic-proto` feature is enabled, the module produces `TextEvent`
+//! instances that represent different types of communication from the mesh network:
 //!
 //! - **Messages**: Text communications between nodes
 //! - **Node Info**: Device information and capabilities

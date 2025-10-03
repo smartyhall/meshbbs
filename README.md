@@ -76,9 +76,10 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 - **🎯 Dynamic Contextual Prompts**: Smart prompts showing current state (`unauth>`, `user@topic>`, `post@topic>`)
 - **📜 Enhanced Help System**: `<prefix>HELP` (default `^HELP`) broadcasts all public commands for discovery, with BBS instructions via DM
 - **📏 Optimized Message Size**: 230-byte limit optimized for Meshtastic constraints
- - **🎰 Public Slot Machine**: Fun `<prefix>SLOT` mini‑game (default `^SLOT`) with daily coin refills and jackpots
- - **🎱 Magic 8‑Ball (public)**: Ask `<prefix>8BALL` (default `^8BALL`) for a classic, emoji‑prefixed response (broadcast‑only)
- - **🔮 Fortune Cookies (public)**: Use `<prefix>FORTUNE` (default `^FORTUNE`) to get random Unix wisdom, quotes, and humor (broadcast‑only)
+   - **🎰 Public Slot Machine**: Fun `<prefix>SLOT` mini‑game (default `^SLOT`) with daily coin refills and jackpots
+   - **🎱 Magic 8‑Ball (public)**: Ask `<prefix>8BALL` (default `^8BALL`) for a classic, emoji‑prefixed response (broadcast‑only)
+   - **🔮 Fortune Cookies (public)**: Use `<prefix>FORTUNE` (default `^FORTUNE`) to get random Unix wisdom, quotes, and humor (broadcast‑only)
+   - **🧭 TinyHack (DM)**: Optional ASCII roguelike door reachable via `[T]` in the main menu when enabled; per-user saves under `data/tinyhack/`
 
 ### 👥 **User Management & Security**
 - **🔐 Robust Security**: Argon2id password hashing with configurable parameters

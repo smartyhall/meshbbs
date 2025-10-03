@@ -54,7 +54,7 @@ After using `<prefix>LOGIN` (default `^LOGIN`) on the public channel, open a dir
 |---------|-------------|
 | `M` | Open the Topics view (paged list of root areas) |
 | `P` | Open the Preferences menu (account & stats) |
-| `T` | Launch Tinyhack (only shown if the game is enabled) |
+| `T` | Launch TinyHack (only shown if the game is enabled) |
 | `Q` | Log out and end the session (`Goodbye! 73s`) |
 
 ### Topics navigation (compact UI)

@@ -180,7 +180,7 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GamesConfig {
-    /// Enable the TinyHack mini-game in the main menu (adds [T]inyHack)
+    /// Enable the TinyHack mini-game in the main menu (adds \[T]inyHack)
     #[serde(default)]
     pub tinyhack_enabled: bool,
 }

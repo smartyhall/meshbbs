@@ -90,11 +90,11 @@ tinyhack_enabled = true
 - Enter the game from the main menu with `T`.
 - Goal: Find the Stairs and escape the dungeon.
 - Movement: `N,S,E,W`.
-- Combat: `A` to attack; `U P` to drink a potion; `C F` to cast Fireball.
- - Combat: `A` attack (crits possible); `U P` drink a potion; `U B` bomb (6 dmg); `C F` Fireball (5 dmg).
-- Doors: `O` to open (uses a key), `PICK` to lockpick (chance; lockpicks help), `U B` to bomb.
-- Vendor: `BUY P/B/S/K/H/L` (Potion/Bomb/Scroll/Key/Heal/Lockpick), `UPG W/A` to upgrade weapon/armor, `MYST` for a mystery item, `LEAVE`.
-- Helpful one-time hints appear the first time you see common features (monster, chest, vendor, door, trap).
+- Combat: `A` attack (crits possible); `U P` drink a potion; `U B` throw a bomb (6 dmg); `C F` cast Fireball (5 dmg).
+- Doors: `O` to open (uses a key), `PICK` to lockpick (chance improves with lockpicks), `U B` to blast it open.
+- Loot & status: `T` take loot, `I` inspect surroundings, `R` rest to regain a little health.
+- Vendor: `BUY P/B/S/K/H/L` (Potion/Bomb/Scroll/Key/Heal/Lockpick), `UPG W/A` to upgrade weapon/armor, `MYST` for a mystery item, `LEAVE` to exit the shop.
+- Helpful one-time hints appear the first time you encounter monsters, chests, vendors, doors, or traps.
 
 Example turns
 

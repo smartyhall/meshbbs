@@ -5,11 +5,13 @@
 //!
 //! ## Features
 //!
-//! - **Meshtastic Integration**: Direct communication with Meshtastic devices via serial or Bluetooth
-//! - **Message Boards**: Traditional BBS-style message topics and forums
-//! - **User Management**: Role-based access control (User, Moderator, Sysop)
-//! - **Security**: Argon2id password hashing with configurable parameters
-//! - **Async Design**: Built with Tokio for high performance
+//! - **Compact Command UI**: Single-letter navigation optimized for ≤230-byte frames, including contextual prompts and inline help.
+//! - **Meshtastic Integration**: Direct communication with Meshtastic devices over USB/UART serial links, with optional protobuf packet decoding.
+//! - **Message Boards**: Topic and subtopic hierarchy with paged threads, filters, and UTF-8 safe rendering.
+//! - **Optional Mini-Games**: Public-channel Slot, Magic 8-Ball, and Fortune commands, plus the TinyHack DM roguelike when enabled.
+//! - **User Management**: Role-based access control (User, Moderator, Sysop) with granular topic permissions.
+//! - **Security**: Argon2id password hashing, input sanitization, and UTF-8 safe truncation helpers.
+//! - **Async Design**: Built with Tokio for high performance on constrained hardware.
 //!
 //! ## Quick Start
 //!
