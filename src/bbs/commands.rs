@@ -775,7 +775,7 @@ impl CommandProcessor {
                 items.push(format!("{}. {}", i + 1, id));
             }
         }
-        let footer = "Type number to select topic. L more. H help. X exit";
+        let footer = "Type number to select topic. L more. H help. B back. Q quit";
         let body = ui::topics_page(&config.bbs.name, &items, footer);
         Ok(body)
     }
@@ -790,16 +790,16 @@ impl CommandProcessor {
     ) -> Result<String> {
         // Global controls
         match upper {
-            "H" | "?" => return Ok("Topics: 1-9 pick, L more, B back, M menu, X exit\n".into()),
+            "H" | "?" => return Ok("Topics: 1-9 pick, L more, B back, M menu, Q quit\n".into()),
             "M" => {
                 session.list_page = 1;
                 return self.render_topics_page(session, storage, config).await;
             }
-            "B" | "Q" => {
+            "B" => {
                 session.state = SessionState::MainMenu;
                 return Ok(self.render_main_menu(session, config));
             }
-            "X" => {
+            "Q" | "X" => {
                 session.state = SessionState::Disconnected;
                 return Ok("Goodbye! 73s".into());
             }
@@ -877,7 +877,7 @@ impl CommandProcessor {
         }
         let header = format!("[BBS][{}] Subtopics\n", parent);
         let list = format!("{}\n", ui::list_1_to_5(&items));
-        let footer = "Pick: 1-9. U up. L more. M topics. X exit";
+        let footer = "Pick: 1-9. U up. L more. M topics. B back. Q quit";
         Ok(format!("{}{}{}\n", header, list, footer))
     }
 
@@ -890,7 +890,7 @@ impl CommandProcessor {
         config: &Config,
     ) -> Result<String> {
         match upper {
-            "H" | "?" => return Ok("Subtopics: 1-9 pick, U up, L more, M topics, X exit\n".into()),
+            "H" | "?" => return Ok("Subtopics: 1-9 pick, U up, L more, M topics, B back, Q quit\n".into()),
             "M" => {
                 session.state = SessionState::Topics;
                 session.list_page = 1;
@@ -901,11 +901,7 @@ impl CommandProcessor {
                 session.list_page = 1;
                 return self.render_topics_page(session, storage, config).await;
             }
-            "Q" => {
-                session.state = SessionState::MainMenu;
-                return Ok(self.render_main_menu(session, config));
-            }
-            "X" => {
+            "Q" | "X" => {
                 session.state = SessionState::Disconnected;
                 return Ok("Goodbye! 73s".into());
             }
@@ -1036,7 +1032,7 @@ impl CommandProcessor {
     ) -> Result<String> {
         match upper {
             "H" | "?" => {
-                let mut s = "Threads: 1-9 read, N new, L more, B back, F filter, M topics, X exit"
+                let mut s = "Threads: 1-9 read, N new, L more, B back, F filter, M topics, Q quit"
                     .to_string();
                 if session.user_level >= LEVEL_MODERATOR {
                     s.push_str(" | mod: D<n>, P<n>, R<n>, K");
@@ -1049,9 +1045,9 @@ impl CommandProcessor {
                 session.list_page = 1;
                 return self.render_topics_page(session, storage, config).await;
             }
-            "Q" => {
-                session.state = SessionState::MainMenu;
-                return Ok(self.render_main_menu(session, config));
+            "Q" | "X" => {
+                session.state = SessionState::Disconnected;
+                return Ok("Goodbye! 73s".into());
             }
             "B" => {
                 let _ = session.filter_text.take();
@@ -1079,10 +1075,6 @@ impl CommandProcessor {
                     session.list_page = 1;
                     return self.render_topics_page(session, storage, config).await;
                 }
-            }
-            "X" => {
-                session.state = SessionState::Disconnected;
-                return Ok("Goodbye! 73s".into());
             }
             "L" => {
                 session.list_page += 1;

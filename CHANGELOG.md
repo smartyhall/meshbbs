@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.42-beta] - 2025-10-02
+
+### Fixed
+- Navigation menu consistency across Topics, Subtopics, and Threads views
+- Menu footers now consistently display "B back. Q quit" instead of inconsistent "X exit" messaging
+- Command handler behavior standardized: B always goes back to previous level/main menu, Q (and X as alias) always quits/logs out
+- Improved user experience with clear, predictable navigation commands throughout the message board interface
+
+### Changed
+- Topics menu footer: Changed from "X exit" to "B back. Q quit" for clarity
+- Subtopics menu footer: Changed from "X exit" to "B back. Q quit" for consistency
+- Threads menu help text: Changed from "X exit" to "Q quit" to match standardized behavior
+- Q command in Threads view now properly logs out instead of returning to main menu
+
 ## [1.0.41-beta] - 2025-10-02
 
 ### Added

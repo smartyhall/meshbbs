@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.41--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.42--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,6 +25,10 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## 📝 Release notes
 
+- 1.0.42-beta (2025-10-02): Navigation consistency improvements
+   - Fixed navigation menu footers across Topics, Subtopics, and Threads to consistently show "B back. Q quit"
+   - Standardized command behavior: B always returns to previous level/main menu, Q (or X) always quits/logs out
+   - Improved user experience with clear, consistent navigation options throughout the message board interface
 - 1.0.41-beta (2025-10-02): Enhanced security configuration
    - Added `allow_public_login` configuration option to disable public channel LOGIN commands for enhanced security
    - When disabled, users must authenticate via direct message only, preventing username enumeration on public channels
