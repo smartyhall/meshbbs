@@ -128,6 +128,8 @@ pub struct BbsServer {
     last_ident_boundary_minute: Option<i64>, // dedupe key: unix-minute of last ident send
     #[cfg(feature = "meshtastic-proto")]
     welcome_state: Option<crate::bbs::welcome::WelcomeState>,
+    #[cfg(feature = "meshtastic-proto")]
+    startup_welcome_queue: Vec<(tokio::time::Instant, crate::meshtastic::NodeDetectionEvent)>, // (when_to_send, event)
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
@@ -377,6 +379,8 @@ impl BbsServer {
             } else {
                 None
             },
+            #[cfg(feature = "meshtastic-proto")]
+            startup_welcome_queue: Vec::new(),
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -492,6 +496,80 @@ impl BbsServer {
         });
 
         info!("Meshtastic reader/writer tasks spawned successfully");
+        Ok(())
+    }
+
+    /// Scan node cache on startup and queue welcomes for recently active unwelcomed nodes
+    #[cfg(feature = "meshtastic-proto")]
+    pub async fn queue_startup_welcomes(&mut self) -> Result<()> {
+        // Only proceed if welcome system is enabled
+        if !self.config.welcome.enabled || self.welcome_state.is_none() {
+            return Ok(());
+        }
+        
+        // Load node cache
+        let cache_path = format!("{}/node_cache.json", self.config.storage.data_dir);
+        let cache = match crate::meshtastic::NodeCache::load_from_file(&cache_path) {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("No node cache to scan for startup welcomes: {}", e);
+                return Ok(());
+            }
+        };
+        
+        info!("Scanning {} cached nodes for startup welcomes", cache.nodes.len());
+        
+        // Get current time for age check (within last hour)
+        let now = chrono::Utc::now();
+        let one_hour_ago = now - chrono::Duration::hours(1);
+        
+        // Collect nodes that need welcoming
+        let mut to_welcome = Vec::new();
+        
+        for (node_id, cached_node) in &cache.nodes {
+            // Skip if not recent (last seen must be within 1 hour)
+            if cached_node.last_seen < one_hour_ago {
+                continue;
+            }
+            
+            // Skip if not a default name
+            if !crate::bbs::welcome::is_default_name(&cached_node.long_name) {
+                continue;
+            }
+            
+            // Check if already welcomed
+            let should_welcome = {
+                let state = self.welcome_state.as_ref().unwrap();
+                state.should_welcome(*node_id, &cached_node.long_name, &self.config.welcome)
+            };
+            
+            if should_welcome {
+                to_welcome.push((*node_id, cached_node.long_name.clone(), cached_node.short_name.clone()));
+            }
+        }
+        
+        if to_welcome.is_empty() {
+            info!("No cached nodes need startup welcomes");
+            return Ok(());
+        }
+        
+        info!("Queuing {} startup welcomes (30s intervals)", to_welcome.len());
+        
+        // Queue the welcomes with 30-second stagger
+        let base_time = tokio::time::Instant::now();
+        for (delay_index, (node_id, long_name, short_name)) in to_welcome.into_iter().enumerate() {
+            let delay_secs = delay_index as u64 * 30; // 0s, 30s, 60s, 90s...
+            let send_time = base_time + tokio::time::Duration::from_secs(delay_secs);
+            
+            let event = crate::meshtastic::NodeDetectionEvent {
+                node_id,
+                long_name,
+                short_name,
+            };
+            
+            self.startup_welcome_queue.push((send_time, event));
+        }
+        
         Ok(())
     }
 
@@ -705,6 +783,24 @@ impl BbsServer {
                 tokio::select! {
                     // Housekeeping tick
                     _ = periodic.tick() => {
+                        // Process startup welcome queue
+                        let now = tokio::time::Instant::now();
+                        while !self.startup_welcome_queue.is_empty() {
+                            if let Some((send_time, _)) = self.startup_welcome_queue.first() {
+                                if *send_time <= now {
+                                    let (_, event) = self.startup_welcome_queue.remove(0);
+                                    debug!("Processing startup welcome for node 0x{:08X} ({})", event.node_id, event.long_name);
+                                    if let Err(e) = self.handle_node_detection(event).await {
+                                        warn!("Startup welcome error: {}", e);
+                                    }
+                                } else {
+                                    break; // Not time yet
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        
                         #[cfg(feature = "weather")]
                         if self.weather_last_poll.elapsed() >= Duration::from_secs(300) {
                             let _ = self.fetch_weather().await;

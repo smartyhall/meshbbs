@@ -1619,9 +1619,24 @@ impl MeshtasticReader {
         }
 
         let mut interval = tokio::time::interval(Duration::from_millis(10));
+        
+        // Prune stale nodes every 10 minutes (nodes not seen in 24 hours)
+        let mut prune_interval = tokio::time::interval(Duration::from_secs(600)); // 10 minutes
+        prune_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
+                // Periodic node cache pruning
+                _ = prune_interval.tick() => {
+                    let removed = self.node_cache.remove_stale_nodes(1); // 1 day = 24 hours
+                    if removed > 0 {
+                        info!("Pruned {} stale nodes from cache (not seen in 24 hours)", removed);
+                        if let Err(e) = self.save_node_cache() {
+                            warn!("Failed to save node cache after pruning: {}", e);
+                        }
+                    }
+                }
+                
                 // Check for control messages
                 control_msg = self.control_rx.recv() => {
                     match control_msg {
