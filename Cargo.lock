@@ -1079,6 +1079,7 @@ dependencies = [
  "crc",
  "env_logger",
  "fs2",
+ "getrandom 0.2.16",
  "log",
  "password-hash",
  "percent-encoding",

@@ -43,6 +43,9 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 # CRC for message integrity checking
 crc = "3.0"
 
+# Random number generation for message IDs
+getrandom = "0.2"
+
 # URL/percent encoding for safe filenames
 percent-encoding = "2.3"
 urlencoding = "2.1"
@@ -85,6 +88,10 @@ tempfile = "3.10"
 [[bin]]
 name = "meshbbs"
 path = "src/main.rs"
+
+[[bin]]
+name = "migrate_messages"
+path = "scripts/migrate_messages.rs"
 
 [profile.release]
 incremental = false
