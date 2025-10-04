@@ -1264,12 +1264,59 @@ impl BbsServer {
         // Generate fun call sign suggestion
         let suggested_callsign = welcome::generate_callsign();
         
-        // Strategy: Send private DM first with ACK request (serves as "ping")
-        // Only send public greeting if private_guide is enabled, since the ACK confirms reachability
-        // If private_guide is disabled but public_greeting enabled, send anyway (best effort)
+        // Strategy: PING the node first to verify reachability
+        // Only send welcome messages if ping succeeds
         
+        // Send ping to node
+        let ping_success = if let Some(writer_tx) = &self.writer_control_tx {
+            let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+            let ping_msg = crate::meshtastic::ControlMessage::SendPing {
+                to: event.node_id,
+                channel: primary_channel,
+                response_tx,
+            };
+            
+            if writer_tx.send(ping_msg).is_ok() {
+                // Wait for ping response with timeout
+                match tokio::time::timeout(std::time::Duration::from_secs(10), response_rx).await {
+                    Ok(Ok(true)) => {
+                        debug!("Ping successful for node 0x{:08X}", event.node_id);
+                        true
+                    }
+                    Ok(Ok(false)) => {
+                        info!("Ping failed for node 0x{:08X}, skipping welcome", event.node_id);
+                        false
+                    }
+                    Ok(Err(_)) => {
+                        warn!("Ping response channel closed for node 0x{:08X}", event.node_id);
+                        false
+                    }
+                    Err(_) => {
+                        warn!("Ping timeout for node 0x{:08X}, skipping welcome", event.node_id);
+                        false
+                    }
+                }
+            } else {
+                warn!("Failed to send ping command for node 0x{:08X}", event.node_id);
+                false
+            }
+        } else {
+            warn!("No writer control channel available for ping");
+            false
+        };
+        
+        // Only proceed if ping succeeded
+        if !ping_success {
+            return Ok(());
+        }
+        
+        // Only proceed if ping succeeded
+        if !ping_success {
+            return Ok(());
+        }
+        
+        // Node is reachable! Send welcome messages
         // Send private guide if enabled
-        // Use reliable DM with ACK - this serves as our "ping" to verify node is reachable
         if self.config.welcome.private_guide {
             let guide = welcome::private_guide(&event.long_name, &suggested_callsign);
             
@@ -1279,7 +1326,6 @@ impl BbsServer {
                 use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
                 
                 // Chunk the guide if needed - use 200 byte limit to leave room for protocol overhead
-                // The Meshtastic packet has headers/metadata that reduce usable text space
                 let chunks = self.chunk_utf8(&guide, 200);
                 for (idx, chunk) in chunks.iter().enumerate() {
                     // Add 5-second delay between chunks to avoid rate limiting
@@ -1290,7 +1336,7 @@ impl BbsServer {
                         content: chunk.clone(),
                         priority: MessagePriority::Normal,
                         kind: OutgoingKind::Normal,
-                        request_ack: true, // Reliable DM with ACK - serves as reachability check
+                        request_ack: true,
                     };
                     let envelope = MessageEnvelope::new(
                         MessageCategory::System,
@@ -1303,26 +1349,21 @@ impl BbsServer {
             }
         }
         
-        // Send public greeting AFTER private DM (if both enabled)
-        // The private DM's ACK confirms the node is reachable before we broadcast
-        // If only public greeting is enabled (no private DM), send as best-effort
+        // Send public greeting if enabled
+        // Delay it to allow private guide to complete first and avoid rate limiting
         if self.config.welcome.public_greeting {
             let greeting = welcome::public_greeting(&event.long_name);
             if let Some(scheduler) = &self.scheduler {
                 use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
                 use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
                 
-                // If private_guide is enabled, delay public greeting to:
-                // 1) Let private DM chunks complete (avoid rate limiting interference)
-                // 2) Confirm node reachability via DM ACK
-                // With 2 chunks at 5-second spacing, wait 11 seconds total (last chunk at 5s + 6s buffer)
-                // Otherwise send immediately (best effort for public-only welcome)
+                // If private_guide is enabled, delay public greeting to avoid rate limit conflicts
+                // With 2 chunks at 5-second spacing, wait 11 seconds (last chunk at 5s + 6s buffer)
                 let delay_secs = if self.config.welcome.private_guide { 11 } else { 0 };
                 
-                // Chunk public greeting too, in case long node names push it over limit
+                // Chunk public greeting too
                 let chunks = self.chunk_utf8(&greeting, 200);
                 for (idx, chunk) in chunks.iter().enumerate() {
-                    // Add 5-second stagger between public greeting chunks too
                     let chunk_delay = delay_secs + (idx as u64 * 5);
                     let msg = OutgoingMessage {
                         to_node: None, // broadcast
@@ -1343,8 +1384,7 @@ impl BbsServer {
             }
         }
         
-        // Record that we welcomed this node (mutable borrow)
-        // Note: We record even if delivery fails, to avoid spamming offline nodes when they come back
+        // Record that we welcomed this node
         if let Some(welcome_state) = &mut self.welcome_state {
             welcome_state.record_welcome(event.node_id, &event.long_name);
         }

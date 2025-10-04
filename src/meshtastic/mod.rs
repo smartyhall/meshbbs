@@ -146,6 +146,12 @@ pub enum ControlMessage {
         id: u32,
         reason: i32,
     },
+    /// Send a ping to a node and notify on ACK/failure via response channel
+    SendPing {
+        to: u32,
+        channel: u32,
+        response_tx: tokio::sync::oneshot::Sender<bool>,
+    },
     /// Provide scheduler handle to writer after creation (avoids circular ownership at construction)
     #[allow(dead_code)]
     SetSchedulerHandle(crate::bbs::dispatch::SchedulerHandle),
@@ -574,6 +580,8 @@ pub struct MeshtasticWriter {
     pending: std::collections::HashMap<u32, PendingSend>,
     // Track broadcast ACKs (no retries). Keyed by packet id, expires after short TTL.
     pending_broadcast: std::collections::HashMap<u32, BroadcastPending>,
+    // Track pending ping requests awaiting ACK
+    pending_pings: std::collections::HashMap<u32, tokio::sync::oneshot::Sender<bool>>,
     // Pacing: time of the last high-priority (reliable DM) send to avoid rate limiting
     last_high_priority_sent: Option<std::time::Instant>,
     // Gating: enforce a minimum interval between any text packet transmissions
@@ -2278,6 +2286,7 @@ impl MeshtasticWriter {
             last_want_config_sent: None,
             pending: std::collections::HashMap::new(),
             pending_broadcast: std::collections::HashMap::new(),
+            pending_pings: std::collections::HashMap::new(),
             last_high_priority_sent: None,
             last_text_send: None,
             tuning,
@@ -2302,11 +2311,90 @@ impl MeshtasticWriter {
             last_want_config_sent: None,
             pending: std::collections::HashMap::new(),
             pending_broadcast: std::collections::HashMap::new(),
+            pending_pings: std::collections::HashMap::new(),
             last_high_priority_sent: None,
             last_text_send: None,
             tuning,
             scheduler: None,
         })
+    }
+
+    /// Send a ping packet to a node
+    #[cfg(feature = "serial")]
+    fn send_ping_packet(&mut self, to: u32, channel: u32, payload: &str) -> Result<u32> {
+        use prost::Message;
+        use proto::mesh_packet::PayloadVariant as MPPayload;
+        use proto::to_radio::PayloadVariant as TRPayload;
+        use proto::{Data, MeshPacket, PortNum, ToRadio};
+        
+        let data_msg = Data {
+            portnum: PortNum::ReplyApp as i32,
+            payload: payload.as_bytes().to_vec().into(),
+            want_response: false,
+            dest: 0,
+            source: 0,
+            request_id: 0,
+            reply_id: 0,
+            emoji: 0,
+            bitfield: None,
+        };
+        
+        let from_node = self.our_node_id.ok_or_else(||
+            anyhow!("Cannot send ping: our_node_id not yet known")
+        )?;
+        
+        // Generate unique packet ID
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let since_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let packet_id = (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos());
+        
+        let pkt = MeshPacket {
+            from: from_node,
+            to,
+            channel,
+            payload_variant: Some(MPPayload::Decoded(data_msg)),
+            id: packet_id,
+            rx_time: 0,
+            rx_snr: 0.0,
+            hop_limit: 3,
+            want_ack: true,
+            priority: 70,
+            ..Default::default()
+        };
+        
+        let toradio = ToRadio {
+            payload_variant: Some(TRPayload::Packet(pkt)),
+        };
+        
+        let mut guard = self.port.lock().unwrap();
+        let mut payload_bytes = Vec::with_capacity(128);
+        toradio.encode(&mut payload_bytes)?;
+        let mut hdr = [0u8; 4];
+        hdr[0] = 0x94;
+        hdr[1] = 0xC3;
+        hdr[2] = ((payload_bytes.len() >> 8) & 0xFF) as u8;
+        hdr[3] = (payload_bytes.len() & 0xFF) as u8;
+        guard.write_all(&hdr)?;
+        guard.write_all(&payload_bytes)?;
+        guard.flush()?;
+        drop(guard);
+        
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        
+        debug!(
+            "Sent REPLY_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
+            to, channel, packet_id
+        );
+        
+        Ok(packet_id)
+    }
+
+    #[cfg(not(feature = "serial"))]
+    fn send_ping_packet(&mut self, to: u32, _channel: u32, _payload: &str) -> Result<u32> {
+        debug!("(mock) Would send ping to 0x{:08x}", to);
+        Ok(rand::random())
     }
 
     /// Run the writer task
@@ -2423,6 +2511,9 @@ impl MeshtasticWriter {
                                 metrics::observe_ack_latency(p.sent_at);
                                 metrics::inc_reliable_acked();
                                 debug!("Delivered id={} to=0x{:08x} ({}), attempts={} latency_ms={}", id, p.to, p.content_preview, p.attempts, p.sent_at.elapsed().as_millis());
+                            } else if let Some(response_tx) = self.pending_pings.remove(&id) {
+                                debug!("Ping ACK received for id=0x{:08x}", id);
+                                let _ = response_tx.send(true); // Notify success
                             } else if let Some(bp) = self.pending_broadcast.remove(&id) {
                                 metrics::inc_broadcast_ack_confirmed();
                                 debug!(
@@ -2470,6 +2561,9 @@ impl MeshtasticWriter {
                                 if let Some(p) = self.pending.remove(&id) {
                                     metrics::inc_reliable_failed();
                                     warn!("Failed id={} to=0x{:08x} ({}): reason={} ({})", id, p.to, p.content_preview, reason, reason_name);
+                                } else if let Some(response_tx) = self.pending_pings.remove(&id) {
+                                    debug!("Ping failed for id=0x{:08x}: reason={} ({})", id, reason, reason_name);
+                                    let _ = response_tx.send(false); // Notify failure
                                 } else {
                                     warn!("Failed id={} (routing error, no pending entry): reason={} ({})", id, reason, reason_name);
                                 }
@@ -2489,6 +2583,18 @@ impl MeshtasticWriter {
                         Some(ControlMessage::SetNodeId(node_id)) => {
                             self.our_node_id = Some(node_id);
                             debug!("Writer: received node ID {}", node_id);
+                        }
+                        Some(ControlMessage::SendPing { to, channel, response_tx }) => {
+                            match self.send_ping_packet(to, channel, "") {
+                                Ok(packet_id) => {
+                                    debug!("Ping sent to 0x{:08x}, tracking packet_id 0x{:08x}", to, packet_id);
+                                    self.pending_pings.insert(packet_id, response_tx);
+                                }
+                                Err(e) => {
+                                    warn!("Failed to send ping to 0x{:08x}: {}", to, e);
+                                    let _ = response_tx.send(false); // Notify failure
+                                }
+                            }
                         }
                         Some(ControlMessage::SetSchedulerHandle(handle)) => {
                             self.scheduler = Some(handle);
