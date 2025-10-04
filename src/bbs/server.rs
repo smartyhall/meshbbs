@@ -1261,8 +1261,8 @@ impl BbsServer {
         // Get values we need from self before any mut borrows
         let primary_channel = self.primary_channel();
         
-        // Generate fun call sign suggestion
-        let suggested_callsign = welcome::generate_callsign();
+        // Generate fun call sign suggestion with emoji
+        let (suggested_callsign, emoji) = welcome::generate_callsign();
         
         // Strategy: PING the node first to verify reachability
         // Only send welcome messages if ping succeeds
@@ -1277,8 +1277,8 @@ impl BbsServer {
             };
             
             if writer_tx.send(ping_msg).is_ok() {
-                // Wait for ping response with timeout
-                match tokio::time::timeout(std::time::Duration::from_secs(10), response_rx).await {
+                // Wait for ping response with timeout (2 minutes for slow mesh routing)
+                match tokio::time::timeout(std::time::Duration::from_secs(120), response_rx).await {
                     Ok(Ok(true)) => {
                         debug!("Ping successful for node 0x{:08X}", event.node_id);
                         true
@@ -1318,7 +1318,8 @@ impl BbsServer {
         // Node is reachable! Send welcome messages
         // Send private guide if enabled
         if self.config.welcome.private_guide {
-            let guide = welcome::private_guide(&event.long_name, &suggested_callsign);
+            let cmd_prefix = self.public_parser.primary_prefix_char();
+            let guide = welcome::private_guide(&event.long_name, &suggested_callsign, &emoji, cmd_prefix);
             
             // Send via scheduler as a reliable DM
             if let Some(scheduler) = &self.scheduler {

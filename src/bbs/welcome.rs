@@ -234,14 +234,18 @@ pub fn is_default_name(name: &str) -> bool {
     suffix.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// Generate a fun random callsign (adjective + animal)
-pub fn generate_callsign() -> String {
+/// Generate a fun random callsign (adjective + animal) with emoji
+pub fn generate_callsign() -> (String, String) {
     let mut rng = rand::thread_rng();
     
     let adjective = ADJECTIVES.choose(&mut rng).unwrap();
     let animal = ANIMALS.choose(&mut rng).unwrap();
+    let emoji = get_animal_emoji(animal);
     
-    format!("{} {}", adjective, animal)
+    let callsign = format!("{} {}", adjective, animal);
+    let emoji_string = emoji.to_string();
+    
+    (callsign, emoji_string)
 }
 
 /// Generate public greeting message
@@ -257,7 +261,7 @@ pub fn public_greeting(node_name: &str) -> String {
 }
 
 /// Generate private guide DM
-pub fn private_guide(node_name: &str, suggested_callsign: &str) -> String {
+pub fn private_guide(node_name: &str, suggested_callsign: &str, emoji: &str, cmd_prefix: char) -> String {
     format!(
         "👋 Welcome to Meshtastic, {}!\n\
         \n\
@@ -265,10 +269,10 @@ pub fn private_guide(node_name: &str, suggested_callsign: &str) -> String {
         \n\
         📱 App → CONFIG → USER → \"Long Name\"\n\
         \n\
-        Suggestion: \"{}\" 🎭\n\
+        Suggestion: \"{} {}\"\n\
         \n\
-        Questions? Send ^HELP to explore MeshBBS!",
-        node_name, suggested_callsign
+        Questions? Send {}HELP to explore MeshBBS!",
+        node_name, emoji, suggested_callsign, cmd_prefix
     )
 }
 
@@ -300,6 +304,23 @@ const ANIMALS: &[&str] = &[
     "Viper", "Wombat", "Xenops", "Yellowhammer", "Zebu",
 ];
 
+/// Get the emoji for a given animal name
+fn get_animal_emoji(animal: &str) -> &'static str {
+    match animal {
+        "Albatross" => "🦅", "Bear" => "🐻", "Cheetah" => "🐆", "Dolphin" => "🐬", "Eagle" => "🦅",
+        "Fox" => "🦊", "Giraffe" => "🦒", "Hawk" => "🦅", "Iguana" => "🦎", "Jaguar" => "🐆",
+        "Kangaroo" => "🦘", "Lion" => "🦁", "Moose" => "🦌", "Narwhal" => "🐋", "Otter" => "🦦",
+        "Panda" => "🐼", "Quail" => "🐦", "Raven" => "🐦‍⬛", "Seal" => "🦭", "Tiger" => "🐯",
+        "Unicorn" => "🦄", "Vulture" => "🦅", "Wolf" => "🐺", "Xerus" => "🐿️", "Yak" => "🦬",
+        "Zebra" => "🦓", "Alpaca" => "🦙", "Beaver" => "🦫", "Condor" => "🦅", "Deer" => "🦌",
+        "Elephant" => "🐘", "Falcon" => "🦅", "Gazelle" => "🦌", "Heron" => "🦩", "Impala" => "🦌",
+        "Koala" => "🐨", "Leopard" => "🐆", "Meerkat" => "🦡", "Newt" => "🦎", "Owl" => "🦉",
+        "Penguin" => "🐧", "Rabbit" => "🐰", "Squirrel" => "🐿️", "Turtle" => "🐢", "Uakari" => "🐵",
+        "Viper" => "🐍", "Wombat" => "🦡", "Xenops" => "🐦", "Yellowhammer" => "🐦", "Zebu" => "🐂",
+        _ => "🎭", // Fallback
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,7 +343,7 @@ mod tests {
     #[test]
     fn test_callsign_generation() {
         for _ in 0..10 {
-            let name = generate_callsign();
+            let (name, emoji) = generate_callsign();
             assert!(name.contains(' '));
             assert!(name.len() < 40);
             assert!(name.len() > 5);
@@ -332,6 +353,9 @@ mod tests {
             assert_eq!(parts.len(), 2);
             assert!(ADJECTIVES.contains(&parts[0]));
             assert!(ANIMALS.contains(&parts[1]));
+            
+            // Verify emoji is not empty
+            assert!(!emoji.is_empty());
         }
     }
 
@@ -345,11 +369,16 @@ mod tests {
 
     #[test]
     fn test_private_guide_contains_key_info() {
-        let guide = private_guide("Meshtastic B4E1", "Brave Eagle");
+        let guide = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '^');
         assert!(guide.contains("CONFIG"));
         assert!(guide.contains("USER"));
         assert!(guide.contains("Brave Eagle"));
+        assert!(guide.contains("🦅"));
         assert!(guide.contains("^HELP"));
+        
+        // Test with different prefix
+        let guide_alt = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '!');
+        assert!(guide_alt.contains("!HELP"));
     }
 
     #[test]

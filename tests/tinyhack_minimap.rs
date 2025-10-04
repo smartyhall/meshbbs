@@ -9,7 +9,7 @@ fn minimap_shows_fog_of_war() {
     let data_dir = tmp.path().to_str().unwrap();
     
     // Create new game
-    let (mut gs, _view, is_new) = load_or_new_with_flag(data_dir, "testuser");
+    let (gs, _view, is_new) = load_or_new_with_flag(data_dir, "testuser");
     assert!(is_new, "Should be a new game");
     
     // Initial state: only starting position (0,0) should be visited
@@ -34,7 +34,7 @@ fn minimap_shows_fog_of_war() {
     );
     
     // Move east and check map updates
-    let (mut gs3, _) = handle_turn(gs2, "E");
+    let (gs3, _) = handle_turn(gs2, "E");
     assert_eq!(gs3.player.x, 1, "Player should have moved east");
     assert!(gs3.visited[1], "New position should be visited");
     

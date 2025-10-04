@@ -152,6 +152,10 @@ pub enum ControlMessage {
         channel: u32,
         response_tx: tokio::sync::oneshot::Sender<bool>,
     },
+    /// Ping reply received from a node (sent by reader to writer)
+    PingReply {
+        from: u32,
+    },
     /// Provide scheduler handle to writer after creation (avoids circular ownership at construction)
     #[allow(dead_code)]
     SetSchedulerHandle(crate::bbs::dispatch::SchedulerHandle),
@@ -580,8 +584,8 @@ pub struct MeshtasticWriter {
     pending: std::collections::HashMap<u32, PendingSend>,
     // Track broadcast ACKs (no retries). Keyed by packet id, expires after short TTL.
     pending_broadcast: std::collections::HashMap<u32, BroadcastPending>,
-    // Track pending ping requests awaiting ACK
-    pending_pings: std::collections::HashMap<u32, tokio::sync::oneshot::Sender<bool>>,
+    // Track pending ping requests: packet_id -> (target_node_id, response_channel)
+    pending_pings: std::collections::HashMap<u32, (u32, tokio::sync::oneshot::Sender<bool>)>,
     // Pacing: time of the last high-priority (reliable DM) send to avoid rate limiting
     last_high_priority_sent: Option<std::time::Instant>,
     // Gating: enforce a minimum interval between any text packet transmissions
@@ -1943,6 +1947,46 @@ impl MeshtasticReader {
                             }
                         }
                         match port {
+                            PortNum::PositionApp => {
+                                // Position packets received (not used for ping anymore - we use TEXT_MESSAGE_APP with ACKs)
+                                debug!("Received POSITION_APP packet from 0x{:08x}", pkt.from);
+                            }
+                            PortNum::NodeinfoApp => {
+                                // Handle NODEINFO packets received over the mesh
+                                use prost::Message;
+                                let mut payload_buf = bytes::Bytes::from(data_msg.payload.to_vec());
+                                if let Ok(user) = proto::User::decode(&mut payload_buf) {
+                                    let long_name = user.long_name.trim().to_string();
+                                    let short_name = user.short_name.trim().to_string();
+                                    
+                                    if !long_name.is_empty() || !short_name.is_empty() {
+                                        // Update in-memory node map
+                                        let node_info = proto::NodeInfo {
+                                            num: pkt.from,
+                                            user: Some(user),
+                                            ..Default::default()
+                                        };
+                                        self.nodes.insert(pkt.from, node_info);
+                                        
+                                        // Emit node detection event for welcome system
+                                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                                            node_id: pkt.from,
+                                            long_name: long_name.clone(),
+                                            short_name: short_name.clone(),
+                                        });
+                                        
+                                        // Update persistent cache
+                                        self.node_cache.update_node(pkt.from, long_name.clone(), short_name.clone());
+                                        
+                                        // Save cache (best effort)
+                                        if let Err(e) = self.save_node_cache() {
+                                            debug!("Failed to save node cache: {}", e);
+                                        }
+                                        
+                                        debug!("Updated node info for 0x{:08x}: {} ({})", pkt.from, long_name, short_name);
+                                    }
+                                }
+                            }
                             PortNum::TextMessageApp => {
                                 if let Ok(text) = std::str::from_utf8(&data_msg.payload) {
                                     let dest = if pkt.to != 0 { Some(pkt.to) } else { None };
@@ -2321,15 +2365,17 @@ impl MeshtasticWriter {
 
     /// Send a ping packet to a node
     #[cfg(feature = "serial")]
-    fn send_ping_packet(&mut self, to: u32, channel: u32, payload: &str) -> Result<u32> {
+    fn send_ping_packet(&mut self, to: u32, channel: u32, _payload: &str) -> Result<u32> {
         use prost::Message;
         use proto::mesh_packet::PayloadVariant as MPPayload;
         use proto::to_radio::PayloadVariant as TRPayload;
         use proto::{Data, MeshPacket, PortNum, ToRadio};
         
+        // Use TEXT_MESSAGE_APP with single "." character
+        // This leverages routing ACK system - much more reliable than position requests
         let data_msg = Data {
-            portnum: PortNum::ReplyApp as i32,
-            payload: payload.as_bytes().to_vec().into(),
+            portnum: PortNum::TextMessageApp as i32,
+            payload: ".".as_bytes().to_vec().into(),  // Minimal non-intrusive payload
             want_response: false,
             dest: 0,
             source: 0,
@@ -2359,8 +2405,8 @@ impl MeshtasticWriter {
             rx_time: 0,
             rx_snr: 0.0,
             hop_limit: 3,
-            want_ack: true,
-            priority: 70,
+            want_ack: true,   // Critical: request routing ACK to confirm delivery
+            priority: 10,      // Use ACK priority for faster delivery
             ..Default::default()
         };
         
@@ -2384,7 +2430,7 @@ impl MeshtasticWriter {
         std::thread::sleep(std::time::Duration::from_millis(50));
         
         debug!(
-            "Sent REPLY_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
+            "Sent TEXT_MESSAGE_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
             to, channel, packet_id
         );
         
@@ -2507,13 +2553,14 @@ impl MeshtasticWriter {
                             break;
                         }
                         Some(ControlMessage::AckReceived(id)) => {
-                            if let Some(p) = self.pending.remove(&id) {
+                            // Check pending_pings first (for TEXT_MESSAGE_APP ping confirmations)
+                            if let Some((target_node, response_tx)) = self.pending_pings.remove(&id) {
+                                debug!("Ping ACK received from node 0x{:08x} (packet id=0x{:08x})", target_node, id);
+                                let _ = response_tx.send(true);
+                            } else if let Some(p) = self.pending.remove(&id) {
                                 metrics::observe_ack_latency(p.sent_at);
                                 metrics::inc_reliable_acked();
                                 debug!("Delivered id={} to=0x{:08x} ({}), attempts={} latency_ms={}", id, p.to, p.content_preview, p.attempts, p.sent_at.elapsed().as_millis());
-                            } else if let Some(response_tx) = self.pending_pings.remove(&id) {
-                                debug!("Ping ACK received for id=0x{:08x}", id);
-                                let _ = response_tx.send(true); // Notify success
                             } else if let Some(bp) = self.pending_broadcast.remove(&id) {
                                 metrics::inc_broadcast_ack_confirmed();
                                 debug!(
@@ -2561,8 +2608,8 @@ impl MeshtasticWriter {
                                 if let Some(p) = self.pending.remove(&id) {
                                     metrics::inc_reliable_failed();
                                     warn!("Failed id={} to=0x{:08x} ({}): reason={} ({})", id, p.to, p.content_preview, reason, reason_name);
-                                } else if let Some(response_tx) = self.pending_pings.remove(&id) {
-                                    debug!("Ping failed for id=0x{:08x}: reason={} ({})", id, reason, reason_name);
+                                } else if let Some((target_node, response_tx)) = self.pending_pings.remove(&id) {
+                                    debug!("Ping failed for node 0x{:08x} (packet id=0x{:08x}): reason={} ({})", target_node, id, reason, reason_name);
                                     let _ = response_tx.send(false); // Notify failure
                                 } else {
                                     warn!("Failed id={} (routing error, no pending entry): reason={} ({})", id, reason, reason_name);
@@ -2585,16 +2632,21 @@ impl MeshtasticWriter {
                             debug!("Writer: received node ID {}", node_id);
                         }
                         Some(ControlMessage::SendPing { to, channel, response_tx }) => {
+                            debug!("Writer received SendPing for 0x{:08x}", to);
                             match self.send_ping_packet(to, channel, "") {
                                 Ok(packet_id) => {
                                     debug!("Ping sent to 0x{:08x}, tracking packet_id 0x{:08x}", to, packet_id);
-                                    self.pending_pings.insert(packet_id, response_tx);
+                                    self.pending_pings.insert(packet_id, (to, response_tx));
                                 }
                                 Err(e) => {
                                     warn!("Failed to send ping to 0x{:08x}: {}", to, e);
                                     let _ = response_tx.send(false); // Notify failure
                                 }
                             }
+                        }
+                        Some(ControlMessage::PingReply { from }) => {
+                            // PingReply is now unused - we use TEXT_MESSAGE_APP with routing ACKs instead
+                            debug!("(unused) PingReply from 0x{:08x}", from);
                         }
                         Some(ControlMessage::SetSchedulerHandle(handle)) => {
                             self.scheduler = Some(handle);
