@@ -97,6 +97,8 @@ pub struct BbsServer {
     #[cfg(feature = "meshtastic-proto")]
     text_event_rx: Option<mpsc::UnboundedReceiver<TextEvent>>,
     #[cfg(feature = "meshtastic-proto")]
+    node_detection_rx: Option<mpsc::UnboundedReceiver<crate::meshtastic::NodeDetectionEvent>>,
+    #[cfg(feature = "meshtastic-proto")]
     outgoing_tx: Option<mpsc::UnboundedSender<OutgoingMessage>>,
     #[cfg(feature = "meshtastic-proto")]
     scheduler: Option<crate::bbs::dispatch::SchedulerHandle>,
@@ -124,6 +126,8 @@ pub struct BbsServer {
     last_ident_time: Instant, // track when we last sent an ident beacon
     #[cfg(feature = "meshtastic-proto")]
     last_ident_boundary_minute: Option<i64>, // dedupe key: unix-minute of last ident send
+    #[cfg(feature = "meshtastic-proto")]
+    welcome_state: Option<crate::bbs::welcome::WelcomeState>,
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
@@ -333,6 +337,8 @@ impl BbsServer {
             #[cfg(feature = "meshtastic-proto")]
             text_event_rx: None,
             #[cfg(feature = "meshtastic-proto")]
+            node_detection_rx: None,
+            #[cfg(feature = "meshtastic-proto")]
             outgoing_tx: None,
             #[cfg(feature = "meshtastic-proto")]
             scheduler: None,
@@ -365,6 +371,12 @@ impl BbsServer {
             last_ident_time: Instant::now() - Duration::from_secs(901), // Start ready to send
             #[cfg(feature = "meshtastic-proto")]
             last_ident_boundary_minute: None,
+            #[cfg(feature = "meshtastic-proto")]
+            welcome_state: if config.welcome.enabled {
+                Some(crate::bbs::welcome::WelcomeState::new(&config.storage.data_dir))
+            } else {
+                None
+            },
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -426,6 +438,7 @@ impl BbsServer {
             reader,
             writer,
             text_event_rx,
+            node_detection_rx,
             outgoing_tx,
             reader_control_tx,
             writer_control_tx,
@@ -439,6 +452,7 @@ impl BbsServer {
 
         // Store the channels in the server
         self.text_event_rx = Some(text_event_rx);
+        self.node_detection_rx = Some(node_detection_rx);
         // Start scheduler (phase 1) before storing outgoing for general use
         let help_delay_ms = mcfg.help_broadcast_delay_ms.unwrap_or(3500);
         let sched_cfg = crate::bbs::dispatch::SchedulerConfig {
@@ -722,6 +736,21 @@ impl BbsServer {
                             }
                         } else {
                             warn!("Text event channel closed");
+                        }
+                    }
+
+                    // Receive NodeDetectionEvents for welcome system
+                    node_det = async {
+                        if let Some(ref mut rx) = self.node_detection_rx {
+                            rx.recv().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    } => {
+                        if let Some(event) = node_det {
+                            if let Err(e) = self.handle_node_detection(event).await {
+                                warn!("Welcome system error: {e:?}");
+                            }
                         }
                     }
 
@@ -1102,6 +1131,103 @@ impl BbsServer {
     pub async fn moderator_unlock_topic(&mut self, topic: &str, actor: &str) -> Result<()> {
         self.storage.unlock_topic_persist(topic).await?;
         sec_log!("UNLOCK by {}: {}", actor, topic);
+        Ok(())
+    }
+
+    #[cfg(feature = "meshtastic-proto")]
+    async fn handle_node_detection(&mut self, event: crate::meshtastic::NodeDetectionEvent) -> Result<()> {
+        use crate::bbs::welcome;
+        
+        // Check if welcome system is enabled
+        if !self.config.welcome.enabled {
+            return Ok(());
+        }
+        // Return early if welcome system not configured
+        if self.welcome_state.is_none() {
+            return Ok(());
+        }
+        
+        // Check if should welcome this node (immutable borrow)
+        let should_welcome = {
+            let state = self.welcome_state.as_ref().unwrap();
+            state.should_welcome(event.node_id, &event.long_name, &self.config.welcome)
+        };
+        
+        if !should_welcome {
+            return Ok(());
+        }
+        
+        info!(
+            "Welcome system triggered for node 0x{:08X} ({})",
+            event.node_id, event.long_name
+        );
+        
+        // Get values we need from self before any mut borrows
+        let primary_channel = self.primary_channel();
+        
+        // Generate fun call sign suggestion
+        let suggested_callsign = welcome::generate_callsign();
+        
+        // Send public greeting if enabled
+        if self.config.welcome.public_greeting {
+            let greeting = welcome::public_greeting(&event.long_name);
+            if let Some(scheduler) = &self.scheduler {
+                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
+                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
+                let msg = OutgoingMessage {
+                    to_node: None, // broadcast
+                    channel: primary_channel,
+                    content: greeting,
+                    priority: MessagePriority::Normal,
+                    kind: OutgoingKind::Normal,
+                    request_ack: false,
+                };
+                let envelope = MessageEnvelope::new(
+                    MessageCategory::System,
+                    Priority::Normal,
+                    std::time::Duration::from_secs(0),
+                    msg,
+                );
+                let _ = scheduler.enqueue(envelope);
+            }
+        }
+        
+        // Send private guide if enabled
+        if self.config.welcome.private_guide {
+            let guide = welcome::private_guide(&event.long_name, &suggested_callsign);
+            
+            // Send via scheduler as a reliable DM
+            if let Some(scheduler) = &self.scheduler {
+                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
+                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
+                
+                // Chunk the guide if needed
+                let chunks = self.chunk_utf8(&guide, 230);
+                for chunk in chunks {
+                    let msg = OutgoingMessage {
+                        to_node: Some(event.node_id),
+                        channel: primary_channel,
+                        content: chunk,
+                        priority: MessagePriority::Normal,
+                        kind: OutgoingKind::Normal,
+                        request_ack: true, // Reliable DM
+                    };
+                    let envelope = MessageEnvelope::new(
+                        MessageCategory::System,
+                        Priority::Normal,
+                        std::time::Duration::from_secs(0),
+                        msg,
+                    );
+                    let _ = scheduler.enqueue(envelope);
+                }
+            }
+        }
+        
+        // Record that we welcomed this node (mutable borrow)
+        if let Some(welcome_state) = &mut self.welcome_state {
+            welcome_state.record_welcome(event.node_id, &event.long_name);
+        }
+        
         Ok(())
     }
 

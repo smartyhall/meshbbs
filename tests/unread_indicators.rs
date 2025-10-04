@@ -74,6 +74,7 @@ async fn unread_indicators_topics_and_threads() {
         ident_beacon: IdentBeaconConfig::default(),
         weather: WeatherConfig::default(),
         games: GamesConfig::default(),
+        welcome: meshbbs::bbs::welcome::WelcomeConfig { enabled: false, public_greeting: true, private_guide: true, cooldown_minutes: 5, max_welcomes_per_node: 1 },
     };
 
     let mut server = BbsServer::new(cfg.clone()).await.unwrap();

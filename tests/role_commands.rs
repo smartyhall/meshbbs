@@ -52,6 +52,7 @@ async fn base_config() -> Config {
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
         games: GamesConfig::default(),
+        welcome: meshbbs::bbs::welcome::WelcomeConfig { enabled: false, public_greeting: true, private_guide: true, cooldown_minutes: 5, max_welcomes_per_node: 1 },
     }
 }
 

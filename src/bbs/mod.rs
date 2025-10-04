@@ -74,6 +74,7 @@ pub mod session;
 pub mod slotmachine;
 pub mod tinyhack;
 pub mod weather;
+pub mod welcome;
 
 pub use server::BbsServer;
 

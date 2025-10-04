@@ -515,6 +515,8 @@ pub struct MeshtasticDevice {
     text_events: VecDeque<TextEvent>,
     #[cfg(feature = "meshtastic-proto")]
     our_node_id: Option<u32>,
+    #[cfg(feature = "meshtastic-proto")]
+    node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
 }
 
 /// Structured text event extracted from protobuf packets
@@ -529,6 +531,15 @@ pub struct TextEvent {
     pub content: String,
 }
 
+/// Node detection event for welcome system
+#[cfg(feature = "meshtastic-proto")]
+#[derive(Debug, Clone)]
+pub struct NodeDetectionEvent {
+    pub node_id: u32,
+    pub long_name: String,
+    pub short_name: String,
+}
+
 /// Reader task for continuous Meshtastic device reading
 #[cfg(feature = "meshtastic-proto")]
 pub struct MeshtasticReader {
@@ -537,6 +548,7 @@ pub struct MeshtasticReader {
     slip: slip::SlipDecoder,
     rx_buf: Vec<u8>,
     text_event_tx: mpsc::UnboundedSender<TextEvent>,
+    node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
     control_rx: mpsc::UnboundedReceiver<ControlMessage>,
     writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
     // Notify the server of our node ID once known (for ident beacons)
@@ -800,6 +812,8 @@ impl MeshtasticDevice {
                 text_events: VecDeque::new(),
                 #[cfg(feature = "meshtastic-proto")]
                 our_node_id: None,
+                #[cfg(feature = "meshtastic-proto")]
+                node_detection_tx: mpsc::unbounded_channel::<NodeDetectionEvent>().0, // dummy sender, not used
             })
         }
 
@@ -1227,6 +1241,15 @@ impl MeshtasticDevice {
                     }
                     self.nodes.insert(id, ni);
 
+                    // Emit node detection event for welcome system
+                    if !long_name.is_empty() {
+                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                            node_id: id,
+                            long_name: long_name.clone(),
+                            short_name: short_name.clone(),
+                        });
+                    }
+
                     // Update cache
                     self.node_cache.update_node(id, long_name, short_name);
                     // Save cache asynchronously (best effort, don't block on failure)
@@ -1533,6 +1556,7 @@ impl MeshtasticReader {
     pub async fn new(
         shared_port: Arc<Mutex<Box<dyn SerialPort>>>,
         text_event_tx: mpsc::UnboundedSender<TextEvent>,
+        node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
         node_id_tx: mpsc::UnboundedSender<u32>,
@@ -1545,6 +1569,7 @@ impl MeshtasticReader {
             slip: slip::SlipDecoder::new(),
             rx_buf: Vec::new(),
             text_event_tx,
+            node_detection_tx,
             control_rx,
             writer_control_tx,
             node_id_tx,
@@ -1560,6 +1585,7 @@ impl MeshtasticReader {
     #[cfg(not(feature = "serial"))]
     pub async fn new_mock(
         text_event_tx: mpsc::UnboundedSender<TextEvent>,
+        node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
         node_id_tx: mpsc::UnboundedSender<u32>,
@@ -1570,6 +1596,7 @@ impl MeshtasticReader {
             slip: slip::SlipDecoder::new(),
             rx_buf: Vec::new(),
             text_event_tx,
+            node_detection_tx,
             control_rx,
             writer_control_tx,
             node_id_tx,
@@ -1578,6 +1605,7 @@ impl MeshtasticReader {
             nodes: std::collections::HashMap::new(),
             our_node_id: None,
             binary_frames_seen: false,
+            node_detection_tx: node_detection_tx_param,
         })
     }
 
@@ -1911,6 +1939,14 @@ impl MeshtasticReader {
                         let short_name = user.short_name.clone();
 
                         self.nodes.insert(n.num, n.clone());
+                        
+                        // Emit node detection event for welcome system
+                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                            node_id: n.num,
+                            long_name: long_name.clone(),
+                            short_name: short_name.clone(),
+                        });
+                        
                         self.node_cache.update_node(n.num, long_name, short_name);
 
                         // Save cache (best effort)
@@ -2801,6 +2837,7 @@ pub async fn create_reader_writer_system(
     MeshtasticReader,
     MeshtasticWriter,
     mpsc::UnboundedReceiver<TextEvent>,
+    mpsc::UnboundedReceiver<NodeDetectionEvent>,
     mpsc::UnboundedSender<OutgoingMessage>,
     mpsc::UnboundedSender<ControlMessage>,
     mpsc::UnboundedSender<ControlMessage>,
@@ -2812,6 +2849,7 @@ pub async fn create_reader_writer_system(
 
     // Create channels
     let (text_event_tx, text_event_rx) = mpsc::unbounded_channel::<TextEvent>();
+    let (node_detection_tx, node_detection_rx) = mpsc::unbounded_channel::<NodeDetectionEvent>();
     let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel::<OutgoingMessage>();
     let (reader_control_tx, reader_control_rx) = mpsc::unbounded_channel::<ControlMessage>();
     let (writer_control_tx, writer_control_rx) = mpsc::unbounded_channel::<ControlMessage>();
@@ -2822,6 +2860,7 @@ pub async fn create_reader_writer_system(
     let reader = MeshtasticReader::new(
         shared_port.clone(),
         text_event_tx,
+        node_detection_tx.clone(),
         reader_control_rx,
         writer_control_tx.clone(),
         node_id_tx.clone(),
@@ -2837,6 +2876,7 @@ pub async fn create_reader_writer_system(
         (
             MeshtasticReader::new_mock(
                 text_event_tx,
+                node_detection_tx.clone(),
                 reader_control_rx,
                 writer_control_tx.clone(),
                 node_id_tx.clone(),
@@ -2850,6 +2890,7 @@ pub async fn create_reader_writer_system(
         reader,
         writer,
         text_event_rx,
+        node_detection_rx,
         outgoing_tx,
         reader_control_tx,
         writer_control_tx,
