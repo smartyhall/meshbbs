@@ -1281,11 +1281,13 @@ impl BbsServer {
                 // Chunk the guide if needed - use 200 byte limit to leave room for protocol overhead
                 // The Meshtastic packet has headers/metadata that reduce usable text space
                 let chunks = self.chunk_utf8(&guide, 200);
-                for chunk in chunks {
+                for (idx, chunk) in chunks.iter().enumerate() {
+                    // Add 3-second delay between chunks to avoid rate limiting
+                    let delay = std::time::Duration::from_secs(idx as u64 * 3);
                     let msg = OutgoingMessage {
                         to_node: Some(event.node_id),
                         channel: primary_channel,
-                        content: chunk,
+                        content: chunk.clone(),
                         priority: MessagePriority::Normal,
                         kind: OutgoingKind::Normal,
                         request_ack: true, // Reliable DM with ACK - serves as reachability check
@@ -1293,7 +1295,7 @@ impl BbsServer {
                     let envelope = MessageEnvelope::new(
                         MessageCategory::System,
                         Priority::Normal,
-                        std::time::Duration::from_secs(0),
+                        delay,
                         msg,
                     );
                     let _ = scheduler.enqueue(envelope);
@@ -1310,17 +1312,22 @@ impl BbsServer {
                 use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
                 use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
                 
-                // If private_guide is enabled, delay public greeting slightly to let DM confirm delivery
+                // If private_guide is enabled, delay public greeting to:
+                // 1) Let private DM chunks complete (avoid rate limiting interference)
+                // 2) Confirm node reachability via DM ACK
+                // With 2 chunks at 3-second spacing, wait 8 seconds total (last chunk at 3s + 5s buffer)
                 // Otherwise send immediately (best effort for public-only welcome)
-                let delay_secs = if self.config.welcome.private_guide { 5 } else { 0 };
+                let delay_secs = if self.config.welcome.private_guide { 8 } else { 0 };
                 
                 // Chunk public greeting too, in case long node names push it over limit
                 let chunks = self.chunk_utf8(&greeting, 200);
-                for chunk in chunks {
+                for (idx, chunk) in chunks.iter().enumerate() {
+                    // Add 3-second stagger between public greeting chunks too
+                    let chunk_delay = delay_secs + (idx as u64 * 3);
                     let msg = OutgoingMessage {
                         to_node: None, // broadcast
                         channel: primary_channel,
-                        content: chunk,
+                        content: chunk.clone(),
                         priority: MessagePriority::Normal,
                         kind: OutgoingKind::Normal,
                         request_ack: false,
@@ -1328,7 +1335,7 @@ impl BbsServer {
                     let envelope = MessageEnvelope::new(
                         MessageCategory::System,
                         Priority::Normal,
-                        std::time::Duration::from_secs(delay_secs),
+                        std::time::Duration::from_secs(chunk_delay),
                         msg,
                     );
                     let _ = scheduler.enqueue(envelope);
