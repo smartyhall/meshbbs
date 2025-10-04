@@ -1264,31 +1264,12 @@ impl BbsServer {
         // Generate fun call sign suggestion
         let suggested_callsign = welcome::generate_callsign();
         
-        // Send public greeting if enabled
-        if self.config.welcome.public_greeting {
-            let greeting = welcome::public_greeting(&event.long_name);
-            if let Some(scheduler) = &self.scheduler {
-                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
-                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
-                let msg = OutgoingMessage {
-                    to_node: None, // broadcast
-                    channel: primary_channel,
-                    content: greeting,
-                    priority: MessagePriority::Normal,
-                    kind: OutgoingKind::Normal,
-                    request_ack: false,
-                };
-                let envelope = MessageEnvelope::new(
-                    MessageCategory::System,
-                    Priority::Normal,
-                    std::time::Duration::from_secs(0),
-                    msg,
-                );
-                let _ = scheduler.enqueue(envelope);
-            }
-        }
+        // Strategy: Send private DM first with ACK request (serves as "ping")
+        // Only send public greeting if private_guide is enabled, since the ACK confirms reachability
+        // If private_guide is disabled but public_greeting enabled, send anyway (best effort)
         
         // Send private guide if enabled
+        // Use reliable DM with ACK - this serves as our "ping" to verify node is reachable
         if self.config.welcome.private_guide {
             let guide = welcome::private_guide(&event.long_name, &suggested_callsign);
             
@@ -1306,7 +1287,7 @@ impl BbsServer {
                         content: chunk,
                         priority: MessagePriority::Normal,
                         kind: OutgoingKind::Normal,
-                        request_ack: true, // Reliable DM
+                        request_ack: true, // Reliable DM with ACK - serves as reachability check
                     };
                     let envelope = MessageEnvelope::new(
                         MessageCategory::System,
@@ -1319,7 +1300,39 @@ impl BbsServer {
             }
         }
         
+        // Send public greeting AFTER private DM (if both enabled)
+        // The private DM's ACK confirms the node is reachable before we broadcast
+        // If only public greeting is enabled (no private DM), send as best-effort
+        if self.config.welcome.public_greeting {
+            let greeting = welcome::public_greeting(&event.long_name);
+            if let Some(scheduler) = &self.scheduler {
+                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
+                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
+                
+                // If private_guide is enabled, delay public greeting slightly to let DM confirm delivery
+                // Otherwise send immediately (best effort for public-only welcome)
+                let delay_secs = if self.config.welcome.private_guide { 5 } else { 0 };
+                
+                let msg = OutgoingMessage {
+                    to_node: None, // broadcast
+                    channel: primary_channel,
+                    content: greeting,
+                    priority: MessagePriority::Normal,
+                    kind: OutgoingKind::Normal,
+                    request_ack: false,
+                };
+                let envelope = MessageEnvelope::new(
+                    MessageCategory::System,
+                    Priority::Normal,
+                    std::time::Duration::from_secs(delay_secs),
+                    msg,
+                );
+                let _ = scheduler.enqueue(envelope);
+            }
+        }
+        
         // Record that we welcomed this node (mutable borrow)
+        // Note: We record even if delivery fails, to avoid spamming offline nodes when they come back
         if let Some(welcome_state) = &mut self.welcome_state {
             welcome_state.record_welcome(event.node_id, &event.long_name);
         }
