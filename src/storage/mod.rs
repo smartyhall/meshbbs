@@ -92,6 +92,7 @@ use crate::validation::{
 use anyhow::{anyhow, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 use chrono::{DateTime, Utc};
+use crc::{Crc, CRC_16_IBM_SDLC};
 use fs2::FileExt;
 use log::warn;
 use password_hash::{PasswordHasher, PasswordVerifier};
@@ -141,6 +142,12 @@ pub struct Message {
     /// Optional pin flag to float a thread in listings (ordering applied in UI phase)
     #[serde(default, skip_serializing_if = "is_false")]
     pub pinned: bool,
+    /// 6-byte unique message ID (hex string, 12 chars) for future replication
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
+    /// CRC-16 checksum for message integrity verification
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crc16: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -439,6 +446,39 @@ impl Storage {
         }
         drop(lock_file);
         Ok(())
+    }
+
+    /// Generate a 6-byte unique message ID (returned as 12-character hex string)
+    /// Format: timestamp(4 bytes) + random(2 bytes) = 6 bytes total
+    fn generate_message_id() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        
+        // Get 4 bytes from current timestamp (seconds since epoch)
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as u32;
+        
+        // Get 2 bytes of randomness
+        let random: u16 = rand::random();
+        
+        // Combine: 4 bytes timestamp + 2 bytes random = 6 bytes
+        format!("{:08x}{:04x}", timestamp, random)
+    }
+    
+    /// Calculate CRC-16 checksum for message integrity verification
+    /// Uses CRC-16-IBM-SDLC (polynomial 0x1021, also known as CRC-16-CCITT)
+    fn calculate_message_crc(topic: &str, author: &str, content: &str, timestamp: &DateTime<Utc>) -> u16 {
+        const CRC16: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
+        let mut digest = CRC16.digest();
+        
+        // Include all message fields in CRC calculation
+        digest.update(topic.as_bytes());
+        digest.update(author.as_bytes());
+        digest.update(content.as_bytes());
+        digest.update(timestamp.to_rfc3339().as_bytes());
+        
+        digest.finalize()
     }
 
     async fn persist_locked_topics(&self) -> Result<()> {
@@ -754,15 +794,26 @@ impl Storage {
             }
         };
 
+        let timestamp = Utc::now();
+        let message_id = Self::generate_message_id();
+        let crc16 = Self::calculate_message_crc(
+            &validated_topic,
+            author,
+            &sanitized_content,
+            &timestamp,
+        );
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             topic: validated_topic.clone(),
             author: author.to_string(),
             title,
             content: sanitized_content,
-            timestamp: Utc::now(),
+            timestamp,
             replies: Vec::new(),
             pinned: false,
+            message_id: Some(message_id),
+            crc16: Some(crc16),
         };
 
         // Topic directory should already exist (created by create_topic)
