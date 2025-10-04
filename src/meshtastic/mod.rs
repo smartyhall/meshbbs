@@ -146,6 +146,16 @@ pub enum ControlMessage {
         id: u32,
         reason: i32,
     },
+    /// Send a ping to a node and notify on ACK/failure via response channel
+    SendPing {
+        to: u32,
+        channel: u32,
+        response_tx: tokio::sync::oneshot::Sender<bool>,
+    },
+    /// Ping reply received from a node (sent by reader to writer)
+    PingReply {
+        from: u32,
+    },
     /// Provide scheduler handle to writer after creation (avoids circular ownership at construction)
     #[allow(dead_code)]
     SetSchedulerHandle(crate::bbs::dispatch::SchedulerHandle),
@@ -515,6 +525,8 @@ pub struct MeshtasticDevice {
     text_events: VecDeque<TextEvent>,
     #[cfg(feature = "meshtastic-proto")]
     our_node_id: Option<u32>,
+    #[cfg(feature = "meshtastic-proto")]
+    node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
 }
 
 /// Structured text event extracted from protobuf packets
@@ -529,6 +541,15 @@ pub struct TextEvent {
     pub content: String,
 }
 
+/// Node detection event for welcome system
+#[cfg(feature = "meshtastic-proto")]
+#[derive(Debug, Clone)]
+pub struct NodeDetectionEvent {
+    pub node_id: u32,
+    pub long_name: String,
+    pub short_name: String,
+}
+
 /// Reader task for continuous Meshtastic device reading
 #[cfg(feature = "meshtastic-proto")]
 pub struct MeshtasticReader {
@@ -537,6 +558,7 @@ pub struct MeshtasticReader {
     slip: slip::SlipDecoder,
     rx_buf: Vec<u8>,
     text_event_tx: mpsc::UnboundedSender<TextEvent>,
+    node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
     control_rx: mpsc::UnboundedReceiver<ControlMessage>,
     writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
     // Notify the server of our node ID once known (for ident beacons)
@@ -562,6 +584,8 @@ pub struct MeshtasticWriter {
     pending: std::collections::HashMap<u32, PendingSend>,
     // Track broadcast ACKs (no retries). Keyed by packet id, expires after short TTL.
     pending_broadcast: std::collections::HashMap<u32, BroadcastPending>,
+    // Track pending ping requests: packet_id -> (target_node_id, response_channel)
+    pending_pings: std::collections::HashMap<u32, (u32, tokio::sync::oneshot::Sender<bool>)>,
     // Pacing: time of the last high-priority (reliable DM) send to avoid rate limiting
     last_high_priority_sent: Option<std::time::Instant>,
     // Gating: enforce a minimum interval between any text packet transmissions
@@ -800,6 +824,8 @@ impl MeshtasticDevice {
                 text_events: VecDeque::new(),
                 #[cfg(feature = "meshtastic-proto")]
                 our_node_id: None,
+                #[cfg(feature = "meshtastic-proto")]
+                node_detection_tx: mpsc::unbounded_channel::<NodeDetectionEvent>().0, // dummy sender, not used
             })
         }
 
@@ -1227,6 +1253,15 @@ impl MeshtasticDevice {
                     }
                     self.nodes.insert(id, ni);
 
+                    // Emit node detection event for welcome system
+                    if !long_name.is_empty() {
+                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                            node_id: id,
+                            long_name: long_name.clone(),
+                            short_name: short_name.clone(),
+                        });
+                    }
+
                     // Update cache
                     self.node_cache.update_node(id, long_name, short_name);
                     // Save cache asynchronously (best effort, don't block on failure)
@@ -1403,6 +1438,84 @@ impl MeshtasticDevice {
 
         Ok(())
     }
+    
+    /// Send a REPLY_APP ping packet to test node reachability
+    /// Returns Ok(packet_id) if sent successfully, the caller should track the response
+    pub fn send_ping_packet(&mut self, to: u32, channel: u32, payload: &str) -> Result<u32> {
+        use prost::Message;
+        use proto::mesh_packet::PayloadVariant as MPPayload;
+        use proto::to_radio::PayloadVariant as TRPayload;
+        use proto::{Data, MeshPacket, PortNum, ToRadio};
+        
+        let data_msg = Data {
+            portnum: PortNum::ReplyApp as i32, // Use REPLY_APP for ping
+            payload: payload.as_bytes().to_vec().into(),
+            want_response: false,
+            dest: 0,
+            source: 0,
+            request_id: 0,
+            reply_id: 0,
+            emoji: 0,
+            bitfield: None,
+        };
+        
+        let from_node = self.our_node_id.ok_or_else(||
+            anyhow!("Cannot send ping: our_node_id not yet known")
+        )?;
+        
+        // Generate unique packet ID for tracking
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let since_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let packet_id = (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos());
+        
+        let pkt = MeshPacket {
+            from: from_node,
+            to,
+            channel,
+            payload_variant: Some(MPPayload::Decoded(data_msg)),
+            id: packet_id,
+            rx_time: 0,
+            rx_snr: 0.0,
+            hop_limit: 3,
+            want_ack: true, // Request ACK to confirm delivery
+            priority: 70,   // RELIABLE priority
+            ..Default::default()
+        };
+        
+        let toradio = ToRadio {
+            payload_variant: Some(TRPayload::Packet(pkt)),
+        };
+        
+        #[cfg(feature = "serial")]
+        if let Some(ref mut port) = self.port {
+            let mut payload = Vec::with_capacity(128);
+            toradio.encode(&mut payload)?;
+            let mut hdr = [0u8; 4];
+            hdr[0] = 0x94;
+            hdr[1] = 0xC3;
+            hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
+            hdr[3] = (payload.len() & 0xFF) as u8;
+            port.write_all(&hdr)?;
+            port.write_all(&payload)?;
+            port.flush()?;
+            
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            
+            debug!(
+                "Sent REPLY_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
+                to, channel, packet_id
+            );
+        }
+        
+        #[cfg(not(feature = "serial"))]
+        {
+            debug!("(mock) Would send ping to 0x{:08x}", to);
+        }
+        
+        Ok(packet_id)
+    }
 }
 
 // (Public crate visibility no longer required; kept private above.)
@@ -1533,6 +1646,7 @@ impl MeshtasticReader {
     pub async fn new(
         shared_port: Arc<Mutex<Box<dyn SerialPort>>>,
         text_event_tx: mpsc::UnboundedSender<TextEvent>,
+        node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
         node_id_tx: mpsc::UnboundedSender<u32>,
@@ -1545,6 +1659,7 @@ impl MeshtasticReader {
             slip: slip::SlipDecoder::new(),
             rx_buf: Vec::new(),
             text_event_tx,
+            node_detection_tx,
             control_rx,
             writer_control_tx,
             node_id_tx,
@@ -1560,6 +1675,7 @@ impl MeshtasticReader {
     #[cfg(not(feature = "serial"))]
     pub async fn new_mock(
         text_event_tx: mpsc::UnboundedSender<TextEvent>,
+        node_detection_tx: mpsc::UnboundedSender<NodeDetectionEvent>,
         control_rx: mpsc::UnboundedReceiver<ControlMessage>,
         writer_control_tx: mpsc::UnboundedSender<ControlMessage>,
         node_id_tx: mpsc::UnboundedSender<u32>,
@@ -1570,6 +1686,7 @@ impl MeshtasticReader {
             slip: slip::SlipDecoder::new(),
             rx_buf: Vec::new(),
             text_event_tx,
+            node_detection_tx,
             control_rx,
             writer_control_tx,
             node_id_tx,
@@ -1578,6 +1695,7 @@ impl MeshtasticReader {
             nodes: std::collections::HashMap::new(),
             our_node_id: None,
             binary_frames_seen: false,
+            node_detection_tx: node_detection_tx_param,
         })
     }
 
@@ -1591,9 +1709,24 @@ impl MeshtasticReader {
         }
 
         let mut interval = tokio::time::interval(Duration::from_millis(10));
+        
+        // Prune stale nodes every 10 minutes (nodes not seen in 24 hours)
+        let mut prune_interval = tokio::time::interval(Duration::from_secs(600)); // 10 minutes
+        prune_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             tokio::select! {
+                // Periodic node cache pruning
+                _ = prune_interval.tick() => {
+                    let removed = self.node_cache.remove_stale_nodes(1); // 1 day = 24 hours
+                    if removed > 0 {
+                        info!("Pruned {} stale nodes from cache (not seen in 24 hours)", removed);
+                        if let Err(e) = self.save_node_cache() {
+                            warn!("Failed to save node cache after pruning: {}", e);
+                        }
+                    }
+                }
+                
                 // Check for control messages
                 control_msg = self.control_rx.recv() => {
                     match control_msg {
@@ -1814,6 +1947,46 @@ impl MeshtasticReader {
                             }
                         }
                         match port {
+                            PortNum::PositionApp => {
+                                // Position packets received (not used for ping anymore - we use TEXT_MESSAGE_APP with ACKs)
+                                debug!("Received POSITION_APP packet from 0x{:08x}", pkt.from);
+                            }
+                            PortNum::NodeinfoApp => {
+                                // Handle NODEINFO packets received over the mesh
+                                use prost::Message;
+                                let mut payload_buf = bytes::Bytes::from(data_msg.payload.to_vec());
+                                if let Ok(user) = proto::User::decode(&mut payload_buf) {
+                                    let long_name = user.long_name.trim().to_string();
+                                    let short_name = user.short_name.trim().to_string();
+                                    
+                                    if !long_name.is_empty() || !short_name.is_empty() {
+                                        // Update in-memory node map
+                                        let node_info = proto::NodeInfo {
+                                            num: pkt.from,
+                                            user: Some(user),
+                                            ..Default::default()
+                                        };
+                                        self.nodes.insert(pkt.from, node_info);
+                                        
+                                        // Emit node detection event for welcome system
+                                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                                            node_id: pkt.from,
+                                            long_name: long_name.clone(),
+                                            short_name: short_name.clone(),
+                                        });
+                                        
+                                        // Update persistent cache
+                                        self.node_cache.update_node(pkt.from, long_name.clone(), short_name.clone());
+                                        
+                                        // Save cache (best effort)
+                                        if let Err(e) = self.save_node_cache() {
+                                            debug!("Failed to save node cache: {}", e);
+                                        }
+                                        
+                                        debug!("Updated node info for 0x{:08x}: {} ({})", pkt.from, long_name, short_name);
+                                    }
+                                }
+                            }
                             PortNum::TextMessageApp => {
                                 if let Ok(text) = std::str::from_utf8(&data_msg.payload) {
                                     let dest = if pkt.to != 0 { Some(pkt.to) } else { None };
@@ -1911,6 +2084,14 @@ impl MeshtasticReader {
                         let short_name = user.short_name.clone();
 
                         self.nodes.insert(n.num, n.clone());
+                        
+                        // Emit node detection event for welcome system
+                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                            node_id: n.num,
+                            long_name: long_name.clone(),
+                            short_name: short_name.clone(),
+                        });
+                        
                         self.node_cache.update_node(n.num, long_name, short_name);
 
                         // Save cache (best effort)
@@ -2149,6 +2330,7 @@ impl MeshtasticWriter {
             last_want_config_sent: None,
             pending: std::collections::HashMap::new(),
             pending_broadcast: std::collections::HashMap::new(),
+            pending_pings: std::collections::HashMap::new(),
             last_high_priority_sent: None,
             last_text_send: None,
             tuning,
@@ -2173,11 +2355,92 @@ impl MeshtasticWriter {
             last_want_config_sent: None,
             pending: std::collections::HashMap::new(),
             pending_broadcast: std::collections::HashMap::new(),
+            pending_pings: std::collections::HashMap::new(),
             last_high_priority_sent: None,
             last_text_send: None,
             tuning,
             scheduler: None,
         })
+    }
+
+    /// Send a ping packet to a node
+    #[cfg(feature = "serial")]
+    fn send_ping_packet(&mut self, to: u32, channel: u32, _payload: &str) -> Result<u32> {
+        use prost::Message;
+        use proto::mesh_packet::PayloadVariant as MPPayload;
+        use proto::to_radio::PayloadVariant as TRPayload;
+        use proto::{Data, MeshPacket, PortNum, ToRadio};
+        
+        // Use TEXT_MESSAGE_APP with single "." character
+        // This leverages routing ACK system - much more reliable than position requests
+        let data_msg = Data {
+            portnum: PortNum::TextMessageApp as i32,
+            payload: ".".as_bytes().to_vec().into(),  // Minimal non-intrusive payload
+            want_response: false,
+            dest: 0,
+            source: 0,
+            request_id: 0,
+            reply_id: 0,
+            emoji: 0,
+            bitfield: None,
+        };
+        
+        let from_node = self.our_node_id.ok_or_else(||
+            anyhow!("Cannot send ping: our_node_id not yet known")
+        )?;
+        
+        // Generate unique packet ID
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let since_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default();
+        let packet_id = (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos());
+        
+        let pkt = MeshPacket {
+            from: from_node,
+            to,
+            channel,
+            payload_variant: Some(MPPayload::Decoded(data_msg)),
+            id: packet_id,
+            rx_time: 0,
+            rx_snr: 0.0,
+            hop_limit: 3,
+            want_ack: true,   // Critical: request routing ACK to confirm delivery
+            priority: 10,      // Use ACK priority for faster delivery
+            ..Default::default()
+        };
+        
+        let toradio = ToRadio {
+            payload_variant: Some(TRPayload::Packet(pkt)),
+        };
+        
+        let mut guard = self.port.lock().unwrap();
+        let mut payload_bytes = Vec::with_capacity(128);
+        toradio.encode(&mut payload_bytes)?;
+        let mut hdr = [0u8; 4];
+        hdr[0] = 0x94;
+        hdr[1] = 0xC3;
+        hdr[2] = ((payload_bytes.len() >> 8) & 0xFF) as u8;
+        hdr[3] = (payload_bytes.len() & 0xFF) as u8;
+        guard.write_all(&hdr)?;
+        guard.write_all(&payload_bytes)?;
+        guard.flush()?;
+        drop(guard);
+        
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        
+        debug!(
+            "Sent TEXT_MESSAGE_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
+            to, channel, packet_id
+        );
+        
+        Ok(packet_id)
+    }
+
+    #[cfg(not(feature = "serial"))]
+    fn send_ping_packet(&mut self, to: u32, _channel: u32, _payload: &str) -> Result<u32> {
+        debug!("(mock) Would send ping to 0x{:08x}", to);
+        Ok(rand::random())
     }
 
     /// Run the writer task
@@ -2290,7 +2553,11 @@ impl MeshtasticWriter {
                             break;
                         }
                         Some(ControlMessage::AckReceived(id)) => {
-                            if let Some(p) = self.pending.remove(&id) {
+                            // Check pending_pings first (for TEXT_MESSAGE_APP ping confirmations)
+                            if let Some((target_node, response_tx)) = self.pending_pings.remove(&id) {
+                                debug!("Ping ACK received from node 0x{:08x} (packet id=0x{:08x})", target_node, id);
+                                let _ = response_tx.send(true);
+                            } else if let Some(p) = self.pending.remove(&id) {
                                 metrics::observe_ack_latency(p.sent_at);
                                 metrics::inc_reliable_acked();
                                 debug!("Delivered id={} to=0x{:08x} ({}), attempts={} latency_ms={}", id, p.to, p.content_preview, p.attempts, p.sent_at.elapsed().as_millis());
@@ -2341,6 +2608,9 @@ impl MeshtasticWriter {
                                 if let Some(p) = self.pending.remove(&id) {
                                     metrics::inc_reliable_failed();
                                     warn!("Failed id={} to=0x{:08x} ({}): reason={} ({})", id, p.to, p.content_preview, reason, reason_name);
+                                } else if let Some((target_node, response_tx)) = self.pending_pings.remove(&id) {
+                                    debug!("Ping failed for node 0x{:08x} (packet id=0x{:08x}): reason={} ({})", target_node, id, reason, reason_name);
+                                    let _ = response_tx.send(false); // Notify failure
                                 } else {
                                     warn!("Failed id={} (routing error, no pending entry): reason={} ({})", id, reason, reason_name);
                                 }
@@ -2360,6 +2630,23 @@ impl MeshtasticWriter {
                         Some(ControlMessage::SetNodeId(node_id)) => {
                             self.our_node_id = Some(node_id);
                             debug!("Writer: received node ID {}", node_id);
+                        }
+                        Some(ControlMessage::SendPing { to, channel, response_tx }) => {
+                            debug!("Writer received SendPing for 0x{:08x}", to);
+                            match self.send_ping_packet(to, channel, "") {
+                                Ok(packet_id) => {
+                                    debug!("Ping sent to 0x{:08x}, tracking packet_id 0x{:08x}", to, packet_id);
+                                    self.pending_pings.insert(packet_id, (to, response_tx));
+                                }
+                                Err(e) => {
+                                    warn!("Failed to send ping to 0x{:08x}: {}", to, e);
+                                    let _ = response_tx.send(false); // Notify failure
+                                }
+                            }
+                        }
+                        Some(ControlMessage::PingReply { from }) => {
+                            // PingReply is now unused - we use TEXT_MESSAGE_APP with routing ACKs instead
+                            debug!("(unused) PingReply from 0x{:08x}", from);
                         }
                         Some(ControlMessage::SetSchedulerHandle(handle)) => {
                             self.scheduler = Some(handle);
@@ -2801,6 +3088,7 @@ pub async fn create_reader_writer_system(
     MeshtasticReader,
     MeshtasticWriter,
     mpsc::UnboundedReceiver<TextEvent>,
+    mpsc::UnboundedReceiver<NodeDetectionEvent>,
     mpsc::UnboundedSender<OutgoingMessage>,
     mpsc::UnboundedSender<ControlMessage>,
     mpsc::UnboundedSender<ControlMessage>,
@@ -2812,6 +3100,7 @@ pub async fn create_reader_writer_system(
 
     // Create channels
     let (text_event_tx, text_event_rx) = mpsc::unbounded_channel::<TextEvent>();
+    let (node_detection_tx, node_detection_rx) = mpsc::unbounded_channel::<NodeDetectionEvent>();
     let (outgoing_tx, outgoing_rx) = mpsc::unbounded_channel::<OutgoingMessage>();
     let (reader_control_tx, reader_control_rx) = mpsc::unbounded_channel::<ControlMessage>();
     let (writer_control_tx, writer_control_rx) = mpsc::unbounded_channel::<ControlMessage>();
@@ -2822,6 +3111,7 @@ pub async fn create_reader_writer_system(
     let reader = MeshtasticReader::new(
         shared_port.clone(),
         text_event_tx,
+        node_detection_tx.clone(),
         reader_control_rx,
         writer_control_tx.clone(),
         node_id_tx.clone(),
@@ -2837,6 +3127,7 @@ pub async fn create_reader_writer_system(
         (
             MeshtasticReader::new_mock(
                 text_event_tx,
+                node_detection_tx.clone(),
                 reader_control_rx,
                 writer_control_tx.clone(),
                 node_id_tx.clone(),
@@ -2850,6 +3141,7 @@ pub async fn create_reader_writer_system(
         reader,
         writer,
         text_event_rx,
+        node_detection_rx,
         outgoing_tx,
         reader_control_tx,
         writer_control_tx,

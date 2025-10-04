@@ -97,6 +97,8 @@ pub struct BbsServer {
     #[cfg(feature = "meshtastic-proto")]
     text_event_rx: Option<mpsc::UnboundedReceiver<TextEvent>>,
     #[cfg(feature = "meshtastic-proto")]
+    node_detection_rx: Option<mpsc::UnboundedReceiver<crate::meshtastic::NodeDetectionEvent>>,
+    #[cfg(feature = "meshtastic-proto")]
     outgoing_tx: Option<mpsc::UnboundedSender<OutgoingMessage>>,
     #[cfg(feature = "meshtastic-proto")]
     scheduler: Option<crate::bbs::dispatch::SchedulerHandle>,
@@ -124,6 +126,10 @@ pub struct BbsServer {
     last_ident_time: Instant, // track when we last sent an ident beacon
     #[cfg(feature = "meshtastic-proto")]
     last_ident_boundary_minute: Option<i64>, // dedupe key: unix-minute of last ident send
+    #[cfg(feature = "meshtastic-proto")]
+    welcome_state: Option<crate::bbs::welcome::WelcomeState>,
+    #[cfg(feature = "meshtastic-proto")]
+    startup_welcome_queue: Vec<(tokio::time::Instant, crate::meshtastic::NodeDetectionEvent)>, // (when_to_send, event)
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
@@ -333,6 +339,8 @@ impl BbsServer {
             #[cfg(feature = "meshtastic-proto")]
             text_event_rx: None,
             #[cfg(feature = "meshtastic-proto")]
+            node_detection_rx: None,
+            #[cfg(feature = "meshtastic-proto")]
             outgoing_tx: None,
             #[cfg(feature = "meshtastic-proto")]
             scheduler: None,
@@ -365,6 +373,14 @@ impl BbsServer {
             last_ident_time: Instant::now() - Duration::from_secs(901), // Start ready to send
             #[cfg(feature = "meshtastic-proto")]
             last_ident_boundary_minute: None,
+            #[cfg(feature = "meshtastic-proto")]
+            welcome_state: if config.welcome.enabled {
+                Some(crate::bbs::welcome::WelcomeState::new(&config.storage.data_dir))
+            } else {
+                None
+            },
+            #[cfg(feature = "meshtastic-proto")]
+            startup_welcome_queue: Vec::new(),
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -426,6 +442,7 @@ impl BbsServer {
             reader,
             writer,
             text_event_rx,
+            node_detection_rx,
             outgoing_tx,
             reader_control_tx,
             writer_control_tx,
@@ -439,6 +456,7 @@ impl BbsServer {
 
         // Store the channels in the server
         self.text_event_rx = Some(text_event_rx);
+        self.node_detection_rx = Some(node_detection_rx);
         // Start scheduler (phase 1) before storing outgoing for general use
         let help_delay_ms = mcfg.help_broadcast_delay_ms.unwrap_or(3500);
         let sched_cfg = crate::bbs::dispatch::SchedulerConfig {
@@ -478,6 +496,80 @@ impl BbsServer {
         });
 
         info!("Meshtastic reader/writer tasks spawned successfully");
+        Ok(())
+    }
+
+    /// Scan node cache on startup and queue welcomes for recently active unwelcomed nodes
+    #[cfg(feature = "meshtastic-proto")]
+    pub async fn queue_startup_welcomes(&mut self) -> Result<()> {
+        // Only proceed if welcome system is enabled
+        if !self.config.welcome.enabled || self.welcome_state.is_none() {
+            return Ok(());
+        }
+        
+        // Load node cache
+        let cache_path = format!("{}/node_cache.json", self.config.storage.data_dir);
+        let cache = match crate::meshtastic::NodeCache::load_from_file(&cache_path) {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("No node cache to scan for startup welcomes: {}", e);
+                return Ok(());
+            }
+        };
+        
+        info!("Scanning {} cached nodes for startup welcomes", cache.nodes.len());
+        
+        // Get current time for age check (within last hour)
+        let now = chrono::Utc::now();
+        let one_hour_ago = now - chrono::Duration::hours(1);
+        
+        // Collect nodes that need welcoming
+        let mut to_welcome = Vec::new();
+        
+        for (node_id, cached_node) in &cache.nodes {
+            // Skip if not recent (last seen must be within 1 hour)
+            if cached_node.last_seen < one_hour_ago {
+                continue;
+            }
+            
+            // Skip if not a default name
+            if !crate::bbs::welcome::is_default_name(&cached_node.long_name) {
+                continue;
+            }
+            
+            // Check if already welcomed
+            let should_welcome = {
+                let state = self.welcome_state.as_ref().unwrap();
+                state.should_welcome(*node_id, &cached_node.long_name, &self.config.welcome)
+            };
+            
+            if should_welcome {
+                to_welcome.push((*node_id, cached_node.long_name.clone(), cached_node.short_name.clone()));
+            }
+        }
+        
+        if to_welcome.is_empty() {
+            info!("No cached nodes need startup welcomes");
+            return Ok(());
+        }
+        
+        info!("Queuing {} startup welcomes (30s intervals)", to_welcome.len());
+        
+        // Queue the welcomes with 30-second stagger
+        let base_time = tokio::time::Instant::now();
+        for (delay_index, (node_id, long_name, short_name)) in to_welcome.into_iter().enumerate() {
+            let delay_secs = delay_index as u64 * 30; // 0s, 30s, 60s, 90s...
+            let send_time = base_time + tokio::time::Duration::from_secs(delay_secs);
+            
+            let event = crate::meshtastic::NodeDetectionEvent {
+                node_id,
+                long_name,
+                short_name,
+            };
+            
+            self.startup_welcome_queue.push((send_time, event));
+        }
+        
         Ok(())
     }
 
@@ -691,6 +783,24 @@ impl BbsServer {
                 tokio::select! {
                     // Housekeeping tick
                     _ = periodic.tick() => {
+                        // Process startup welcome queue
+                        let now = tokio::time::Instant::now();
+                        while !self.startup_welcome_queue.is_empty() {
+                            if let Some((send_time, _)) = self.startup_welcome_queue.first() {
+                                if *send_time <= now {
+                                    let (_, event) = self.startup_welcome_queue.remove(0);
+                                    debug!("Processing startup welcome for node 0x{:08X} ({})", event.node_id, event.long_name);
+                                    if let Err(e) = self.handle_node_detection(event).await {
+                                        warn!("Startup welcome error: {}", e);
+                                    }
+                                } else {
+                                    break; // Not time yet
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        
                         #[cfg(feature = "weather")]
                         if self.weather_last_poll.elapsed() >= Duration::from_secs(300) {
                             let _ = self.fetch_weather().await;
@@ -722,6 +832,21 @@ impl BbsServer {
                             }
                         } else {
                             warn!("Text event channel closed");
+                        }
+                    }
+
+                    // Receive NodeDetectionEvents for welcome system
+                    node_det = async {
+                        if let Some(ref mut rx) = self.node_detection_rx {
+                            rx.recv().await
+                        } else {
+                            std::future::pending().await
+                        }
+                    } => {
+                        if let Some(event) = node_det {
+                            if let Err(e) = self.handle_node_detection(event).await {
+                                warn!("Welcome system error: {e:?}");
+                            }
                         }
                     }
 
@@ -1102,6 +1227,169 @@ impl BbsServer {
     pub async fn moderator_unlock_topic(&mut self, topic: &str, actor: &str) -> Result<()> {
         self.storage.unlock_topic_persist(topic).await?;
         sec_log!("UNLOCK by {}: {}", actor, topic);
+        Ok(())
+    }
+
+    #[cfg(feature = "meshtastic-proto")]
+    async fn handle_node_detection(&mut self, event: crate::meshtastic::NodeDetectionEvent) -> Result<()> {
+        use crate::bbs::welcome;
+        
+        // Check if welcome system is enabled
+        if !self.config.welcome.enabled {
+            return Ok(());
+        }
+        // Return early if welcome system not configured
+        if self.welcome_state.is_none() {
+            return Ok(());
+        }
+        
+        // Check if should welcome this node (immutable borrow)
+        let should_welcome = {
+            let state = self.welcome_state.as_ref().unwrap();
+            state.should_welcome(event.node_id, &event.long_name, &self.config.welcome)
+        };
+        
+        if !should_welcome {
+            return Ok(());
+        }
+        
+        info!(
+            "Welcome system triggered for node 0x{:08X} ({})",
+            event.node_id, event.long_name
+        );
+        
+        // Get values we need from self before any mut borrows
+        let primary_channel = self.primary_channel();
+        
+        // Generate fun call sign suggestion with emoji
+        let (suggested_callsign, emoji) = welcome::generate_callsign();
+        
+        // Strategy: PING the node first to verify reachability
+        // Only send welcome messages if ping succeeds
+        
+        // Send ping to node
+        let ping_success = if let Some(writer_tx) = &self.writer_control_tx {
+            let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+            let ping_msg = crate::meshtastic::ControlMessage::SendPing {
+                to: event.node_id,
+                channel: primary_channel,
+                response_tx,
+            };
+            
+            if writer_tx.send(ping_msg).is_ok() {
+                // Wait for ping response with timeout (2 minutes for slow mesh routing)
+                match tokio::time::timeout(std::time::Duration::from_secs(120), response_rx).await {
+                    Ok(Ok(true)) => {
+                        debug!("Ping successful for node 0x{:08X}", event.node_id);
+                        true
+                    }
+                    Ok(Ok(false)) => {
+                        info!("Ping failed for node 0x{:08X}, skipping welcome", event.node_id);
+                        false
+                    }
+                    Ok(Err(_)) => {
+                        warn!("Ping response channel closed for node 0x{:08X}", event.node_id);
+                        false
+                    }
+                    Err(_) => {
+                        warn!("Ping timeout for node 0x{:08X}, skipping welcome", event.node_id);
+                        false
+                    }
+                }
+            } else {
+                warn!("Failed to send ping command for node 0x{:08X}", event.node_id);
+                false
+            }
+        } else {
+            warn!("No writer control channel available for ping");
+            false
+        };
+        
+        // Only proceed if ping succeeded
+        if !ping_success {
+            return Ok(());
+        }
+        
+        // Only proceed if ping succeeded
+        if !ping_success {
+            return Ok(());
+        }
+        
+        // Node is reachable! Send welcome messages
+        // Send private guide if enabled
+        if self.config.welcome.private_guide {
+            let cmd_prefix = self.public_parser.primary_prefix_char();
+            let guide = welcome::private_guide(&event.long_name, &suggested_callsign, &emoji, cmd_prefix);
+            
+            // Send via scheduler as a reliable DM
+            if let Some(scheduler) = &self.scheduler {
+                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
+                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
+                
+                // Chunk the guide if needed - use 200 byte limit to leave room for protocol overhead
+                let chunks = self.chunk_utf8(&guide, 200);
+                for (idx, chunk) in chunks.iter().enumerate() {
+                    // Add 5-second delay between chunks to avoid rate limiting
+                    let delay = std::time::Duration::from_secs(idx as u64 * 5);
+                    let msg = OutgoingMessage {
+                        to_node: Some(event.node_id),
+                        channel: primary_channel,
+                        content: chunk.clone(),
+                        priority: MessagePriority::Normal,
+                        kind: OutgoingKind::Normal,
+                        request_ack: true,
+                    };
+                    let envelope = MessageEnvelope::new(
+                        MessageCategory::System,
+                        Priority::Normal,
+                        delay,
+                        msg,
+                    );
+                    let _ = scheduler.enqueue(envelope);
+                }
+            }
+        }
+        
+        // Send public greeting if enabled
+        // Delay it to allow private guide to complete first and avoid rate limiting
+        if self.config.welcome.public_greeting {
+            let greeting = welcome::public_greeting(&event.long_name);
+            if let Some(scheduler) = &self.scheduler {
+                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
+                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
+                
+                // If private_guide is enabled, delay public greeting to avoid rate limit conflicts
+                // With 2 chunks at 5-second spacing, wait 11 seconds (last chunk at 5s + 6s buffer)
+                let delay_secs = if self.config.welcome.private_guide { 11 } else { 0 };
+                
+                // Chunk public greeting too
+                let chunks = self.chunk_utf8(&greeting, 200);
+                for (idx, chunk) in chunks.iter().enumerate() {
+                    let chunk_delay = delay_secs + (idx as u64 * 5);
+                    let msg = OutgoingMessage {
+                        to_node: None, // broadcast
+                        channel: primary_channel,
+                        content: chunk.clone(),
+                        priority: MessagePriority::Normal,
+                        kind: OutgoingKind::Normal,
+                        request_ack: false,
+                    };
+                    let envelope = MessageEnvelope::new(
+                        MessageCategory::System,
+                        Priority::Normal,
+                        std::time::Duration::from_secs(chunk_delay),
+                        msg,
+                    );
+                    let _ = scheduler.enqueue(envelope);
+                }
+            }
+        }
+        
+        // Record that we welcomed this node
+        if let Some(welcome_state) = &mut self.welcome_state {
+            welcome_state.record_welcome(event.node_id, &event.long_name);
+        }
+        
         Ok(())
     }
 

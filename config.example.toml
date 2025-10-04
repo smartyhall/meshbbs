@@ -88,3 +88,12 @@ timeout = 10
 # Optional mini‑games and doors
 # Show [T]inyHack in the main menu and enable the TinyHack DM door
 tinyhack_enabled = false
+
+# New User Welcome System
+# Automatically greet nodes with default Meshtastic names
+[welcome]
+enabled = false                     # Enable welcome system
+public_greeting = true              # Broadcast public welcome
+private_guide = true                # Send private setup guide
+cooldown_minutes = 5                # Wait between welcomes (global rate limit)
+max_welcomes_per_node = 1           # Max times to welcome same node

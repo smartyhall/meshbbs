@@ -127,6 +127,9 @@ pub struct Config {
     /// Feature toggles for built-in mini-games and doors
     #[serde(default)]
     pub games: GamesConfig,
+    /// New user welcome system
+    #[serde(default)]
+    pub welcome: crate::bbs::welcome::WelcomeConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -385,6 +388,13 @@ impl Default for Config {
             ident_beacon: IdentBeaconConfig::default(),
             weather: WeatherConfig::default(),
             games: GamesConfig::default(),
+            welcome: crate::bbs::welcome::WelcomeConfig {
+                enabled: false,
+                public_greeting: true,
+                private_guide: true,
+                cooldown_minutes: 5,
+                max_welcomes_per_node: 1,
+            },
         }
     }
 }
