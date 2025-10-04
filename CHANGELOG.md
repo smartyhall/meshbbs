@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.55-beta] - 2025-10-04
+
+### Added
+- **Message Replication Infrastructure**: Foundation for future inter-BBS message distribution
+  - `message_id`: 6-byte unique identifier (12-char hex string)
+    - Format: 8 hex chars (4-byte timestamp) + 4 hex chars (2-byte random)
+    - Example: "68e16405c370"
+    - Provides natural temporal ordering and collision resistance
+  - `crc16`: CRC-16-IBM-SDLC checksum for message integrity verification
+    - Calculated over topic, author, content, and timestamp
+    - Example: 41846
+  - Backward compatibility: Both fields use `Option<>` with `skip_serializing_if`
+  - Old messages without new fields continue to work seamlessly
+  
+- **Message Migration Tool**: Standalone binary for updating existing messages
+  - Binary: `migrate_messages` (scripts/migrate_messages.rs)
+  - Usage: `./target/release/migrate_messages /path/to/data`
+  - Features:
+    - Scans all JSON files in messages/* subdirectories
+    - Generates unique message_id for each message
+    - Calculates CRC-16 checksum for integrity
+    - Skips already-migrated messages (idempotent)
+    - Provides detailed migration statistics
+    - Safe to run multiple times
+  - Successfully migrated 4 production messages in /opt/meshbbs/data
+
+### Changed
+- Message struct now includes optional `message_id` and `crc16` fields
+- `store_message()` automatically populates message_id and crc16 for new messages
+- Added `getrandom` dependency for secure random number generation
+
+### Technical Details
+- New helper functions in `src/storage/mod.rs`:
+  - `generate_message_id()`: Creates 6-byte ID from timestamp + random
+  - `calculate_message_crc()`: Computes CRC-16 over message data
+- CRC algorithm: CRC-16-IBM-SDLC (polynomial 0x1021, aka CRC-16-CCITT)
+- 8-byte overhead per message (6-byte ID + 2-byte CRC)
+- Message ID uses `SystemTime::now()` for timestamp component
+- Random component uses `getrandom` for cryptographic randomness
+
+### Testing
+- New test suite: `tests/message_id_crc.rs` (155 lines)
+  - `test_message_id_and_crc_generation`: Basic generation and format validation
+  - `test_message_id_uniqueness`: Verifies 10 messages have unique IDs
+  - `test_crc_different_for_different_content`: CRC variance validation
+  - `test_backward_compatibility_with_old_messages`: JSON without new fields loads correctly
+  - `test_message_id_format`: Timestamp and format verification
+- All tests pass with 100% success rate
+- Migration tool tested on production data with 4 messages
+
 ## [1.0.50-beta] - 2025-10-04
 
 ### Added
