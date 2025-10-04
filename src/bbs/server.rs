@@ -1282,8 +1282,8 @@ impl BbsServer {
                 // The Meshtastic packet has headers/metadata that reduce usable text space
                 let chunks = self.chunk_utf8(&guide, 200);
                 for (idx, chunk) in chunks.iter().enumerate() {
-                    // Add 3-second delay between chunks to avoid rate limiting
-                    let delay = std::time::Duration::from_secs(idx as u64 * 3);
+                    // Add 5-second delay between chunks to avoid rate limiting
+                    let delay = std::time::Duration::from_secs(idx as u64 * 5);
                     let msg = OutgoingMessage {
                         to_node: Some(event.node_id),
                         channel: primary_channel,
@@ -1315,15 +1315,15 @@ impl BbsServer {
                 // If private_guide is enabled, delay public greeting to:
                 // 1) Let private DM chunks complete (avoid rate limiting interference)
                 // 2) Confirm node reachability via DM ACK
-                // With 2 chunks at 3-second spacing, wait 8 seconds total (last chunk at 3s + 5s buffer)
+                // With 2 chunks at 5-second spacing, wait 11 seconds total (last chunk at 5s + 6s buffer)
                 // Otherwise send immediately (best effort for public-only welcome)
-                let delay_secs = if self.config.welcome.private_guide { 8 } else { 0 };
+                let delay_secs = if self.config.welcome.private_guide { 11 } else { 0 };
                 
                 // Chunk public greeting too, in case long node names push it over limit
                 let chunks = self.chunk_utf8(&greeting, 200);
                 for (idx, chunk) in chunks.iter().enumerate() {
-                    // Add 3-second stagger between public greeting chunks too
-                    let chunk_delay = delay_secs + (idx as u64 * 3);
+                    // Add 5-second stagger between public greeting chunks too
+                    let chunk_delay = delay_secs + (idx as u64 * 5);
                     let msg = OutgoingMessage {
                         to_node: None, // broadcast
                         channel: primary_channel,
