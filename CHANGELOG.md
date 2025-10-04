@@ -8,6 +8,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.50-beta] - 2025-10-04
+
+### Added
+- **Welcome System**: Automatic onboarding for new mesh users
+  - Detects default "Meshtastic XXXX" node names and sends friendly welcome messages
+  - Private DM with setup instructions: CONFIG → USER → "Long Name" path
+  - Fun personalized name suggestions: Adjective + Animal + Emoji (e.g., "🦊 Clever Fox")
+  - 50 adjectives × 50 animals = 2,500 possible combinations
+  - Full emoji support: 🦊 Fox, 🐻 Bear, 🦅 Eagle, 🦁 Lion, 🐼 Panda, and 45 more
+  - Public mesh greeting broadcasts to announce new users
+  - Persistent state tracking in `data/welcomed_nodes.json`
+  - Rate limiting: 5-minute global cooldown + per-node max count
+  - Configurable via `[welcome]` section: enabled, private_guide, public_greeting, cooldown_minutes, max_welcomes_per_node
+  
+- **Reliable Ping System**: TEXT_MESSAGE_APP with routing ACK verification
+  - Verifies node reachability before sending welcome messages
+  - Uses single "." character payload with `want_ack=true`
+  - Leverages proven routing ACK system (not application-level replies)
+  - 120-second timeout for slow mesh routing (2 minutes)
+  - Tracks pending pings: `packet_id → (node_id, response_channel)`
+  - Success: ACK received → send welcome
+  - Failure: NoResponse/timeout → skip welcome (node unreachable)
+  
+- **Node Detection Pipeline**: Automatic discovery and welcome queueing
+  - Reader task emits `NodeDetectionEvent` for NODEINFO packets
+  - Server queues startup welcomes for recently active unwelcomed nodes
+  - Integrates with existing node cache (`data/node_cache.json`)
+  - Respects welcome configuration and rate limits
+
+### Changed
+- **Ping Implementation Evolution**:
+  - Attempt 1: REPLY_APP (port 32) → Failed: ReplyModule commented out in Meshtastic firmware by default
+  - Attempt 2: POSITION_APP (port 3) → Failed: Requires GPS/fixed position, many nodes return NoResponse
+  - Attempt 3: TEXT_MESSAGE_APP (port 1) → **SUCCESS**: Always enabled, reliable routing ACKs, no dependencies
+- AckReceived handler now checks `pending_pings` before `pending` messages
+- RoutingError handler removes failed pings from tracking and notifies waiters
+- Welcome messages chunked to 200-byte segments with 5-second delays
+- 11-second gap between private DM completion and public greeting
+
+### Technical Details
+- New module: `src/bbs/welcome.rs` (430 lines)
+  - `WelcomeState`: Persistent tracking with disk serialization
+  - `is_default_name()`: Detects "Meshtastic XXXX" pattern (4 hex digits)
+  - `generate_callsign()`: Returns (name, emoji) tuple
+  - `get_animal_emoji()`: Maps 50 animals to Unicode emojis
+  - `private_guide()`: Accepts `cmd_prefix` for correct !HELP or ^HELP
+- Control message: `SendPing { to, channel, response_tx }`
+- Writer methods: `send_ping_packet()` sends TEXT_MESSAGE_APP with want_ack
+- Server: `handle_node_detection()` implements full welcome workflow
+- Configuration: `public_command_prefix` used to show correct help command
+
+### Testing
+- New test suite: `tests/node_welcome_integration.rs` (522 lines)
+  - `welcome_system_end_to_end`: Full flow from detection to welcome
+  - `welcome_detects_default_names`: Pattern matching validation
+  - `welcome_rate_limiting`: Global cooldown enforcement
+  - `welcome_per_node_limit`: Max welcomes per node
+  - `welcome_persistence`: State survives restarts
+  - `welcome_state_thread_safety`: Concurrent access safety
+  - `callsign_generation_variety`: Ensures diverse suggestions
+  - `welcome_message_formatting`: Validates DM and greeting format
+  - `config_prefix_in_welcome`: Correct prefix in help instructions
+- Real-world validation: Node 0x433AF828 successfully pinged and welcomed (3-second ACK)
+
+### Fixed
+- Removed old POSITION_APP ping handler (no longer sends PingReply)
+- Simplified PingReply control message handler (marked as unused)
+- Fixed test warnings in `tests/tinyhack_minimap.rs` (removed unnecessary `mut`)
+
 ## [1.0.45-beta] - 2025-10-02
 
 ### Changed

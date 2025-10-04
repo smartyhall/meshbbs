@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.45--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.50--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,6 +25,20 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## 📝 Release notes
 
+- 1.0.50-beta (2025-10-04): **Welcome System & Reliable Ping Implementation**
+   - Automatic welcome messages for new nodes with default "Meshtastic XXXX" names
+   - Private DM with setup instructions and fun personalized name suggestions (e.g., "🦊 Clever Fox")
+   - Public mesh greeting to announce new users
+   - **Reliable ping system** using TEXT_MESSAGE_APP with routing ACK confirmation
+   - Switched from REPLY_APP (not in firmware) → POSITION_APP (requires GPS) → TEXT_MESSAGE_APP (final working solution)
+   - Uses single "." character payload with want_ack=true for reachability verification
+   - 120-second timeout for slow mesh routing
+   - Only sends welcome if ping succeeds (verified node is reachable)
+   - Persistent tracking (welcomed_nodes.json) to avoid re-welcoming
+   - Rate limiting: 5-minute cooldown between welcomes
+   - 50 adjectives × 50 animals × emojis = 2,500+ possible name combinations
+   - Configurable command prefix support (shows correct prefix like !HELP or ^HELP)
+   - Comprehensive integration tests with 522 lines validating all welcome flows
 - 1.0.45-beta (2025-10-02): The "Hyphen Intervention" release—every em-dash was asked to leave before it ate another byte.
 - 1.0.44-beta (2025-10-03): TinyHack mini-map feature
    - Added **M** command to display compact ASCII mini-map with fog of war (~165 chars)
