@@ -1,11 +1,17 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
+#[cfg(feature = "meshtastic-proto")]
+use anyhow::anyhow;
+#[cfg(feature = "meshtastic-proto")]
 use chrono::Utc;
-use log::{debug, error, info, trace, warn};
+use log::{debug, info};
+#[cfg(feature = "meshtastic-proto")]
+use log::{error, trace, warn};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
 
-use super::public::{PublicCommand, PublicCommandParser, PublicState};
+use super::public::{PublicCommandParser, PublicState};
+#[cfg(feature = "meshtastic-proto")]
 use super::roles::{role_name, LEVEL_MODERATOR, LEVEL_USER};
 use super::session::Session;
 #[cfg(feature = "weather")]
@@ -14,7 +20,9 @@ use crate::config::Config;
 use crate::logutil::escape_log;
 #[cfg(feature = "meshtastic-proto")]
 use crate::meshtastic::TextEvent;
-use crate::meshtastic::{ControlMessage, MeshtasticDevice, MessagePriority, OutgoingMessage};
+use crate::meshtastic::MeshtasticDevice;
+#[cfg(feature = "meshtastic-proto")]
+use crate::meshtastic::{ControlMessage, MessagePriority, OutgoingMessage};
 use crate::storage::Storage;
 use crate::validation::validate_sysop_name;
 
@@ -579,6 +587,7 @@ impl BbsServer {
         &self.test_messages
     }
     // Expose scheduler handle for tests (used by scheduler_overflow.rs). Keep public until a dedicated test API is introduced.
+    #[cfg(feature = "meshtastic-proto")]
     #[allow(dead_code)] // Used only in tests (scheduler_overflow); suppress warning in release builds.
     pub fn scheduler_handle(&self) -> Option<crate::bbs::dispatch::SchedulerHandle> {
         self.scheduler.clone()
@@ -588,6 +597,7 @@ impl BbsServer {
     pub fn test_insert_session(&mut self, session: Session) {
         self.sessions.insert(session.node_id.clone(), session);
     }
+    #[cfg(feature = "meshtastic-proto")]
     #[doc(hidden)]
     #[allow(dead_code)] // Used only by integration tests (help_broadcast_delay) to inject an outgoing channel
     pub fn test_set_outgoing(
@@ -775,6 +785,10 @@ impl BbsServer {
         let mut periodic = tokio::time::interval(Duration::from_secs(1));
         #[cfg(feature = "meshtastic-proto")]
         periodic.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        
+        // Fallback interval for non-meshtastic-proto builds
+        #[cfg(not(feature = "meshtastic-proto"))]
+        let mut interval = tokio::time::interval(Duration::from_secs(1));
 
         // Main message processing loop
         loop {

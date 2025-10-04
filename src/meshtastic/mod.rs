@@ -67,10 +67,17 @@
 //! ```
 
 use crate::logutil::escape_log; // for sanitizing log output
-use anyhow::{anyhow, Result};
-use log::{debug, error, info, trace, warn};
+use anyhow::Result;
+#[cfg(feature = "meshtastic-proto")]
+use anyhow::anyhow;
+use log::{debug, info};
+#[cfg(feature = "meshtastic-proto")]
+use log::{error, trace, warn};
+#[cfg(feature = "meshtastic-proto")]
 use std::collections::VecDeque;
+#[cfg(feature = "meshtastic-proto")]
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "meshtastic-proto")]
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
@@ -161,6 +168,7 @@ pub enum ControlMessage {
     SetSchedulerHandle(crate::bbs::dispatch::SchedulerHandle),
 }
 
+#[cfg(feature = "meshtastic-proto")]
 use crate::metrics;
 #[cfg(feature = "meshtastic-proto")]
 use crate::protobuf::meshtastic_generated as proto;
@@ -831,7 +839,7 @@ impl MeshtasticDevice {
 
         #[cfg(not(feature = "serial"))]
         {
-            warn!("Serial support not compiled in, using mock device");
+            log::warn!("Serial support not compiled in, using mock device");
             Ok(MeshtasticDevice {
                 port_name: port_name.to_string(),
                 baud_rate,
@@ -1007,7 +1015,7 @@ impl MeshtasticDevice {
             // If parsing fails, fall back to legacy path below.
         }
 
-        let formatted_message = format!("TO:{} MSG:{}\n", to_node, message);
+        let _formatted_message = format!("TO:{} MSG:{}\n", to_node, message);
 
         #[cfg(feature = "serial")]
         {
