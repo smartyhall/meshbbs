@@ -1278,8 +1278,9 @@ impl BbsServer {
                 use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
                 use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
                 
-                // Chunk the guide if needed
-                let chunks = self.chunk_utf8(&guide, 230);
+                // Chunk the guide if needed - use 200 byte limit to leave room for protocol overhead
+                // The Meshtastic packet has headers/metadata that reduce usable text space
+                let chunks = self.chunk_utf8(&guide, 200);
                 for chunk in chunks {
                     let msg = OutgoingMessage {
                         to_node: Some(event.node_id),
@@ -1313,21 +1314,25 @@ impl BbsServer {
                 // Otherwise send immediately (best effort for public-only welcome)
                 let delay_secs = if self.config.welcome.private_guide { 5 } else { 0 };
                 
-                let msg = OutgoingMessage {
-                    to_node: None, // broadcast
-                    channel: primary_channel,
-                    content: greeting,
-                    priority: MessagePriority::Normal,
-                    kind: OutgoingKind::Normal,
-                    request_ack: false,
-                };
-                let envelope = MessageEnvelope::new(
-                    MessageCategory::System,
-                    Priority::Normal,
-                    std::time::Duration::from_secs(delay_secs),
-                    msg,
-                );
-                let _ = scheduler.enqueue(envelope);
+                // Chunk public greeting too, in case long node names push it over limit
+                let chunks = self.chunk_utf8(&greeting, 200);
+                for chunk in chunks {
+                    let msg = OutgoingMessage {
+                        to_node: None, // broadcast
+                        channel: primary_channel,
+                        content: chunk,
+                        priority: MessagePriority::Normal,
+                        kind: OutgoingKind::Normal,
+                        request_ack: false,
+                    };
+                    let envelope = MessageEnvelope::new(
+                        MessageCategory::System,
+                        Priority::Normal,
+                        std::time::Duration::from_secs(delay_secs),
+                        msg,
+                    );
+                    let _ = scheduler.enqueue(envelope);
+                }
             }
         }
         
