@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.61-beta] - 2025-01-06
 
+### Fixed
+- **Daemon Mode Logging**: Eliminated duplicate log lines in daemon mode
+  - Added TTY detection using `atty` crate
+  - Daemon mode: logs written to file only (single copy)
+  - Foreground mode: logs written to both file and console
+  - Automatic behavior based on stdout TTY status
+  - Validated both operational modes working correctly
+
+## [1.0.60-beta] - 2025-01-06
+
 ### Added
 - **Cross-Platform Graceful Shutdown**: Production-grade signal handling across all platforms
   - Unix (Linux/macOS): `SIGTERM`, `SIGHUP`, `SIGINT` (Ctrl+C)
