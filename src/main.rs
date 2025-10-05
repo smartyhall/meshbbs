@@ -428,8 +428,7 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
 /// and detaches from the controlling terminal.
 #[cfg(all(unix, feature = "daemon"))]
 fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
-    use std::fs::{File, OpenOptions};
-    use std::os::unix::process::CommandExt;
+    use std::fs::OpenOptions;
     use std::process::Command;
     
     // Determine log file path
