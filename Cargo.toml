@@ -29,6 +29,7 @@ rpassword = "7.3"
 # Logging
 log = "0.4"
 env_logger = "0.10"
+atty = "0.2"  # Detect if stdout is a TTY for logging decisions
 
 # Error handling
 anyhow = "1.0"
