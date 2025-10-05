@@ -259,6 +259,7 @@ impl BbsServer {
     fn lookup_long_name_from_cache(&self, id: u32) -> Option<String> {
         #[derive(serde::Deserialize)]
         struct CachedNodeInfo {
+            #[allow(dead_code)]
             short_name: String,
             long_name: String,
         }
