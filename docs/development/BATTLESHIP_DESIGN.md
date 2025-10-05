@@ -10,7 +10,7 @@ Battleship is a perfect fit for meshbbs's async, high-latency environment. The c
 - **Classic "chess by mail" style**: Players have been playing Battleship by mail/email for decades
 - **Low message volume**: ~20-50 total messages per game (very mesh-friendly)
 - **No time pressure**: Think time between moves is a feature, not a bug
-- **Clear state**: Simple grid representation fits in 200 chars
+- **Clear state**: Grid representation designed for 200-byte limit
 - **Suspenseful**: Waiting for opponent's move builds tension
 
 ### Technical Advantages
@@ -19,6 +19,42 @@ Battleship is a perfect fit for meshbbs's async, high-latency environment. The c
 - **Deterministic**: No real-time sync required
 - **Resumable**: Games can pause/resume easily
 - **Low bandwidth**: One coordinate per message
+- **Message-aware design**: Display formats fit 200-byte constraint
+
+---
+
+## 📏 Display Format Constraints
+
+**CRITICAL**: Meshbbs has a ~200-byte message limit. All display formats must fit this constraint.
+
+### Byte Size Analysis (UTF-8)
+
+**What DOESN'T Fit** ❌
+- Dual-grid display (6 rows): **306 bytes** - requires 2 messages
+- Full 10-row dual grids: **500+ bytes** - requires 3+ messages
+- Heavy emoji usage in large grids exceeds limits
+
+**What FITS** ✅
+- Single grid (6 rows): **~150 bytes**
+- Single grid row: **46 bytes**
+- Status updates: **35-72 bytes**
+- Turn prompts: **37 bytes**
+- Shot notifications: **35-62 bytes**
+- Text-only full state: **72 bytes**
+
+**Emoji Sizes**:
+- Simple emojis (⛵🚢🚤💥🎯🎉): 3-4 bytes each
+- Complex emojis with variation selectors (⛴️🛳️): 6-7 bytes each
+- ASCII alternative (.XOMHS): 1 byte each
+
+### Display Strategy
+
+This design uses **sequential messages** for grid displays:
+1. Message 1: Your grid (with your ships)
+2. Message 2: Enemy grid (with your shots)
+3. Message 3: Status/prompt
+
+Alternatively, use **text-only mode** for maximum efficiency (single 72-byte message).
 
 ---
 
@@ -181,32 +217,50 @@ Your Grid:
 
 ### **Phase 3: Playing the Game**
 
-#### Your Turn
+#### Your Turn (Sequential Messages)
+
+**Message 1 of 3:**
 ```
 === BATTLESHIP vs bob ===
+YOUR GRID:
+  A B C D E F
+1 . . . ⛵⛵ .
+2 . 🚢 . . . .
+3 . 🚢 . . . .
+4 . 🚢 . ⛴️⛴️⛴️
+5 . 🚢 . . . .
+6 . . . 🛳️🛳️🛳️
+
+Your Fleet:
+⛴️ Carrier ████░ (1 hit)
+🚢 Battleship ████
+🛳️ Cruiser ███
+```
+
+**Message 2 of 3:**
+```
+ENEMY GRID:
+  A B C D E F
+1 . M . . . .
+2 . . . H . .
+3 . . . . . .
+4 M . . . . .
+5 . . H H . .
+6 . . . . . .
+
+Enemy Status:
+🔥 ??? (2 hits)
+🔥 ??? (2 hits)
+? ??? ? ???
+```
+
+**Message 3 of 3:**
+```
 *** YOUR TURN ***
-
-Your Grid:          Enemy Grid:
-  A B C D E F        A B C D E F
-1 . . . ⛵⛵ .      1 . M . . . .
-2 . 🚢 . . . .      2 . . . H . .
-3 . 🚢 . . . .      3 . . . . . .
-4 . 🚢 . ⛴️⛴️⛴️      4 M . . . . .
-5 . 🚢 . . . .      5 . . H H . .
-6 . . . 🛳️🛳️🛳️      6 . . . . . .
-
-Your Fleet:         Enemy Fleet:
-⛴️ Carrier    ████░  🔥 ??? ????? (2 hits)
-🚢 Battleship ████   🔥 ??? ???? (2 hits)
-🛳️ Cruiser    ███    ? ??? ???
-🚤 Submarine  ███    ? ??? ???
-⛵ Destroyer  ██     ? ??? ??
-
-Shots: You 6, Bob 0
-Hits: You 4, Bob 0
-
-Call your shot (A1-J10):
+Shots: 6  Hits: 4
+Call shot (A1-J10):
 → E5
+```
 
 *FIRING at E5...*
 *Message sent to bob*
@@ -222,7 +276,10 @@ to check status.
 #### Response Received - HIT!
 ```
 *BATTLESHIP UPDATE*
-Game vs bob: Your turn result
+Game vs bob
+
+>>> HIT! <<<
+E5: Direct hit! 🎯
 
 Enemy Grid:
   A B C D E F
@@ -233,23 +290,16 @@ Enemy Grid:
 5 . . H H H .  ← NEW!
 6 . . . . . .
 
->>> HIT! <<<
-
-E5: Direct hit! 🎯
-You hit something!
-
 Shots: 7  Hits: 5
-
 bob's turn now...
-Waiting for bob's shot.
 ```
 
 #### Response Received - SUNK!
 ```
 *BATTLESHIP UPDATE*
-Game vs bob: Your turn result
+Game vs bob
 
->>> YOU SUNK CRUISER! <<<
+🎯 YOU SUNK CRUISER! 🎯
 
 Enemy Grid:
   A B C D E F
@@ -260,15 +310,12 @@ Enemy Grid:
 5 . . 💥💥💥 .
 6 . . . . . .
 
-Enemy Fleet:
-💥 Cruiser SUNK! (3)
-🔥 ??? ???? (2 hits)
-? ??? ???
-? ??? ???
-? ??? ??
+💥 Cruiser SUNK!
+🔥 ??? (2 hits)
+? ??? ? ???
 
-Remaining: 4 ships
-bob's turn now...
+4 ships remain
+bob's turn now
 ```
 
 #### Opponent's Turn - You're Hit!
@@ -431,13 +478,28 @@ vs dave (setup)
 === BATTLESHIP vs bob ===
 *** YOUR TURN ***
 
-Your Grid:          Enemy Grid:
-  A B C D E F        A B C D E F
-1 . . . ⛵⛵ .      1 . M H . . .
-2 . 🚢 . . . .      2 . M . . . .
-3 . 💥 . . . .      3 M . . . . .
-4 . 💥 . ⛴️⛴️⛴️      4 . . . . . .
-5 . 💥 . . . .      5 . . . . . .
+Your Grid:
+  A B C D E F
+1 . . . ⛵⛵ .
+2 . 🚢 . . . .
+3 . � . . . .
+4 . 💥 . ⛴️⛴️⛴️
+5 . 💥 . . . .
+6 . . . 🛳️🛳️🛳️
+
+3 hits taken
+[Press any key for enemy grid]
+```
+
+```
+Enemy Grid:
+  A B C D E F
+1 . M H . . .
+2 . M . . . .
+3 M . . . . .
+4 . . . . . .
+5 . . . . . .
+6 . . . . . .
 
 Call shot (A1-J10):
 ```
@@ -584,16 +646,48 @@ Next rank: 1300 pts (Gold)
 
 ## 🎨 Compact Display Modes
 
-### **Standard Mode** (Full grids)
+**NOTE**: All display modes are designed to fit meshbbs's 200-byte message limit. Standard mode uses sequential messages; other modes use single messages.
+
+### **Standard Mode** (Emoji ships, Sequential Messages)
+
+*Requires 2-3 messages per turn (each fits 200-byte limit)*
+
+**Message 1:**
 ```
-Your Grid:          Enemy Grid:
-  A B C D E F G H I J
-1 . . . ⛵⛵ . . . . .
-2 . 🚢 . . . . . . . .
-[etc...]
+Your Grid:
+  A B C D E F
+1 . . . ⛵⛵ .
+2 . 🚢 . . . .
+3 . 🚢 . . . .
+4 . 🚢 . ⛴️⛴️⛴️
+5 . 🚢 . . . .
+6 . . . 🛳️🛳️🛳️
+
+Fleet: ⛴️🚢🛳️🚤⛵
+Hits taken: 0
+(~150 bytes)
+```
+
+**Message 2:**
+```
+Enemy Grid:
+  A B C D E F
+1 . M . . . .
+2 . . . H . .
+3 . . . . . .
+4 M . . . . .
+5 . . H H . .
+6 . . . . . .
+
+Shots: 6  Hits: 4
+Your turn. Shot?
+(~135 bytes)
 ```
 
 ### **Compact Mode** (Last 5 shots only)
+
+*Single message, action-focused*
+
 ```
 Recent shots:
 You → D5: HIT
@@ -604,13 +698,39 @@ You → D7: SUNK DESTROYER!
 
 Your turn. Shot?
 → E5
+(62 bytes - fits easily)
 ```
 
 ### **Text-Only Mode** (Maximum compression)
+
+*Single message, ultra-compact*
+
 ```
 YOU: 5ships 0dmg | BOB: 4ships 3dmg
 Last: D7 SUNK! | Turn: YOU
 Shot? → E5
+(72 bytes - most efficient)
+```
+
+### **ASCII Mode** (No emojis, terminal-safe)
+
+*Single message per grid, fully ASCII*
+
+```
+Your Grid:
+  A B C D E F
+1 . . . S S .
+2 . B . . . .
+3 . B . . . .
+4 . B . C C C
+5 . B . . . .
+6 . . . D D D
+
+Legend:
+S=Sailboat B=Battleship
+C=Cruiser D=Destroyer
+X=Hit O=Miss
+(~130 bytes, ASCII-safe)
 ```
 
 ---
