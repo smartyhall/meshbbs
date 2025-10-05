@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.60-beta] - 2025-10-05
+
+### Changed
+- **Welcome Queue Rate Limiting**: Optimized startup welcome processing
+  - Startup queue welcomes now send every 30 seconds (previously throttled by 5-minute cooldown)
+  - Real-time node detections (NODEINFO, public messages) still rate-limited at 5 minutes to prevent spam
+  - Added `is_from_startup_queue` field to `NodeDetectionEvent` to distinguish detection sources
+  - Modified `should_welcome()` to accept `skip_rate_limit` parameter for queue items
+  - **Impact**: 17-node startup queue now processes in ~8.5 minutes instead of ~85 minutes
+  - Queue monitoring: `data/welcome_queue.json` shows real-time countdown and queue length
+
+### Technical Details
+- Rate limiting now bifurcated based on detection source:
+  - Queue items: Created during startup scan with `is_from_startup_queue=true`, bypass global cooldown
+  - Spontaneous detections: NODEINFO packets and public messages set `is_from_startup_queue=false`, enforce 5-minute cooldown
+- All detection code paths updated to explicitly set the queue flag
+- Per-node welcome limits still enforced for all sources
+- Backward compatible: No config changes required
+
 ## [1.0.55-beta] - 2025-10-04
 
 ### Added

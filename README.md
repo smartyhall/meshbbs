@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.55--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.60--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,54 +25,29 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## 📝 Release notes
 
+- 1.0.60-beta (2025-10-05): **Welcome Queue Rate Limiting Optimization**
+   - Startup welcome queue now processes every 30 seconds (10× faster than before)
+   - Real-time node detections still rate-limited at 5 minutes to prevent spam
+   - **Impact**: 17-node startup queue completes in ~8.5 minutes instead of ~85 minutes
+   - Queue monitoring available via `data/welcome_queue.json` with real-time countdown
+   - Bifurcated rate limiting: planned queue welcomes bypass cooldown, spontaneous detections enforce it
+
+- 1.0.55-beta (2025-10-04): **Message Replication Infrastructure**
+   - Added `message_id` (6-byte unique identifier) and `crc16` (integrity checksum) to all messages
+   - Foundation for future inter-BBS message distribution and synchronization
+   - Migration tool (`migrate_messages`) for updating existing message archives
+   - Fully backward compatible with existing messages
+
 - 1.0.50-beta (2025-10-04): **Welcome System & Reliable Ping Implementation**
    - Automatic welcome messages for new nodes with default "Meshtastic XXXX" names
    - Private DM with setup instructions and fun personalized name suggestions (e.g., "🦊 Clever Fox")
-   - Public mesh greeting to announce new users
-   - **Reliable ping system** using TEXT_MESSAGE_APP with routing ACK confirmation
-   - Switched from REPLY_APP (not in firmware) → POSITION_APP (requires GPS) → TEXT_MESSAGE_APP (final working solution)
-   - Uses single "." character payload with want_ack=true for reachability verification
-   - 120-second timeout for slow mesh routing
-   - Only sends welcome if ping succeeds (verified node is reachable)
-   - Persistent tracking (welcomed_nodes.json) to avoid re-welcoming
-   - Rate limiting: 5-minute cooldown between welcomes
+   - Reliable ping system using TEXT_MESSAGE_APP with routing ACK confirmation
    - 50 adjectives × 50 animals × emojis = 2,500+ possible name combinations
-   - Configurable command prefix support (shows correct prefix like !HELP or ^HELP)
-   - Comprehensive integration tests with 522 lines validating all welcome flows
-- 1.0.45-beta (2025-10-02): The "Hyphen Intervention" release—every em-dash was asked to leave before it ate another byte.
-- 1.0.44-beta (2025-10-03): TinyHack mini-map feature
-   - Added **M** command to display compact ASCII mini-map with fog of war (~165 chars)
-   - Shows 6×6 grid with player position (@), unexplored areas (#), and room types (monsters, chests, doors, etc.)
-   - Visited rooms tracked for persistent exploration progress
-   - Backward compatible with existing save files
-   - Greatly improves gameplay spatial awareness without external note-taking
-- 1.0.43-beta (2025-10-03): **CRITICAL BUGFIX** - UTF-8 chunking crash
-   - Fixed panic when message chunking landed on multi-byte UTF-8 character boundaries (em-dash, emoji, etc.)
-   - Replaced incomplete manual UTF-8 check with Rust's `is_char_boundary()` method
-   - Added comprehensive regression tests for various multi-byte characters
-   - **Impact**: Prevented crashes during TinyHack gameplay and any message containing non-ASCII characters
-- 1.0.42-beta (2025-10-02): Navigation consistency improvements
-   - Fixed navigation menu footers across Topics, Subtopics, and Threads to consistently show "B back. Q quit"
-   - Standardized command behavior: B always returns to previous level/main menu, Q (or X) always quits/logs out
-   - Improved user experience with clear, consistent navigation options throughout the message board interface
-- 1.0.41-beta (2025-10-02): Enhanced security configuration
-   - Added `allow_public_login` configuration option to disable public channel LOGIN commands for enhanced security
-   - When disabled, users must authenticate via direct message only, preventing username enumeration on public channels
-   - Fully backward compatible (defaults to `true`); includes comprehensive documentation and testing
 
-- 1.0.40-beta (2025-10-02): Compact UI milestone + TinyHack beta
-   - Removed legacy long-form commands (READ/POST/TOPICS/LIST); compact shortcuts are now the single way to navigate, and help text mirrors the streamlined prompts.
-   - Added the TinyHack roguelike DM mini-game with persistent saves and a dedicated `[T]` entry on the main menu when enabled.
-   - Improved first-login onboarding with succinct DM hints (`M` for messages, `H` for help) and refreshed docs/tests to keep the new flow covered.
-
-- 1.0.36-beta (2025-10-01): Docs-only refresh
-   - Fix README Mermaid diagram parse error so GitHub renders the architecture flowchart
-   - Clean up mojibake in section headings
-
-- 1.0.35 (2025-09-30): Reliability and maintenance improvements:
-   - DM replies for public commands now use the incoming event channel with fallback to the configured primary channel, avoiding NoChannel routing errors.
-   - Startup now logs the configured primary Meshtastic channel at INFO level for easier diagnostics.
-   - Node cache maintenance: hourly cleanup of entries not seen in > 90 days; last_seen updates persisted when new node info is observed. Atomic save and resilient load already in place.
+- 1.0.44-beta (2025-10-03): **TinyHack Mini-Map Feature**
+   - Added **M** command to display compact ASCII mini-map with fog of war
+   - 6×6 grid showing player position, unexplored areas, and room types
+   - Persistent exploration tracking across game sessions
 
 ## 📚 Documentation
 
