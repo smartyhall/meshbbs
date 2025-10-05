@@ -255,6 +255,50 @@ impl BbsServer {
         })
     }
 
+    /// Write the current welcome queue status to a JSON file for monitoring
+    #[cfg(feature = "meshtastic-proto")]
+    fn write_welcome_queue_status(&self) {
+        use serde::Serialize;
+        
+        #[derive(Serialize)]
+        struct QueueEntry {
+            node_id: String,
+            long_name: String,
+            short_name: String,
+            sends_in_seconds: i64,
+        }
+        
+        #[derive(Serialize)]
+        struct QueueStatus {
+            queue_length: usize,
+            entries: Vec<QueueEntry>,
+        }
+        
+        let now = tokio::time::Instant::now();
+        let entries: Vec<QueueEntry> = self.startup_welcome_queue
+            .iter()
+            .map(|(send_time, event)| {
+                let delay = send_time.saturating_duration_since(now);
+                QueueEntry {
+                    node_id: format!("0x{:08X}", event.node_id),
+                    long_name: event.long_name.clone(),
+                    short_name: event.short_name.clone(),
+                    sends_in_seconds: delay.as_secs() as i64,
+                }
+            })
+            .collect();
+        
+        let status = QueueStatus {
+            queue_length: entries.len(),
+            entries,
+        };
+        
+        let path = "data/welcome_queue.json";
+        if let Ok(json) = serde_json::to_string_pretty(&status) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+
     #[inline]
     fn lookup_long_name_from_cache(&self, id: u32) -> Option<String> {
         #[derive(serde::Deserialize)]
@@ -606,6 +650,9 @@ impl BbsServer {
             self.startup_welcome_queue.push((send_time, event));
         }
         
+        // Write queue status to file for monitoring
+        self.write_welcome_queue_status();
+        
         Ok(())
     }
 
@@ -827,10 +874,12 @@ impl BbsServer {
                     _ = periodic.tick() => {
                         // Process startup welcome queue
                         let now = tokio::time::Instant::now();
+                        let mut queue_changed = false;
                         while !self.startup_welcome_queue.is_empty() {
                             if let Some((send_time, _)) = self.startup_welcome_queue.first() {
                                 if *send_time <= now {
                                     let (_, event) = self.startup_welcome_queue.remove(0);
+                                    queue_changed = true;
                                     debug!("Processing startup welcome for node 0x{:08X} ({})", event.node_id, event.long_name);
                                     if let Err(e) = self.handle_node_detection(event).await {
                                         warn!("Startup welcome error: {}", e);
@@ -841,6 +890,11 @@ impl BbsServer {
                             } else {
                                 break;
                             }
+                        }
+                        
+                        // Update queue status file if we processed any welcomes
+                        if queue_changed {
+                            self.write_welcome_queue_status();
                         }
                         
                         #[cfg(feature = "weather")]
