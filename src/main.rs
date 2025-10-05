@@ -109,12 +109,6 @@ async fn main() -> Result<()> {
                 info!("No --port specified and no configured device port set; starting without device.");
             }
 
-            // Queue startup welcomes for recently active unwelcomed nodes
-            #[cfg(feature = "meshtastic-proto")]
-            if let Err(e) = bbs.queue_startup_welcomes().await {
-                warn!("Failed to queue startup welcomes: {}", e);
-            }
-
             info!("BBS server starting...");
             bbs.run().await?;
         }

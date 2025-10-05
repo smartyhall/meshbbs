@@ -140,6 +140,8 @@ pub struct BbsServer {
     welcome_state: Option<crate::bbs::welcome::WelcomeState>,
     #[cfg(feature = "meshtastic-proto")]
     startup_welcome_queue: Vec<(tokio::time::Instant, crate::meshtastic::NodeDetectionEvent)>, // (when_to_send, event)
+    #[cfg(feature = "meshtastic-proto")]
+    startup_welcomes_queued: bool, // track if we've already queued startup welcomes
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
@@ -461,6 +463,8 @@ impl BbsServer {
             },
             #[cfg(feature = "meshtastic-proto")]
             startup_welcome_queue: Vec::new(),
+            #[cfg(feature = "meshtastic-proto")]
+            startup_welcomes_queued: false,
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -912,7 +916,18 @@ impl BbsServer {
 
                     // Receive our node id from reader (so ident shows actual ID)
                     node_id = async { if let Some(ref mut rx) = self.node_id_rx { rx.recv().await } else { std::future::pending().await } } => {
-                        if let Some(id) = node_id { self.our_node_id = Some(id); debug!("Server received our node ID: {}", id); }
+                        if let Some(id) = node_id { 
+                            self.our_node_id = Some(id); 
+                            debug!("Server received our node ID: {}", id);
+                            
+                            // Queue startup welcomes now that we have our node ID
+                            if !self.startup_welcomes_queued {
+                                self.startup_welcomes_queued = true;
+                                if let Err(e) = self.queue_startup_welcomes().await {
+                                    warn!("Failed to queue startup welcomes: {}", e);
+                                }
+                            }
+                        }
                     },
                     // Receive TextEvents from the reader task
                     text_event = async {
