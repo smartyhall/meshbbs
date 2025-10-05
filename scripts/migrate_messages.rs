@@ -4,6 +4,7 @@
 
 use chrono::{DateTime, Utc};
 use crc::{Crc, CRC_16_IBM_SDLC};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -34,8 +35,8 @@ fn generate_message_id() -> String {
         .unwrap()
         .as_secs() as u32;
     
-    let mut random_bytes = [0u8; 2];
-    getrandom::getrandom(&mut random_bytes).unwrap();
+    let mut rng = rand::thread_rng();
+    let random_bytes: [u8; 2] = [rng.gen(), rng.gen()];
     
     let timestamp_hex = format!("{:08x}", now);
     let random_hex = format!("{:02x}{:02x}", random_bytes[0], random_bytes[1]);
