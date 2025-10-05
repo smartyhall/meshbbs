@@ -556,6 +556,7 @@ pub struct NodeDetectionEvent {
     pub node_id: u32,
     pub long_name: String,
     pub short_name: String,
+    pub is_from_startup_queue: bool, // true if from startup queue, false for real-time detections
 }
 
 /// Reader task for continuous Meshtastic device reading
@@ -1267,6 +1268,7 @@ impl MeshtasticDevice {
                             node_id: id,
                             long_name: long_name.clone(),
                             short_name: short_name.clone(),
+                            is_from_startup_queue: false, // Real-time MYINFO detection
                         });
                     }
 
@@ -1974,16 +1976,15 @@ impl MeshtasticReader {
                                             user: Some(user),
                                             ..Default::default()
                                         };
-                                        self.nodes.insert(pkt.from, node_info);
-                                        
-                                        // Emit node detection event for welcome system
-                                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
-                                            node_id: pkt.from,
-                                            long_name: long_name.clone(),
-                                            short_name: short_name.clone(),
-                                        });
-                                        
-                                        // Update persistent cache
+                                    self.nodes.insert(pkt.from, node_info);
+                                    
+                                    // Emit node detection event for welcome system
+                                    let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                                        node_id: pkt.from,
+                                        long_name: long_name.clone(),
+                                        short_name: short_name.clone(),
+                                        is_from_startup_queue: false, // Real-time NODEINFO detection
+                                    });                                        // Update persistent cache
                                         self.node_cache.update_node(pkt.from, long_name.clone(), short_name.clone());
                                         
                                         // Save cache (best effort)
@@ -2091,16 +2092,15 @@ impl MeshtasticReader {
                         let long_name = user.long_name.clone();
                         let short_name = user.short_name.clone();
 
-                        self.nodes.insert(n.num, n.clone());
-                        
-                        // Emit node detection event for welcome system
-                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
-                            node_id: n.num,
-                            long_name: long_name.clone(),
-                            short_name: short_name.clone(),
-                        });
-                        
-                        self.node_cache.update_node(n.num, long_name, short_name);
+                    self.nodes.insert(n.num, n.clone());
+                    
+                    // Emit node detection event for welcome system
+                    let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                        node_id: n.num,
+                        long_name: long_name.clone(),
+                        short_name: short_name.clone(),
+                        is_from_startup_queue: false, // Config-based detection
+                    });                        self.node_cache.update_node(n.num, long_name, short_name);
 
                         // Save cache (best effort)
                         if let Err(e) = self.save_node_cache() {

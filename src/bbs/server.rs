@@ -627,10 +627,10 @@ impl BbsServer {
                 continue;
             }
             
-            // Check if already welcomed
+            // Check if already welcomed (use true since we'll queue these for staggered sending)
             let should_welcome = {
                 let state = self.welcome_state.as_ref().unwrap();
-                state.should_welcome(*node_id, &cached_node.long_name, &self.config.welcome)
+                state.should_welcome(*node_id, &cached_node.long_name, &self.config.welcome, true)
             };
             
             if should_welcome {
@@ -655,6 +655,7 @@ impl BbsServer {
                 node_id,
                 long_name,
                 short_name,
+                is_from_startup_queue: true, // Startup queue - skip rate limit
             };
             
             self.startup_welcome_queue.push((send_time, event));
@@ -1361,9 +1362,15 @@ impl BbsServer {
         }
         
         // Check if should welcome this node (immutable borrow)
+        // Skip rate limit for startup queue items
         let should_welcome = {
             let state = self.welcome_state.as_ref().unwrap();
-            state.should_welcome(event.node_id, &event.long_name, &self.config.welcome)
+            state.should_welcome(
+                event.node_id, 
+                &event.long_name, 
+                &self.config.welcome,
+                event.is_from_startup_queue
+            )
         };
         
         if !should_welcome {
@@ -2651,8 +2658,8 @@ impl BbsServer {
             if let Some(ref mut welcome_state) = self.welcome_state {
                 if let Some(long_name) = long_name_opt {
                     if crate::bbs::welcome::is_default_name(&long_name) {
-                        // Check if we should welcome this node
-                        if welcome_state.should_welcome(node_id, &long_name, &self.config.welcome) {
+                        // Check if we should welcome this node (real-time detection - apply rate limit)
+                        if welcome_state.should_welcome(node_id, &long_name, &self.config.welcome, false) {
                             debug!(
                                 "Detected unwelcomed default-named node 0x{:08X} ({}) via public message, triggering welcome",
                                 node_id, long_name
@@ -2662,6 +2669,7 @@ impl BbsServer {
                                 node_id,
                                 long_name: long_name.clone(),
                                 short_name: format!("{:04x}", node_id & 0xFFFF),
+                                is_from_startup_queue: false, // Real-time detection - apply rate limit
                             };
                             if let Err(e) = self.handle_node_detection(detection_event).await {
                                 warn!("Failed to welcome node from public message: {}", e);

@@ -133,23 +133,26 @@ impl WelcomeState {
         node_id: u32,
         node_name: &str,
         config: &WelcomeConfig,
+        skip_rate_limit: bool, // true for startup queue, false for real-time
     ) -> bool {
         // Must have default name pattern
         if !is_default_name(node_name) {
             return false;
         }
         
-        // Check global rate limit
-        if let Some(last_time) = self.last_welcome_time {
-            let elapsed = last_time.elapsed();
-            let cooldown = Duration::from_secs(config.cooldown_minutes * 60);
-            if elapsed < cooldown {
-                let remaining = cooldown.saturating_sub(elapsed).as_secs();
-                debug!(
-                    "Welcome rate limit active: {}s remaining",
-                    remaining
-                );
-                return false;
+        // Check global rate limit (skip for startup queue welcomes)
+        if !skip_rate_limit {
+            if let Some(last_time) = self.last_welcome_time {
+                let elapsed = last_time.elapsed();
+                let cooldown = Duration::from_secs(config.cooldown_minutes * 60);
+                if elapsed < cooldown {
+                    let remaining = cooldown.saturating_sub(elapsed).as_secs();
+                    debug!(
+                        "Welcome rate limit active: {}s remaining",
+                        remaining
+                    );
+                    return false;
+                }
             }
         }
         
@@ -394,17 +397,17 @@ mod tests {
             ..Default::default()
         };
         
-        // First welcome should be allowed
-        assert!(state.should_welcome(0xA3F2, "Meshtastic A3F2", &config));
+        // First welcome should be allowed (test with rate limit enabled)
+        assert!(state.should_welcome(0xA3F2, "Meshtastic A3F2", &config, false));
         
         // Record the welcome
         state.record_welcome(0xA3F2, "Meshtastic A3F2");
         
         // Same node should not be welcomed again (per-node limit)
-        assert!(!state.should_welcome(0xA3F2, "Meshtastic A3F2", &config));
+        assert!(!state.should_welcome(0xA3F2, "Meshtastic A3F2", &config, false));
         
         // Different node should also be blocked (global cooldown)
-        assert!(!state.should_welcome(0xB4E1, "Meshtastic B4E1", &config));
+        assert!(!state.should_welcome(0xB4E1, "Meshtastic B4E1", &config, false));
     }
 
     #[test]
@@ -424,7 +427,7 @@ mod tests {
         {
             let state = WelcomeState::new(path);
             let config = WelcomeConfig::default();
-            assert!(!state.should_welcome(0xA3F2, "Meshtastic A3F2", &config));
+            assert!(!state.should_welcome(0xA3F2, "Meshtastic A3F2", &config, false));
         }
     }
 }
