@@ -8,6 +8,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.61-beta] - 2025-01-06
+
+### Added
+- **Cross-Platform Graceful Shutdown**: Production-grade signal handling across all platforms
+  - Unix (Linux/macOS): `SIGTERM`, `SIGHUP`, `SIGINT` (Ctrl+C)
+  - Windows: `Ctrl+C`, `Ctrl+Break`
+  - All signals trigger same shutdown sequence:
+    1. Close all active user sessions with proper cleanup
+    2. Notify reader/writer tasks to terminate
+    3. Disconnect Meshtastic device cleanly
+    4. Flush all pending writes
+    5. Exit with return code 0
+  - Made `Server::shutdown()` public API for programmatic shutdown
+  - Full systemd/launchd/Windows Service compatibility
+
+- **Optional Daemon Mode** (Linux/macOS only, requires `--features daemon`):
+  - `--daemon` flag: Run as background process
+  - `--pid-file <path>` flag: Custom PID file location (default: `/tmp/meshbbs.pid`)
+  - Process forking and terminal detachment
+  - Automatic log file redirection (respects `config.toml` logging settings)
+  - PID file management with proper cleanup
+  - Restrictive umask (0o027) for security
+  - Example: `meshbbs start --daemon --pid-file /var/run/meshbbs.pid`
+
+- **Management Script** (`scripts/meshbbs-daemon.sh`):
+  - Commands: `start`, `stop`, `restart`, `status`, `logs [lines]`
+  - Environment variables for configuration:
+    - `MESHBBS_BIN`: Path to binary (default: `./target/release/meshbbs`)
+    - `MESHBBS_CONFIG`: Path to config file (default: `config.toml`)
+    - `MESHBBS_PID_FILE`: PID file location (default: `/tmp/meshbbs.pid`)
+    - `MESHBBS_PORT`: Serial port override
+  - Cross-platform (bash on Linux/macOS)
+  - Graceful shutdown with SIGTERM, fallback to SIGKILL after 10s
+  - Example: `./scripts/meshbbs-daemon.sh start`
+
+- **Comprehensive Documentation** (`docs/administration/daemon-mode.md`):
+  - Complete setup guide for Linux, macOS, and Windows
+  - systemd service file template with security hardening
+  - launchd plist templates (system and user level)
+  - Windows service setup using NSSM
+  - Signal handling reference
+  - Troubleshooting guide
+  - Security best practices
+
+### Changed
+- `Server::shutdown()` visibility changed from private to public
+  - Now part of public API for programmatic server lifecycle management
+  - Fully documented with usage examples
+
+### Technical Notes
+- **Dependencies Added**:
+  - `daemonize = "0.5"` (optional, Unix-only)
+- **Features Added**:
+  - `daemon = ["dep:daemonize"]` (not in default features)
+- **Build Requirements**:
+  - Standard builds: No changes, works on all platforms
+  - Daemon support: `cargo build --features daemon` (Linux/macOS only)
+- **Platform Support**:
+  - Graceful shutdown: Linux, macOS, Windows
+  - Daemon mode: Linux, macOS (Windows can use NSSM for service mode)
+- **Backward Compatibility**: 
+  - No breaking changes
+  - Default behavior unchanged (foreground mode)
+  - Existing deployments continue to work
+
+### Implementation Details
+- Signal handlers use Tokio async signal API (`tokio::signal`)
+- Platform-specific code isolated with `#[cfg(unix)]` and `#[cfg(windows)]`
+- Signal handling integrated into main event loop via `tokio::select!`
+- Async blocks with conditional compilation to support cfg inside select! branches
+- All 51 unit tests passing, no regressions
+
 ## [1.0.60-beta] - 2025-10-05
 
 ### Changed

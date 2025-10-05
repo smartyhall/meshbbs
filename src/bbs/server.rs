@@ -866,6 +866,18 @@ impl BbsServer {
         let (tx, mut rx) = mpsc::unbounded_channel();
         self.message_tx = Some(tx);
 
+        // Setup cross-platform signal handlers for graceful shutdown
+        #[cfg(unix)]
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        #[cfg(unix)]
+        let mut sighup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
+        
+        #[cfg(windows)]
+        let mut ctrl_break = tokio::signal::windows::ctrl_break()?;
+        
+        #[cfg(not(any(unix, windows)))]
+        let mut _dummy_signal = std::future::pending::<()>();
+
         // Periodic tick to drive housekeeping even without incoming events
         #[cfg(feature = "meshtastic-proto")]
         let mut periodic = tokio::time::interval(Duration::from_secs(1));
@@ -974,8 +986,51 @@ impl BbsServer {
                         }
                     }
 
+                    // Cross-platform signal handling for graceful shutdown
                     _ = tokio::signal::ctrl_c() => {
-                        info!("Received shutdown signal");
+                        info!("Received SIGINT (Ctrl+C), initiating graceful shutdown...");
+                        break;
+                    }
+                    
+                    _ = async {
+                        #[cfg(unix)]
+                        {
+                            sigterm.recv().await
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            std::future::pending::<Option<()>>().await
+                        }
+                    } => {
+                        info!("Received SIGTERM, initiating graceful shutdown...");
+                        break;
+                    }
+                    
+                    _ = async {
+                        #[cfg(unix)]
+                        {
+                            sighup.recv().await
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            std::future::pending::<Option<()>>().await
+                        }
+                    } => {
+                        info!("Received SIGHUP, initiating graceful shutdown...");
+                        break;
+                    }
+                    
+                    _ = async {
+                        #[cfg(windows)]
+                        {
+                            ctrl_break.recv().await
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            std::future::pending::<Option<()>>().await
+                        }
+                    } => {
+                        info!("Received Ctrl+Break, initiating graceful shutdown...");
                         break;
                     }
                 }
@@ -999,8 +1054,51 @@ impl BbsServer {
                         }
                     }
 
+                    // Cross-platform signal handling for graceful shutdown
                     _ = tokio::signal::ctrl_c() => {
-                        info!("Received shutdown signal");
+                        info!("Received SIGINT (Ctrl+C), initiating graceful shutdown...");
+                        break;
+                    }
+                    
+                    _ = async {
+                        #[cfg(unix)]
+                        {
+                            sigterm.recv().await
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            std::future::pending::<Option<()>>().await
+                        }
+                    } => {
+                        info!("Received SIGTERM, initiating graceful shutdown...");
+                        break;
+                    }
+                    
+                    _ = async {
+                        #[cfg(unix)]
+                        {
+                            sighup.recv().await
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            std::future::pending::<Option<()>>().await
+                        }
+                    } => {
+                        info!("Received SIGHUP, initiating graceful shutdown...");
+                        break;
+                    }
+                    
+                    _ = async {
+                        #[cfg(windows)]
+                        {
+                            ctrl_break.recv().await
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            std::future::pending::<Option<()>>().await
+                        }
+                    } => {
+                        info!("Received Ctrl+Break, initiating graceful shutdown...");
                         break;
                     }
                 }
@@ -3419,7 +3517,14 @@ impl BbsServer {
     }
 
     /// Gracefully shutdown the BBS server
-    async fn shutdown(&mut self) -> Result<()> {
+    /// 
+    /// Performs a clean shutdown by:
+    /// - Notifying all active sessions
+    /// - Closing sessions and flushing user state
+    /// - Sending shutdown signals to reader/writer tasks
+    /// - Disconnecting from Meshtastic device
+    /// - Ensuring all pending writes are completed
+    pub async fn shutdown(&mut self) -> Result<()> {
         info!("Shutting down BBS server...");
 
         // Close all sessions

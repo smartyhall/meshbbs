@@ -41,6 +41,14 @@ enum Commands {
         /// Meshtastic device port (e.g., /dev/ttyUSB0)
         #[arg(short, long)]
         port: Option<String>,
+        
+        /// Run as a background daemon (Unix only)
+        #[arg(short, long)]
+        daemon: bool,
+        
+        /// PID file location (for daemon mode)
+        #[arg(long, default_value = "/tmp/meshbbs.pid")]
+        pid_file: String,
     },
     /// Initialize a new BBS configuration
     Init,
@@ -76,8 +84,24 @@ async fn main() -> Result<()> {
     info!("Starting Meshbbs v{}", env!("CARGO_PKG_VERSION"));
 
     match cli.command {
-        Commands::Start { port } => {
+        Commands::Start { port, daemon, pid_file } => {
             let config = pre_config.unwrap_or(Config::load(&cli.config).await?);
+            
+            // Handle daemon mode (Unix only)
+            #[cfg(all(unix, feature = "daemon"))]
+            if daemon {
+                info!("Starting in daemon mode with PID file: {}", pid_file);
+                daemonize_process(&config, &pid_file)?;
+            }
+            
+            #[cfg(not(all(unix, feature = "daemon")))]
+            if daemon {
+                let _ = pid_file; // Suppress unused warning
+                eprintln!("Error: Daemon mode requires Unix platform and 'daemon' feature.");
+                eprintln!("Compile with: cargo build --features daemon");
+                std::process::exit(1);
+            }
+            
             // Capture configured port before moving config into server
             let configured_port = config.meshtastic.port.clone();
             let mut bbs = BbsServer::new(config).await?;
@@ -317,4 +341,49 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
         });
     }
     let _ = builder.try_init();
+}
+
+/// Daemonize the process (Unix only)
+/// 
+/// Forks the process, writes PID file, redirects I/O to log files,
+/// and detaches from the controlling terminal.
+#[cfg(all(unix, feature = "daemon"))]
+fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
+    use daemonize::Daemonize;
+    use std::fs::File;
+    
+    // Determine log file paths
+    let stdout_path = config.logging.file
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or("meshbbs.log");
+    let stderr_path = stdout_path; // Use same file for both
+    
+    // Create log files if they don't exist
+    let stdout_file = File::create(stdout_path)?;
+    let stderr_file = File::create(stderr_path)?;
+    
+    // Configure daemonization
+    let daemonize = Daemonize::new()
+        .pid_file(pid_file)
+        .working_directory(std::env::current_dir()?)
+        .stdout(stdout_file)
+        .stderr(stderr_file)
+        .umask(0o027) // Restrictive permissions
+        .privileged_action(|| {
+            println!("Daemonizing meshbbs...");
+        });
+    
+    // Fork and detach
+    match daemonize.start() {
+        Ok(_) => {
+            // We are now in the daemon process
+            info!("Daemon started successfully with PID file: {}", pid_file);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error daemonizing: {}", e);
+            Err(anyhow::anyhow!("Failed to daemonize: {}", e))
+        }
+    }
 }

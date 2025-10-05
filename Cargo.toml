@@ -53,6 +53,9 @@ urlencoding = "2.1"
 # File locking for concurrent access protection  
 fs2 = "0.4"
 
+# Daemon/background process support (Unix only)
+daemonize = { version = "0.5", optional = true }
+
 # Optional: For direct serial communication with Meshtastic devices
 serialport = { version = "4.0", optional = true }
 
@@ -79,6 +82,7 @@ web = ["dep:axum", "dep:tower"]
 meshtastic-proto = ["dep:prost", "dep:prost-types", "dep:bytes"]
 weather = ["dep:reqwest"]
 api-reexports = [] # Export internal types (Session, CommandProcessor, PublicState, PublicCommandParser)
+daemon = ["dep:daemonize"] # Optional daemon mode for Unix systems
 
 [dev-dependencies]
 # Testing utilities
