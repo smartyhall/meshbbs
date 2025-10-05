@@ -296,8 +296,14 @@ impl BbsServer {
         };
         
         let path = "data/welcome_queue.json";
-        if let Ok(json) = serde_json::to_string_pretty(&status) {
-            let _ = std::fs::write(path, json);
+        match serde_json::to_string_pretty(&status) {
+            Ok(json) => {
+                match std::fs::write(path, json) {
+                    Ok(_) => debug!("Wrote welcome queue status: {} entries", status.queue_length),
+                    Err(e) => warn!("Failed to write welcome queue status file: {}", e),
+                }
+            }
+            Err(e) => warn!("Failed to serialize welcome queue status: {}", e),
         }
     }
 
