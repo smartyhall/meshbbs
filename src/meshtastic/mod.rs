@@ -1015,7 +1015,7 @@ impl MeshtasticDevice {
             // If parsing fails, fall back to legacy path below.
         }
 
-        let _formatted_message = format!("TO:{} MSG:{}\n", to_node, message);
+        let formatted_message = format!("TO:{} MSG:{}\n", to_node, message);
 
         #[cfg(feature = "serial")]
         {

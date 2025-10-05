@@ -12,6 +12,8 @@ use tokio::time::{Duration, Instant};
 
 use super::public::{PublicCommandParser, PublicState};
 #[cfg(feature = "meshtastic-proto")]
+use super::public::PublicCommand;
+#[cfg(feature = "meshtastic-proto")]
 use super::roles::{role_name, LEVEL_MODERATOR, LEVEL_USER};
 use super::session::Session;
 #[cfg(feature = "weather")]
@@ -249,6 +251,31 @@ impl BbsServer {
                 None
             } else {
                 Some(sn.to_string())
+            }
+        })
+    }
+
+    #[inline]
+    fn lookup_long_name_from_cache(&self, id: u32) -> Option<String> {
+        #[derive(serde::Deserialize)]
+        struct CachedNodeInfo {
+            short_name: String,
+            long_name: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct NodeCache {
+            nodes: std::collections::HashMap<u32, CachedNodeInfo>,
+        }
+        let path = "data/node_cache.json";
+        let content = std::fs::read_to_string(path).ok()?;
+        let cleaned = content.trim_start_matches('\0');
+        let cache: NodeCache = serde_json::from_str(cleaned).ok()?;
+        cache.nodes.get(&id).and_then(|n| {
+            let ln = n.long_name.trim();
+            if ln.is_empty() {
+                None
+            } else {
+                Some(ln.to_string())
             }
         })
     }
@@ -2538,6 +2565,36 @@ impl BbsServer {
         } else {
             // Public channel event: parse lightweight commands
             self.public_state.prune_expired();
+            
+            // Check if this is a node with default name that should be welcomed
+            // This catches nodes that chat publicly without us having seen their NODEINFO
+            let node_id = ev.source;
+            // Look up node name from cache first (before any mutable borrows)
+            let long_name_opt = self.lookup_long_name_from_cache(node_id);
+            
+            if let Some(ref mut welcome_state) = self.welcome_state {
+                if let Some(long_name) = long_name_opt {
+                    if crate::bbs::welcome::is_default_name(&long_name) {
+                        // Check if we should welcome this node
+                        if welcome_state.should_welcome(node_id, &long_name, &self.config.welcome) {
+                            debug!(
+                                "Detected unwelcomed default-named node 0x{:08X} ({}) via public message, triggering welcome",
+                                node_id, long_name
+                            );
+                            // Create a NodeDetectionEvent and handle welcome
+                            let detection_event = crate::meshtastic::NodeDetectionEvent {
+                                node_id,
+                                long_name: long_name.clone(),
+                                short_name: format!("{:04x}", node_id & 0xFFFF),
+                            };
+                            if let Err(e) = self.handle_node_detection(detection_event).await {
+                                warn!("Failed to welcome node from public message: {}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            
             let cmd = self.public_parser.parse(&ev.content);
             trace!(
                 "Public command parse result for node {} => {:?}",
