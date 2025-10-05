@@ -1,11 +1,19 @@
 //! Binary entrypoint for the MeshBBS CLI.
 //!
 //! Commands:
-//! - `start [--port <path>]` - run the BBS server, optionally connecting to a device
+//! - `start [--port <path>] [--daemon] [--pid-file <path>]` - run the BBS server with optional daemon mode
 //! - `init` - create a starter `config.toml` and default topics in `data/topics.json`
 //! - `status` - print current status and a brief summary
 //! - `smoketest --port <path> [-b <baud>] [--timeout <s>]` - probe device link
 //! - `sysop-passwd` - interactively set the sysop password (argon2 hashed)
+//!
+//! ## Daemon Mode (Linux/macOS)
+//!
+//! Run meshbbs as a background service with `--daemon` flag. Features:
+//! - Custom fork-based implementation (no external dependencies)
+//! - PID file management
+//! - TTY-aware logging (file-only in daemon, console+file in foreground)
+//! - Cross-platform graceful shutdown (SIGTERM, SIGHUP, SIGINT)
 //!
 //! See the library crate docs for module‑level details: `meshbbs::`.
 use anyhow::Result;

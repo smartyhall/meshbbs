@@ -11,6 +11,7 @@
 //! - **Optional Mini-Games**: Public-channel Slot, Magic 8-Ball, and Fortune commands, plus the TinyHack DM roguelike when enabled.
 //! - **User Management**: Role-based access control (User, Moderator, Sysop) with granular topic permissions.
 //! - **Security**: Argon2id password hashing, input sanitization, and UTF-8 safe truncation helpers.
+//! - **Daemon Mode**: Production-ready background service support (Linux/macOS) with graceful shutdown and TTY-aware logging.
 //! - **Async Design**: Built with Tokio for high performance on constrained hardware.
 //!
 //! ## Quick Start

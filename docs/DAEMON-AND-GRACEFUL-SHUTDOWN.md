@@ -2,7 +2,13 @@
 
 ## Overview
 
-This document describes the cross-platform daemon mode and graceful shutdown features implemented in Meshbbs v1.0.60+.
+This document describes the cross-platform daemon mode and graceful shutdown features implemented in Meshbbs v1.0.65.
+
+**Latest Updates (v1.0.65)**:
+- Daemon mode now included in default features
+- Custom fork-based implementation (no external dependencies)
+- TTY-aware logging (eliminates duplicates in daemon mode)
+- Dependency cleanup: removed 5 unused crates
 
 ## Features Implemented
 
@@ -32,9 +38,9 @@ All signals trigger the same graceful shutdown sequence:
 Meshbbs can run as a background daemon on Linux and macOS:
 
 **Features**:
-- Process forking and detachment from terminal
+- Custom fork-based implementation (no external dependencies)
 - PID file management
-- Log file redirection
+- TTY-aware logging (eliminates duplicates)
 - Working directory preservation
 - Proper signal handling in daemon mode
 
@@ -47,7 +53,25 @@ meshbbs --config config.toml start --daemon
 meshbbs start --daemon --pid-file /var/run/meshbbs.pid
 ```
 
-### ✅ 3. Management Script
+### ✅ 3. TTY-Aware Logging (v1.0.65)
+
+Smart logging behavior based on terminal detection:
+
+**Daemon Mode** (stdout redirected to file):
+- TTY detection returns `false`
+- Logs written to file only (single copy)
+- No duplicate log entries
+- Clean, efficient logging
+
+**Foreground Mode** (stdout is terminal):
+- TTY detection returns `true`  
+- Logs written to both file (persistence) and console (real-time)
+- Interactive development/debugging
+- Same log content in both outputs
+
+**Implementation**: Uses `atty` crate to detect if stdout is connected to a TTY.
+
+### ✅ 4. Management Script
 
 A cross-platform shell script (`scripts/meshbbs-daemon.sh`) provides easy daemon management:
 
@@ -68,7 +92,7 @@ A cross-platform shell script (`scripts/meshbbs-daemon.sh`) provides easy daemon
 ./scripts/meshbbs-daemon.sh logs [lines]
 ```
 
-### ✅ 4. System Integration
+### ✅ 5. System Integration
 
 #### Linux systemd
 Full systemd service file template included in documentation with:
@@ -195,43 +219,39 @@ fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
 }
 ```
 
-## Cargo.toml Changes
+## Cargo.toml Changes (v1.0.65)
 
-Added optional daemon dependency:
+**Daemon feature now included in default build**:
 
 ```toml
-[dependencies]
-daemonize = { version = "0.5", optional = true }
-
 [features]
-daemon = ["dep:daemonize"]
+default = ["serial", "meshtastic-proto", "weather", "api-reexports", "daemon"]
+daemon = [] # Custom implementation, no external dependencies
 ```
 
-The daemon feature is **optional** and not included in default features, so:
-- Standard builds work on all platforms
-- Daemon mode requires explicit `--features daemon` flag
-- Windows builds don't need to link daemonize
+**Key Changes**:
+- Removed `daemonize` crate dependency (custom implementation)
+- Daemon feature included in default features for production deployments
+- Added `atty` crate for TTY detection
+- Removed 5 unused dependencies (getrandom, unsigned-varint, daemonize, axum, tower)
 
 ## Building
 
 ### Standard Build (All Platforms)
 ```bash
+# Includes daemon support on Linux/macOS
 cargo build --release
 ```
 
-### With Daemon Support (Linux/macOS)
+### Without Daemon Support (if needed)
 ```bash
-cargo build --release --features daemon
-```
-
-### Full Feature Build
-```bash
-cargo build --release --features "serial,meshtastic-proto,weather,daemon"
+# Explicitly exclude daemon feature
+cargo build --release --no-default-features --features "serial,meshtastic-proto,weather,api-reexports"
 ```
 
 ## Testing
 
-All existing tests continue to pass. The graceful shutdown is tested implicitly through:
+All existing tests continue to pass (184 tests). The graceful shutdown is tested implicitly through:
 - Session cleanup tests
 - Integration tests that create and destroy servers
 - Signal handling can be tested manually
@@ -300,11 +320,12 @@ Complete documentation available in:
 ### Deprecated Features
 - None
 
-### Migration Path
-No migration needed. To use new features:
-1. Rebuild with `--features daemon` (optional)
+### Migration Path (v1.0.65)
+No migration needed. Daemon mode now included in default builds:
+1. Rebuild with standard `cargo build --release`
 2. Update deployment scripts to use `--daemon` flag
 3. Create systemd/launchd service files (optional)
+4. Benefit from TTY-aware logging (no duplicates in daemon mode)
 
 ## Future Enhancements
 
@@ -318,8 +339,12 @@ Potential improvements for future versions:
 
 ## Version Information
 
-- **Implemented**: v1.0.60
-- **Status**: Stable
+- **Initial Implementation**: v1.0.60
+- **Current Version**: v1.0.65
+- **Status**: Production-ready
+- **Key Updates**:
+  - v1.0.65: Custom implementation, TTY-aware logging, included in default features
+  - v1.0.60: Initial daemon mode and graceful shutdown
 - **Tested On**: 
   - macOS 14+ (Apple Silicon & Intel)
   - Ubuntu 22.04 LTS

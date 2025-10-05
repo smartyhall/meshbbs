@@ -17,12 +17,14 @@ Meshbbs can run as a background daemon/service on Linux, macOS, and Windows, all
 ### Build with Daemon Support
 
 ```bash
-# Linux/macOS
-cargo build --release --features daemon
+# Linux/macOS (daemon feature included in default build)
+cargo build --release
 
-# Windows (daemon mode not required, runs as foreground or service)
+# Windows (daemon mode not supported, runs as foreground or Windows Service)
 cargo build --release
 ```
+
+**Note**: As of v1.0.65, daemon mode is included in the default feature set. The implementation uses a custom fork-based approach with no external dependencies, and includes TTY-aware logging to prevent duplicate log entries in daemon mode.
 
 ### Start as Daemon (Linux/macOS)
 
@@ -415,15 +417,17 @@ kill -TERM $(pgrep meshbbs)  # Should see graceful shutdown in logs
 ### Building with Daemon Support
 
 ```bash
-# Debug build
-cargo build --features daemon
+# Debug build (daemon included in default features as of v1.0.65)
+cargo build
 
 # Release build
-cargo build --release --features daemon
+cargo build --release
 
 # Test daemon mode
-cargo run --release --features daemon -- start --daemon
+cargo run --release -- start --daemon
 ```
+
+**Note**: As of v1.0.65, daemon mode is included in the default feature set and uses a custom implementation with no external dependencies.
 
 ### Debugging
 
@@ -431,8 +435,8 @@ cargo run --release --features daemon -- start --daemon
 # Run in foreground with verbose logging
 cargo run -- -vv --config config.toml start
 
-# Check signal handling
-cargo test --features daemon
+# Check signal handling (all tests include daemon code in default build)
+cargo test
 ```
 
 ## Migration from Foreground to Daemon
