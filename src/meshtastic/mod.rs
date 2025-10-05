@@ -159,10 +159,6 @@ pub enum ControlMessage {
         channel: u32,
         response_tx: tokio::sync::oneshot::Sender<bool>,
     },
-    /// Ping reply received from a node (sent by reader to writer)
-    PingReply {
-        from: u32,
-    },
     /// Provide scheduler handle to writer after creation (avoids circular ownership at construction)
     #[allow(dead_code)]
     SetSchedulerHandle(crate::bbs::dispatch::SchedulerHandle),
@@ -1448,84 +1444,6 @@ impl MeshtasticDevice {
 
         Ok(())
     }
-    
-    /// Send a REPLY_APP ping packet to test node reachability
-    /// Returns Ok(packet_id) if sent successfully, the caller should track the response
-    pub fn send_ping_packet(&mut self, to: u32, channel: u32, payload: &str) -> Result<u32> {
-        use prost::Message;
-        use proto::mesh_packet::PayloadVariant as MPPayload;
-        use proto::to_radio::PayloadVariant as TRPayload;
-        use proto::{Data, MeshPacket, PortNum, ToRadio};
-        
-        let data_msg = Data {
-            portnum: PortNum::ReplyApp as i32, // Use REPLY_APP for ping
-            payload: payload.as_bytes().to_vec().into(),
-            want_response: false,
-            dest: 0,
-            source: 0,
-            request_id: 0,
-            reply_id: 0,
-            emoji: 0,
-            bitfield: None,
-        };
-        
-        let from_node = self.our_node_id.ok_or_else(||
-            anyhow!("Cannot send ping: our_node_id not yet known")
-        )?;
-        
-        // Generate unique packet ID for tracking
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let since_epoch = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        let packet_id = (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos());
-        
-        let pkt = MeshPacket {
-            from: from_node,
-            to,
-            channel,
-            payload_variant: Some(MPPayload::Decoded(data_msg)),
-            id: packet_id,
-            rx_time: 0,
-            rx_snr: 0.0,
-            hop_limit: 3,
-            want_ack: true, // Request ACK to confirm delivery
-            priority: 70,   // RELIABLE priority
-            ..Default::default()
-        };
-        
-        let toradio = ToRadio {
-            payload_variant: Some(TRPayload::Packet(pkt)),
-        };
-        
-        #[cfg(feature = "serial")]
-        if let Some(ref mut port) = self.port {
-            let mut payload = Vec::with_capacity(128);
-            toradio.encode(&mut payload)?;
-            let mut hdr = [0u8; 4];
-            hdr[0] = 0x94;
-            hdr[1] = 0xC3;
-            hdr[2] = ((payload.len() >> 8) & 0xFF) as u8;
-            hdr[3] = (payload.len() & 0xFF) as u8;
-            port.write_all(&hdr)?;
-            port.write_all(&payload)?;
-            port.flush()?;
-            
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            
-            debug!(
-                "Sent REPLY_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
-                to, channel, packet_id
-            );
-        }
-        
-        #[cfg(not(feature = "serial"))]
-        {
-            debug!("(mock) Would send ping to 0x{:08x}", to);
-        }
-        
-        Ok(packet_id)
-    }
 }
 
 // (Public crate visibility no longer required; kept private above.)
@@ -2651,10 +2569,6 @@ impl MeshtasticWriter {
                                     let _ = response_tx.send(false); // Notify failure
                                 }
                             }
-                        }
-                        Some(ControlMessage::PingReply { from }) => {
-                            // PingReply is now unused - we use TEXT_MESSAGE_APP with routing ACKs instead
-                            debug!("(unused) PingReply from 0x{:08x}", from);
                         }
                         Some(ControlMessage::SetSchedulerHandle(handle)) => {
                             self.scheduler = Some(handle);
