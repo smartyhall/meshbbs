@@ -5,8 +5,8 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.60--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
-  [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
+   [![Version](https://img.shields.io/badge/version-1.0.60--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
   
