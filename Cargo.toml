@@ -66,7 +66,7 @@ protoc-bin-vendored = "3"
 
 [features]
 # Enable major functional features by default (serial IO, protobuf, weather, extra API re-exports)
-default = ["serial", "meshtastic-proto", "weather", "api-reexports"]
+default = ["serial", "meshtastic-proto", "weather", "api-reexports", "daemon"]
 serial = ["dep:serialport"]
 meshtastic-proto = ["dep:prost", "dep:prost-types", "dep:bytes"]
 weather = ["dep:reqwest"]
