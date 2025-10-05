@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 - _Nothing yet._
 
+## [1.0.65-beta] - 2025-10-05
+
+### Added
+- **Production Daemon Mode**: Fully functional daemon mode with custom implementation
+  - `--daemon` flag for background operation (Linux/macOS)
+  - `--pid-file <path>` for custom PID file location
+  - Clean process forking and terminal detachment
+  - Automatic log file redirection
+  - Management script at `scripts/meshbbs-daemon.sh` with start/stop/restart/status/logs commands
+
+### Fixed
+- **TTY-Aware Logging**: Eliminated duplicate log lines in daemon mode
+  - Added `atty` crate for TTY detection
+  - Daemon mode: logs written to file only (single copy)
+  - Foreground mode: logs written to both file and console
+  - Automatic behavior based on stdout TTY status
+
+### Changed
+- **Dependency Cleanup**: Removed 5 unused crates for smaller binary and faster builds
+  - Removed `getrandom` (replaced with `rand::thread_rng()` in migration script)
+  - Removed `unsigned-varint` (not used anywhere)
+  - Removed `daemonize` (custom implementation instead)
+  - Removed `axum` and `tower` (web feature not implemented)
+  - Result: 220 fewer lines in Cargo.lock
+- **Daemon Feature**: Now included in default features for production deployments
+- **Cross-Platform Graceful Shutdown**: Enhanced signal handling
+  - Unix: SIGTERM, SIGHUP, SIGINT (Ctrl+C)
+  - Windows: Ctrl+C, Ctrl+Break
+  - All signals trigger same shutdown sequence with proper cleanup
+
 ## [1.0.61-beta] - 2025-01-06
 
 ### Fixed

@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.60--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.65--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,14 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
+
+- 1.0.65-beta (2025-10-05): **Production-Ready Daemon Mode & Graceful Shutdown**
+   - **🔧 Daemon Mode**: Run meshbbs as a background service on Linux/macOS with `--daemon` flag
+   - **⚡ Graceful Shutdown**: Cross-platform signal handling (SIGTERM, SIGHUP, SIGINT, Ctrl+C/Break)
+   - **📝 Smart Logging**: TTY-aware logging - file-only in daemon mode, console+file in foreground
+   - **🧹 Dependency Cleanup**: Removed 5 unused crates (220 fewer lines in Cargo.lock)
+   - **🎯 Custom Implementation**: No external daemon dependencies, works perfectly on macOS/Linux
+   - Includes management script (`scripts/meshbbs-daemon.sh`) for start/stop/restart/status/logs
 
 - 1.0.60-beta (2025-10-05): **Welcome Queue Rate Limiting Optimization**
    - Startup welcome queue now processes every 30 seconds (10× faster than before)
@@ -80,6 +88,7 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 - **🛎️ Public Discovery + DM Sessions**: Low-noise public channel handshake leading to authenticated Direct Message sessions
 - **📨 Broadcast Semantics**: Broadcasts are best‑effort; we can request an ACK and consider any single ACK as basic delivery confirmation (no retries). DMs remain reliable with ACK tracking and retries.
 - **⚡ Async Design**: Built with Tokio for high performance
+- **🔧 Daemon Mode**: Production-ready background service with graceful shutdown (Linux/macOS)
 
 ### 💬 **Communication & Messaging**
 - **📚 Message Boards**: Traditional BBS-style message topics and forums
