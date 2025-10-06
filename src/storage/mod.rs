@@ -401,7 +401,7 @@ impl Storage {
         // Open or create the file to take an exclusive lock
         let lock_file = OpenOptions::new()
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(path)?;
