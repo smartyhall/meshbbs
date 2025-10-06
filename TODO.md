@@ -95,7 +95,7 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
   - [x] OOC <text> - out of character communication
   - [x] Room occupancy detection and feedback
   - [x] Input validation and comprehensive help system
-- [ ] Town Stump bulletin board with pagination & persistence
+- [x] Town Stump bulletin board with pagination & persistence — commit [next]
 - [ ] In-game mail storage (Sled-backed) with quotas and cleanup tasks
 - [ ] Help/tutorial command integration (contextual responses)
 - [ ] Tests guaranteeing all outbound messages < 200 bytes

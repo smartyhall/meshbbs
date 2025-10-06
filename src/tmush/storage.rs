@@ -6,14 +6,15 @@ use sled::IVec;
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
-    ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord, OBJECT_SCHEMA_VERSION,
-    PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
+    BulletinBoard, BulletinMessage, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord, 
+    BULLETIN_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 
 const TREE_PRIMARY: &str = "tinymush";
 const TREE_OBJECTS: &str = "tinymush_objects";
 const TREE_MAIL: &str = "tinymush_mail";
 const TREE_LOGS: &str = "tinymush_logs";
+const TREE_BULLETINS: &str = "tinymush_bulletins";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -53,6 +54,7 @@ pub struct TinyMushStore {
     objects: sled::Tree,
     mail: sled::Tree,
     logs: sled::Tree,
+    bulletins: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -70,12 +72,14 @@ impl TinyMushStore {
         let objects = db.open_tree(TREE_OBJECTS)?;
         let mail = db.open_tree(TREE_MAIL)?;
         let logs = db.open_tree(TREE_LOGS)?;
+        let bulletins = db.open_tree(TREE_BULLETINS)?;
         let store = Self {
             _db: db,
             primary,
             objects,
             mail,
             logs,
+            bulletins,
         };
 
         if seed_world {
@@ -223,6 +227,97 @@ impl TinyMushStore {
             inserted += 1;
         }
         Ok(inserted)
+    }
+
+    /// Create or update a bulletin board configuration
+    pub fn put_bulletin_board(&self, mut board: BulletinBoard) -> Result<(), TinyMushError> {
+        board.schema_version = BULLETIN_SCHEMA_VERSION;
+        let key = format!("boards:{}", board.id).into_bytes();
+        let bytes = Self::serialize(&board)?;
+        self.bulletins.insert(key, bytes)?;
+        self.bulletins.flush()?;
+        Ok(())
+    }
+
+    /// Get a bulletin board by ID
+    pub fn get_bulletin_board(&self, board_id: &str) -> Result<BulletinBoard, TinyMushError> {
+        let key = format!("boards:{}", board_id).into_bytes();
+        let bytes = self.bulletins.get(key)?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Bulletin board: {}", board_id)))?;
+        Ok(Self::deserialize(bytes)?)
+    }
+
+    /// Post a message to a bulletin board
+    pub fn post_bulletin(&self, mut message: BulletinMessage) -> Result<u64, TinyMushError> {
+        // Generate unique message ID based on timestamp
+        let message_id = next_timestamp_nanos() as u64;
+        message.id = message_id;
+        message.schema_version = BULLETIN_SCHEMA_VERSION;
+        
+        let key = format!("messages:{}:{:020}", message.board_id, message_id).into_bytes();
+        let bytes = Self::serialize(&message)?;
+        self.bulletins.insert(key, bytes)?;
+        self.bulletins.flush()?;
+        Ok(message_id)
+    }
+
+    /// Get a specific bulletin message
+    pub fn get_bulletin(&self, board_id: &str, message_id: u64) -> Result<BulletinMessage, TinyMushError> {
+        let key = format!("messages:{}:{:020}", board_id, message_id).into_bytes();
+        let bytes = self.bulletins.get(key)?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Bulletin message: {}", message_id)))?;
+        Ok(Self::deserialize(bytes)?)
+    }
+
+    /// List bulletin messages for a board with pagination
+    pub fn list_bulletins(&self, board_id: &str, offset: usize, limit: usize) -> Result<Vec<BulletinMessage>, TinyMushError> {
+        let prefix = format!("messages:{}:", board_id);
+        let messages: Result<Vec<_>, _> = self.bulletins
+            .scan_prefix(prefix.as_bytes())
+            .skip(offset)
+            .take(limit)
+            .map(|result| {
+                result.map_err(TinyMushError::from)
+                    .and_then(|(_key, value)| Self::deserialize(value))
+            })
+            .collect();
+        messages
+    }
+
+    /// Count total messages on a bulletin board
+    pub fn count_bulletins(&self, board_id: &str) -> Result<usize, TinyMushError> {
+        let prefix = format!("messages:{}:", board_id);
+        let count = self.bulletins
+            .scan_prefix(prefix.as_bytes())
+            .count();
+        Ok(count)
+    }
+
+    /// Remove old messages to enforce max_messages limit
+    pub fn cleanup_bulletins(&self, board_id: &str, max_messages: u32) -> Result<usize, TinyMushError> {
+        let prefix = format!("messages:{}:", board_id);
+        let all_keys: Result<Vec<_>, _> = self.bulletins
+            .scan_prefix(prefix.as_bytes())
+            .map(|result| result.map(|(key, _value)| key))
+            .collect();
+        
+        let mut keys = all_keys?;
+        if keys.len() <= max_messages as usize {
+            return Ok(0);
+        }
+
+        // Sort by key (which includes timestamp) and remove oldest
+        keys.sort();
+        let to_remove = keys.len() - max_messages as usize;
+        let mut removed = 0;
+        
+        for key in keys.iter().take(to_remove) {
+            self.bulletins.remove(key)?;
+            removed += 1;
+        }
+        
+        self.bulletins.flush()?;
+        Ok(removed)
     }
 
     /// Append a line to the TinyMUSH diagnostic log tree.

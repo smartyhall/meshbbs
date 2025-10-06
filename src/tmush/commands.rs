@@ -13,7 +13,7 @@ use crate::logutil::escape_log;
 use crate::metrics;
 use crate::storage::Storage;
 use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord, REQUIRED_START_LOCATION_ID};
-use crate::tmush::types::Direction as TmushDirection;
+use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection};
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
 
@@ -44,6 +44,11 @@ pub enum TinyMushCommand {
     Who,                    // WHO - list online players
     Score,                  // SCORE - show player stats
     Time,                   // TIME - show game time
+    
+    // Bulletin board commands (Phase 4 feature)
+    Board(Option<String>),  // BOARD, BOARD stump - view bulletin board
+    Post(String, String),   // POST subject message - post to bulletin board
+    Read(u64),             // READ 123 - read specific bulletin message
     
     // Companion commands (Phase 6 feature)
     Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
@@ -210,6 +215,9 @@ impl TinyMushProcessor {
             TinyMushCommand::Emote(text) => self.handle_emote(session, text, config).await,
             TinyMushCommand::Pose(text) => self.handle_pose(session, text, config).await,
             TinyMushCommand::Ooc(text) => self.handle_ooc(session, text, config).await,
+            TinyMushCommand::Board(board_id) => self.handle_board(session, board_id, config).await,
+            TinyMushCommand::Post(subject, message) => self.handle_post(session, subject, message, config).await,
+            TinyMushCommand::Read(message_id) => self.handle_read(session, message_id, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -340,7 +348,34 @@ impl TinyMushProcessor {
             "QUIT" | "Q" | "EXIT" => TinyMushCommand::Quit,
             "SAVE" => TinyMushCommand::Save,
 
-
+            // Bulletin board commands
+            "BOARD" | "BB" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Board(Some(parts[1].to_string()))
+                } else {
+                    TinyMushCommand::Board(None)
+                }
+            },
+            "POST" => {
+                if parts.len() > 2 {
+                    let subject = parts[1].to_string();
+                    let message = parts[2..].join(" ");
+                    TinyMushCommand::Post(subject, message)
+                } else {
+                    TinyMushCommand::Unknown("Usage: POST <subject> <message>".to_string())
+                }
+            },
+            "READ" => {
+                if parts.len() > 1 {
+                    if let Ok(message_id) = parts[1].parse::<u64>() {
+                        TinyMushCommand::Read(message_id)
+                    } else {
+                        TinyMushCommand::Unknown("Usage: READ <message_id>".to_string())
+                    }
+                } else {
+                    TinyMushCommand::Unknown("Usage: READ <message_id>".to_string())
+                }
+            },
 
             // Admin/debug
             "DEBUG" => {
@@ -809,6 +844,7 @@ impl TinyMushProcessor {
             Some("commands") | Some("COMMANDS") => Ok(self.help_commands()),
             Some("movement") | Some("MOVEMENT") => Ok(self.help_movement()),
             Some("social") | Some("SOCIAL") => Ok(self.help_social()),
+            Some("board") | Some("BOARD") | Some("bulletin") | Some("BULLETIN") => Ok(self.help_bulletin()),
             None => Ok(self.help_main()),
             Some(topic) => Ok(format!("No help available for: {}\nTry: HELP COMMANDS", topic)),
         }
@@ -848,6 +884,169 @@ impl TinyMushProcessor {
                 }
             },
             Err(e) => Ok(format!("Error saving: {}", e)),
+        }
+    }
+
+    /// Handle BOARD command - view bulletin board
+    async fn handle_board(&mut self, session: &Session, board_id: Option<String>, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // For now, only support the "stump" board in the town square
+        let board_id = board_id.unwrap_or_else(|| "stump".to_string());
+        
+        if board_id != "stump" {
+            return Ok("Only the 'stump' bulletin board is available.\nUsage: BOARD or BOARD stump".to_string());
+        }
+
+        // Check if player is in the town square
+        if player.current_room != "town_square" {
+            return Ok("You must be at the Town Square to access the Town Stump bulletin board.\nHead to the town square and try again.".to_string());
+        }
+
+        // Initialize stump board if it doesn't exist
+        let board = match self.store().get_bulletin_board(&board_id) {
+            Ok(board) => board,
+            Err(TinyMushError::NotFound(_)) => {
+                // Create the stump board
+                let board = BulletinBoard::new(
+                    "stump",
+                    "Town Stump",
+                    "A weathered stump with notices posted by travelers",
+                    "town_square"
+                );
+                self.store().put_bulletin_board(board.clone())?;
+                board
+            },
+            Err(e) => return Ok(format!("Bulletin board error: {}", e)),
+        };
+
+        // Get recent messages (last 10)
+        let messages = match self.store().list_bulletins(&board_id, 0, 10) {
+            Ok(messages) => messages,
+            Err(e) => return Ok(format!("Error reading bulletins: {}", e)),
+        };
+
+        let mut response = format!("=== {} ===\n{}\n\n", board.name, board.description);
+        
+        if messages.is_empty() {
+            response.push_str("No messages posted.\n");
+        } else {
+            response.push_str("Recent messages:\n");
+            for (i, msg) in messages.iter().enumerate() {
+                // Format: [ID] Subject - by Author (date)
+                let date = msg.posted_at.format("%m/%d");
+                response.push_str(&format!(
+                    "[{}] {} - by {} ({})\n",
+                    msg.id, msg.subject, msg.author, date
+                ));
+                
+                // Limit to fit in 200 bytes
+                if response.len() > 150 {
+                    let remaining = messages.len() - i - 1;
+                    if remaining > 0 {
+                        response.push_str(&format!("... and {} more.\n", remaining));
+                    }
+                    break;
+                }
+            }
+        }
+        
+        response.push_str("\nPOST <subject> <message> to add\nREAD <id> to read a message");
+        Ok(response)
+    }
+
+    /// Handle POST command - post message to bulletin board
+    async fn handle_post(&mut self, session: &Session, subject: String, message: String, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check if player is in the town square
+        if player.current_room != "town_square" {
+            return Ok("You must be at the Town Square to post to the bulletin board.".to_string());
+        }
+
+        // Validate input
+        if subject.trim().is_empty() {
+            return Ok("Subject cannot be empty.\nUsage: POST <subject> <message>".to_string());
+        }
+        
+        if message.trim().is_empty() {
+            return Ok("Message cannot be empty.\nUsage: POST <subject> <message>".to_string());
+        }
+
+        if subject.len() > 50 {
+            return Ok("Subject too long (max 50 characters).".to_string());
+        }
+
+        if message.len() > 300 {
+            return Ok("Message too long (max 300 characters).".to_string());
+        }
+
+        // Create the bulletin message
+        let bulletin = BulletinMessage::new(
+            &session.display_name(),
+            &subject,
+            &message,
+            "stump"
+        );
+
+        // Post the message
+        match self.store().post_bulletin(bulletin) {
+            Ok(message_id) => {
+                // Clean up old messages if needed
+                let _ = self.store().cleanup_bulletins("stump", 50);
+                
+                Ok(format!(
+                    "Message posted to Town Stump bulletin board.\nMessage ID: {} - '{}'\nOthers can read it with: READ {}",
+                    message_id, subject, message_id
+                ))
+            },
+            Err(e) => Ok(format!("Failed to post message: {}", e)),
+        }
+    }
+
+    /// Handle READ command - read specific bulletin message
+    async fn handle_read(&mut self, session: &Session, message_id: u64, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check if player is in the town square
+        if player.current_room != "town_square" {
+            return Ok("You must be at the Town Square to read bulletin board messages.".to_string());
+        }
+
+        // Get the message
+        match self.store().get_bulletin("stump", message_id) {
+            Ok(message) => {
+                let date = message.posted_at.format("%b %d, %Y at %H:%M");
+                let mut response = format!(
+                    "=== Message {} ===\n\
+                    From: {}\n\
+                    Subject: {}\n\
+                    Date: {}\n\n\
+                    {}",
+                    message.id, message.author, message.subject, date, message.body
+                );
+
+                // Ensure we stay under 200 bytes
+                if response.len() > 200 {
+                    response.truncate(197);
+                    response.push_str("...");
+                }
+
+                Ok(response)
+            },
+            Err(TinyMushError::NotFound(_)) => {
+                Ok(format!("No bulletin message with ID {}.\nUse BOARD to see available messages.", message_id))
+            },
+            Err(e) => Ok(format!("Error reading message: {}", e)),
         }
     }
 
@@ -917,25 +1116,27 @@ impl TinyMushProcessor {
         "Look: L (room) L <thing>\n" +
         "Info: I (inventory) WHO SCORE WHERE\n" +
         "Talk: SAY <text> EMOTE <action>\n" +
+        "Board: BOARD POST <subj> <msg> READ <id>\n" +
         "System: HELP <topic> SAVE QUIT\n\n" +
-        "Topics: COMMANDS MOVEMENT SOCIAL"
+        "Topics: COMMANDS MOVEMENT SOCIAL BOARD"
     }
 
     /// Commands help
     fn help_commands(&self) -> String {
         "=== COMMANDS ===\n".to_string() +
         "L/LOOK - examine room/object\n" +
-        "I/INV - show inventory\n" +
+        "I/INV - show inventory\n" +   
         "WHO - list online players\n" +
         "WHERE - show current location\n" +
         "SCORE - show your stats\n" +
         "SAY <text> - speak to room\n" +
+        "BOARD - view bulletin board\n" +
+        "POST <subject> <message> - post to board\n" +
+        "READ <id> - read bulletin message\n" +
         "HELP <topic> - get help\n" +
         "SAVE - save your progress\n" +
         "QUIT - return to main menu"
-    }
-
-    /// Movement help
+    }    /// Movement help
     fn help_movement(&self) -> String {
         "=== MOVEMENT ===\n".to_string() +
         "N/NORTH - go north\n" +
@@ -963,6 +1164,23 @@ impl TinyMushProcessor {
         "EMOTE waves cheerfully\n" +
         "POSE is leaning against the wall\n" +
         "OOC This is really cool!"
+    }
+
+    /// Bulletin board help
+    fn help_bulletin(&self) -> String {
+        "=== BULLETIN BOARD ===\n".to_string() +
+        "The Town Stump bulletin board lets you\n" +
+        "leave messages for other players.\n\n" +
+        "BOARD - view recent messages\n" +
+        "POST <subject> <message> - post a message\n" +
+        "READ <id> - read specific message\n\n" +
+        "Examples:\n" +
+        "POST \"Looking for party\" Anyone want to explore?\n" +
+        "READ 123\n\n" +
+        "Notes:\n" +
+        "- Must be at Town Square to use\n" +
+        "- Subject max 50 chars, message max 300\n" +
+        "- Old messages are automatically cleaned up"
     }
 }
 

@@ -267,3 +267,61 @@ impl PlayerRecord {
         self.updated_at = Utc::now();
     }
 }
+
+pub const BULLETIN_SCHEMA_VERSION: u8 = 1;
+
+/// A single bulletin board message
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BulletinMessage {
+    pub id: u64,
+    pub author: String,
+    pub subject: String,
+    pub body: String,
+    pub posted_at: DateTime<Utc>,
+    pub board_id: String,
+    pub schema_version: u8,
+}
+
+impl BulletinMessage {
+    pub fn new(author: &str, subject: &str, body: &str, board_id: &str) -> Self {
+        Self {
+            id: 0, // Will be set by storage layer
+            author: author.to_string(),
+            subject: subject.to_string(),
+            body: body.to_string(),
+            posted_at: Utc::now(),
+            board_id: board_id.to_string(),
+            schema_version: BULLETIN_SCHEMA_VERSION,
+        }
+    }
+}
+
+/// Configuration and metadata for a bulletin board
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BulletinBoard {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub room_id: String,
+    pub max_messages: u32,
+    pub max_message_length: u32,
+    pub allow_anonymous: bool,
+    pub created_at: DateTime<Utc>,
+    pub schema_version: u8,
+}
+
+impl BulletinBoard {
+    pub fn new(id: &str, name: &str, description: &str, room_id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            room_id: room_id.to_string(),
+            max_messages: 100,
+            max_message_length: 500,
+            allow_anonymous: false,
+            created_at: Utc::now(),
+            schema_version: BULLETIN_SCHEMA_VERSION,
+        }
+    }
+}
