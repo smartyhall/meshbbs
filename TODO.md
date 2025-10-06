@@ -15,7 +15,8 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
 - [x] Integrate parser with session state machine (`SessionState::TinyMush`) — commit 97a797d
 - [x] Node ID → session mapping with per-mode rate limiting — commit 97a797d
 - [ ] Latency simulation harness / tests
-- [ ] Moderation hooks & logging of rejected inputs (per design security section)hand- [ ] Implement `seed_world` migration to load Old Towne Mesh world into Sled-on work for the TinyMUSH project. It bridges the high-level roadmap in `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md` and the detailed specification in `docs/development/MUD_MUSH_DESIGN.md` so we can see the next actionable steps at a glance.
+- [ ] Moderation hooks & logging of rejected inputs (per design security section)hand- 
+- [ ] Implement `seed_world` migration to load Old Towne Mesh world into Sled-on work for the TinyMUSH project. It bridges the high-level roadmap in `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md` and the detailed specification in `docs/development/MUD_MUSH_DESIGN.md` so we can see the next actionable steps at a glance.
 
 - **Plan reference**: `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md`
 - **Design reference**: `docs/development/MUD_MUSH_DESIGN.md`
@@ -86,7 +87,14 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
 ## Phase 4 — Social & Communication Systems
 (Ref: Plan §Phase 4, Design §§Social Features, Async Communication, Help System)
 
-- [ ] Implement `say`, `whisper`, `pose`, `emote`, `ooc`
+- [x] Implement `say`, `whisper`, `pose`, `emote`, `ooc` — commit a06bafe
+  - [x] SAY <text> / ' <text> - speak aloud to room players
+  - [x] WHISPER <player> <text> / WHIS <player> <text> - private messages  
+  - [x] EMOTE <action> / : <action> - perform actions
+  - [x] POSE <pose> / ; <pose> - strike poses
+  - [x] OOC <text> - out of character communication
+  - [x] Room occupancy detection and feedback
+  - [x] Input validation and comprehensive help system
 - [ ] Town Stump bulletin board with pagination & persistence
 - [ ] In-game mail storage (Sled-backed) with quotas and cleanup tasks
 - [ ] Help/tutorial command integration (contextual responses)

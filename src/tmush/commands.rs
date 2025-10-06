@@ -215,7 +215,7 @@ impl TinyMushProcessor {
     }
 
     /// Parse raw input into TinyMUSH command enum
-    fn parse_command(&self, input: &str) -> TinyMushCommand {
+    pub fn parse_command(&self, input: &str) -> TinyMushCommand {
         let input = input.trim().to_uppercase();
         let parts: Vec<&str> = input.split_whitespace().collect();
         
