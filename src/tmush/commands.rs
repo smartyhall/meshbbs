@@ -199,6 +199,10 @@ impl TinyMushProcessor {
             TinyMushCommand::Who => self.handle_who(session, config).await,
             TinyMushCommand::Score => self.handle_score(session, config).await,
             TinyMushCommand::Say(text) => self.handle_say(session, text, config).await,
+            TinyMushCommand::Whisper(target, text) => self.handle_whisper(session, target, text, config).await,
+            TinyMushCommand::Emote(text) => self.handle_emote(session, text, config).await,
+            TinyMushCommand::Pose(text) => self.handle_pose(session, text, config).await,
+            TinyMushCommand::Ooc(text) => self.handle_ooc(session, text, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -255,6 +259,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::Say(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Say("".to_string())
+                }
+            },
+            "WHISPER" | "WHIS" => {
+                if parts.len() > 2 {
+                    let target = parts[1].to_string();
+                    let message = parts[2..].join(" ");
+                    TinyMushCommand::Whisper(target, message)
+                } else {
+                    TinyMushCommand::Unknown(format!("Usage: WHISPER <player> <message>"))
                 }
             },
             "EMOTE" | ":" => {
@@ -320,14 +333,7 @@ impl TinyMushProcessor {
             "QUIT" | "Q" | "EXIT" => TinyMushCommand::Quit,
             "SAVE" => TinyMushCommand::Save,
 
-            // Whisper (special format: W player text)
-            "WHISPER" => {
-                if parts.len() > 2 {
-                    TinyMushCommand::Whisper(parts[1].to_string(), parts[2..].join(" "))
-                } else {
-                    TinyMushCommand::Unknown(input)
-                }
-            },
+
 
             // Admin/debug
             "DEBUG" => {
@@ -621,16 +627,173 @@ impl TinyMushProcessor {
     }
 
     /// Handle SAY command - speak to room
-    async fn handle_say(&mut self, session: &Session, text: String, _config: &Config) -> Result<String> {
+    async fn handle_say(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
         if text.trim().is_empty() {
             return Ok("Say what?".to_string());
         }
 
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get other players in the same room
+        let room_manager = self.get_room_manager(config).await?;
+        let players_in_room = room_manager.get_players_in_room(&player.current_room);
+        let others_count = players_in_room.len().saturating_sub(1); // Exclude self
+
+        let mut response = format!("You say: \"{}\"\n", text);
+        if others_count > 0 {
+            response.push_str(&format!(
+                "({} other player{} in room will also see this)\n",
+                others_count,
+                if others_count == 1 { "" } else { "s" }
+            ));
+        } else {
+            response.push_str("(No other players in room)\n");
+        }
+
+        Ok(response)
+    }
+
+    /// Handle WHISPER command - private message to another player  
+    async fn handle_whisper(&mut self, session: &Session, target: String, text: String, config: &Config) -> Result<String> {
+        if text.trim().is_empty() {
+            return Ok("Whisper what?".to_string());
+        }
+
+        if target.trim().is_empty() {
+            return Ok("Whisper to whom?".to_string());
+        }
+
         let speaker = session.display_name();
-        Ok(format!(
-            "{}: \"{}\"\n\n(Other players will see this in Phase 4)",
-            speaker, text
-        ))
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check if target player exists and is in same room
+        let room_manager = self.get_room_manager(config).await?;
+        let players_in_room = room_manager.get_players_in_room(&player.current_room);
+        
+        let target_lower = target.to_lowercase();
+        let target_found = players_in_room.iter()
+            .find(|p| p.to_lowercase().starts_with(&target_lower));
+
+        if let Some(target_player) = target_found {
+            if target_player.to_lowercase() == speaker.to_lowercase() {
+                return Ok("You can't whisper to yourself!".to_string());
+            }
+            
+            Ok(format!(
+                "You whisper to {}: \"{}\"\n(Private message - only {} will see this)",
+                target_player, text, target_player
+            ))
+        } else {
+            Ok(format!(
+                "Player '{}' not found in this room.\nPlayers here: {}",
+                target,
+                if players_in_room.is_empty() {
+                    "none".to_string()
+                } else {
+                    players_in_room.join(", ")
+                }
+            ))
+        }
+    }
+
+    /// Handle EMOTE command - perform an action
+    async fn handle_emote(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
+        if text.trim().is_empty() {
+            return Ok("Emote what?".to_string());
+        }
+
+        let speaker = session.display_name();
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get other players in the same room
+        let room_manager = self.get_room_manager(config).await?;
+        let players_in_room = room_manager.get_players_in_room(&player.current_room);
+        let others_count = players_in_room.len().saturating_sub(1); // Exclude self
+
+        let mut response = format!("{} {}\n", speaker, text);
+        if others_count > 0 {
+            response.push_str(&format!(
+                "(Action visible to {} other player{})\n",
+                others_count,
+                if others_count == 1 { "" } else { "s" }
+            ));
+        } else {
+            response.push_str("(No other players in room to see your action)\n");
+        }
+
+        Ok(response)
+    }
+
+    /// Handle POSE command - strike a pose  
+    async fn handle_pose(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
+        if text.trim().is_empty() {
+            return Ok("Strike what pose?".to_string());
+        }
+
+        let speaker = session.display_name();
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get other players in the same room
+        let room_manager = self.get_room_manager(config).await?;
+        let players_in_room = room_manager.get_players_in_room(&player.current_room);
+        let others_count = players_in_room.len().saturating_sub(1); // Exclude self
+
+        // Pose format is different from emote - it's a descriptive action
+        let mut response = format!("{} {}\n", speaker, text);
+        if others_count > 0 {
+            response.push_str(&format!(
+                "(Pose visible to {} other player{})\n",
+                others_count,
+                if others_count == 1 { "" } else { "s" }
+            ));
+        } else {
+            response.push_str("(No other players in room to see your pose)\n");
+        }
+
+        Ok(response)
+    }
+
+    /// Handle OOC command - out of character communication
+    async fn handle_ooc(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
+        if text.trim().is_empty() {
+            return Ok("Say what out of character?".to_string());
+        }
+
+        let speaker = session.display_name();
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get other players in the same room
+        let room_manager = self.get_room_manager(config).await?;
+        let players_in_room = room_manager.get_players_in_room(&player.current_room);
+        let others_count = players_in_room.len().saturating_sub(1); // Exclude self
+
+        let mut response = format!("[OOC] {}: {}\n", speaker, text);
+        if others_count > 0 {
+            response.push_str(&format!(
+                "(OOC message visible to {} other player{})\n",
+                others_count,
+                if others_count == 1 { "" } else { "s" }
+            ));
+        } else {
+            response.push_str("(No other players in room to see your OOC message)\n");
+        }
+
+        Ok(response)
     }
 
     /// Handle HELP command
@@ -781,12 +944,18 @@ impl TinyMushProcessor {
     /// Social commands help  
     fn help_social(&self) -> String {
         "=== SOCIAL ===\n".to_string() +
-        "SAY <text> - speak aloud\n" +
-        "EMOTE <action> - perform action\n" +
-        "POSE <pose> - strike a pose\n" +
-        "OOC <text> - out of character\n" +
+        "SAY <text> (') - speak aloud to room\n" +
+        "WHISPER <player> <text> - private message\n" +
+        "EMOTE <action> (:) - perform action\n" +
+        "POSE <pose> (;) - strike a pose\n" +
+        "OOC <text> - out of character chat\n" +
         "WHO - see other players\n\n" +
-        "(Full social features in Phase 4)"
+        "Examples:\n" +
+        "SAY Hello everyone!\n" +
+        "WHISPER alice How are you?\n" +
+        "EMOTE waves cheerfully\n" +
+        "POSE is leaning against the wall\n" +
+        "OOC This is really cool!"
     }
 }
 
