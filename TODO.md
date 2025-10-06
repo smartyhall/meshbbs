@@ -109,13 +109,95 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
 - [ ] Tests guaranteeing all outbound messages < 200 bytes
 
 ## Phase 5 — Economy, Inventory, Shops
-(Ref: Plan §Phase 5, Design §§Enhanced Economy, Inventory Management)
+(Ref: Plan §Phase 5, Design §§Enhanced Economy, Dual Currency Systems, Inventory Management)
 
-- [ ] Multi-tier currency struct (platinum/gold/silver/copper)
-- [ ] Inventory limits, weight checks, stacking rules
+### Currency System Foundation
+- [ ] Dual currency system architecture
+  - [ ] `CurrencySystem` enum (Decimal | MultiTier)
+  - [ ] `DecimalCurrency` config struct (name, symbol, minor_units_per_major, decimal_places)
+  - [ ] `MultiTierCurrency` config struct (tier names/symbols, conversion ratios)
+  - [ ] `CurrencyAmount` enum with unified base_value() accessor
+  - [ ] World-level currency configuration in TOML
+  - [ ] Zero floating-point arithmetic (integer-only storage)
+
+### Decimal Currency System (Modern/Sci-Fi)
+- [ ] Integer minor unit storage (cents-equivalent)
+- [ ] Configurable currency name (Credits, MiniBucks, Euros, etc.)
+- [ ] Configurable symbol ($, €, ¤, ₡, etc.)
+- [ ] Configurable decimal places (default 2)
+- [ ] Display formatting (e.g., "$10.50", "¤123.45")
+- [ ] Input parsing for decimal amounts
+- [ ] Validation for 200-byte message constraints
+
+### Multi-Tier Currency System (Fantasy/Medieval)
+- [ ] Base copper unit storage with tier ratios
+- [ ] Configurable tier names (platinum/gold/silver/copper)
+- [ ] Configurable tier symbols (pp/gp/sp/cp)
+- [ ] Configurable conversion ratios (default: 1pp=1M cp, 1gp=10k cp, 1sp=100cp)
+- [ ] Multi-denomination display (e.g., "15gp 25sp 30cp")
+- [ ] Input parsing for multi-tier amounts
+- [ ] Auto-conversion between tiers
+
+### Currency Conversion & Migration
+- [ ] Bidirectional conversion functions (decimal ↔ multi-tier)
+- [ ] Standard conversion ratio: 100 copper = 1 major decimal unit
+- [ ] Precision preservation during conversion
+- [ ] Admin world migration command
+- [ ] Batch conversion for player wallets, items, shops, banks
+- [ ] Conversion validation and rollback capability
+- [ ] Migration audit logging
+
+### Transaction Engine
+- [ ] Unified `Transaction` struct for both currency systems
+- [ ] Atomic operations: add(), subtract(), can_afford()
+- [ ] Transaction reasons enum (Purchase, Sale, Quest, Trade, etc.)
+- [ ] Transaction execution with rollback on failure
+- [ ] Transaction audit log with timestamps
+- [ ] Admin transaction history viewing
+- [ ] Admin transaction rollback capability
+- [ ] Prevent currency duplication exploits
+- [ ] System mismatch error handling
+
+### Inventory System
+- [ ] Inventory struct with capacity and weight limits
+- [ ] Item metadata: value (CurrencyAmount), weight, stackable flag
+- [ ] Item quality/condition system for value degradation
+- [ ] Inventory management commands: GIVE, TAKE, DROP, INVENTORY
+- [ ] Prevent item duplication exploits (transaction-based transfers)
+- [ ] Inventory persistence across sessions
+
+### Shop & Vendor System
+- [ ] Shop configuration with inventory and pricing (both currency systems)
+- [ ] Dynamic pricing with stock levels and reputation discounts
+- [ ] Vendor NPC integration with dialog and purchase flow
+- [ ] Buy/sell ratio configuration per vendor
 - [ ] Vendor scripting for Bakery, General Store, Blacksmith, etc.
-- [ ] Bank interactions with ledger + audit logging
-- [ ] Transaction rollback safeguards & unit tests
+- [ ] Stock management and restock scheduling
+- [ ] Infinite stock items (basic supplies)
+
+### Banking System
+- [ ] Bank deposit/withdraw with ledger entries
+- [ ] Account balance tracking per player
+- [ ] Vault storage for items (limited slots)
+- [ ] Bank transfer between players
+- [ ] Interest/fees configuration (optional)
+- [ ] Audit logging for all bank transactions
+
+### Player-to-Player Economy
+- [ ] Secure two-phase trading system
+- [ ] Trade offer and counter-offer mechanics
+- [ ] Currency + item exchanges in single transaction
+- [ ] Trade confirmation from both parties
+- [ ] Trade rollback on disconnect/timeout
+
+### Testing & Validation
+- [ ] Unit tests for each currency system independently
+- [ ] Integration tests for currency conversion workflows
+- [ ] Transaction rollback tests (failure recovery)
+- [ ] Economy stress test (10k simulated transactions)
+- [ ] Anti-duplication tests for items and currency
+- [ ] 200-byte validation for all currency displays
+- [ ] Transaction audit log verification
 
 ## Phase 6 — Quest, Tutorial, Progression
 (Ref: Plan §Phase 6, Design §§Tutorial, Quests, Achievements, New Player Experience)

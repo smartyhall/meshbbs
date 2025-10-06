@@ -2338,57 +2338,230 @@ bob now owns FEEP.
 
 ## 💰 Enhanced Economy System
 
-### Multi-Tier Currency
+### Currency System Design Philosophy
 
+TinyMUSH supports **two distinct currency systems** to accommodate different world themes:
+
+1. **Decimal Currency** - Modern/sci-fi worlds (e.g., credits, dollars, euros)
+2. **Multi-Tier Currency** - Fantasy worlds (e.g., platinum/gold/silver/copper)
+
+World builders choose **one system per world** via configuration. Both systems use integer-only storage to avoid floating-point precision issues.
+
+---
+
+### Decimal Currency System
+
+**Best for:** Modern, sci-fi, or contemporary settings
+
+**Configuration:**
+```toml
+[tinymush.currency]
+system = "decimal"
+
+[tinymush.currency.decimal]
+name = "Credits"           # Currency name (singular)
+name_plural = "Credits"    # Currency name (plural)
+symbol = "¤"               # Display symbol
+minor_units_per_major = 100  # Like cents in a dollar
+decimal_places = 2         # Display precision
+```
+
+**Data Structure:**
 ```rust
-pub struct Currency {
-    platinum: u32,      // 1 platinum = 100 gold
-    gold: u32,          // 1 gold = 100 silver  
-    silver: u32,        // 1 silver = 100 copper
-    copper: u32,        // Base currency
+pub struct DecimalCurrency {
+    pub name: String,              // "Credit", "MiniBuck", "Euro"
+    pub name_plural: String,       // "Credits", "MiniBucks", "Euros"
+    pub symbol: String,            // "$", "€", "¤", "₡"
+    pub minor_units_per_major: u32, // Usually 100
+    pub decimal_places: u8,        // Usually 2
 }
 
-impl Currency {
-    pub fn total_copper(&self) -> u64 {
-        self.copper as u64 +
-        (self.silver as u64 * 100) +
-        (self.gold as u64 * 10_000) +
-        (self.platinum as u64 * 1_000_000)
+pub struct DecimalAmount {
+    minor_units: i64,  // Always stored as smallest unit (cents)
+}
+
+impl DecimalAmount {
+    pub fn from_major_minor(major: i64, minor: u32) -> Self {
+        let total = major * 100 + minor as i64;
+        DecimalAmount { minor_units: total }
     }
     
-    pub fn from_copper(amount: u64) -> Self {
-        let platinum = (amount / 1_000_000) as u32;
-        let gold = ((amount % 1_000_000) / 10_000) as u32;
-        let silver = ((amount % 10_000) / 100) as u32;
-        let copper = (amount % 100) as u32;
-        
-        Currency { platinum, gold, silver, copper }
+    pub fn to_display(&self, config: &DecimalCurrency) -> String {
+        let major = self.minor_units / config.minor_units_per_major as i64;
+        let minor = (self.minor_units % config.minor_units_per_major as i64).abs();
+        format!("{}{}.{:02}", config.symbol, major, minor)
     }
 }
 ```
 
-**Currency Display:**
-
+**Display Examples:**
 ```
 === WALLET ===
-💎 Platinum: 2
-🟡 Gold: 47
-⚪ Silver: 93
-🟤 Copper: 15
+Balance: ¤1,234.56
+(Credits)
 
-Total value: 2,479,315 copper
+→ BUY potion
+*Purchased health potion*
+Cost: ¤15.00
+Balance: ¤1,234.56 → ¤1,219.56
+(~95 bytes)
+
+=== SHOP: General Store ===
+1. Rope        $5.50
+2. Torch       $2.00
+3. Rations     $8.75
+4. Backpack    $25.00
+
+[B]uy [S]ell [E]xit
+(~105 bytes)
+```
+
+**Banking with Decimal:**
+```
+→ A BANK
+
+=== CREDIT UNION ===
+Welcome, alice!
+
+Account: €5,000.00
+Hand: €123.45
+
+[D]eposit [W]ithdraw
+[T]ransfer [H]istory
+[E]xit
+
+→ D 100
+
+*Deposited €100.00*
+Account: €5,000.00 → €5,100.00
+Hand: €123.45 → €23.45
+(~140 bytes)
+```
+
+---
+
+### Multi-Tier Currency System
+
+**Best for:** Fantasy, medieval, or traditional RPG settings
+
+**Configuration:**
+```toml
+[tinymush.currency]
+system = "multi_tier"
+
+[tinymush.currency.multi_tier]
+platinum_name = "platinum"
+platinum_symbol = "pp"
+gold_name = "gold"
+gold_symbol = "gp"
+silver_name = "silver"
+silver_symbol = "sp"
+copper_name = "copper"
+copper_symbol = "cp"
+
+# Conversion ratios (from copper)
+platinum_ratio = 1000000  # 1pp = 1,000,000cp
+gold_ratio = 10000        # 1gp = 10,000cp
+silver_ratio = 100        # 1sp = 100cp
+copper_ratio = 1          # 1cp = 1cp
+```
+
+**Data Structure:**
+```rust
+pub struct MultiTierCurrency {
+    pub platinum_name: String,
+    pub platinum_symbol: String,
+    pub gold_name: String,
+    pub gold_symbol: String,
+    pub silver_name: String,
+    pub silver_symbol: String,
+    pub copper_name: String,
+    pub copper_symbol: String,
+    
+    // Ratios relative to copper (base unit)
+    pub platinum_ratio: u64,  // Default: 1,000,000
+    pub gold_ratio: u64,      // Default: 10,000
+    pub silver_ratio: u64,    // Default: 100
+    pub copper_ratio: u64,    // Default: 1
+}
+
+pub struct MultiTierAmount {
+    copper_value: i64,  // Always stored as copper (base unit)
+}
+
+impl MultiTierAmount {
+    pub fn from_components(platinum: u32, gold: u32, silver: u32, copper: u32, 
+                          config: &MultiTierCurrency) -> Self {
+        let total = (platinum as i64 * config.platinum_ratio as i64) +
+                    (gold as i64 * config.gold_ratio as i64) +
+                    (silver as i64 * config.silver_ratio as i64) +
+                    (copper as i64);
+        MultiTierAmount { copper_value: total }
+    }
+    
+    pub fn to_components(&self, config: &MultiTierCurrency) -> (u32, u32, u32, u32) {
+        let mut remaining = self.copper_value;
+        let platinum = (remaining / config.platinum_ratio as i64) as u32;
+        remaining %= config.platinum_ratio as i64;
+        let gold = (remaining / config.gold_ratio as i64) as u32;
+        remaining %= config.gold_ratio as i64;
+        let silver = (remaining / config.silver_ratio as i64) as u32;
+        remaining %= config.silver_ratio as i64;
+        let copper = remaining as u32;
+        
+        (platinum, gold, silver, copper)
+    }
+    
+    pub fn to_display(&self, config: &MultiTierCurrency) -> String {
+        let (pp, gp, sp, cp) = self.to_components(config);
+        let mut parts = Vec::new();
+        if pp > 0 { parts.push(format!("{}pp", pp)); }
+        if gp > 0 { parts.push(format!("{}gp", gp)); }
+        if sp > 0 { parts.push(format!("{}sp", sp)); }
+        if cp > 0 { parts.push(format!("{}cp", cp)); }
+        
+        if parts.is_empty() { "0cp".to_string() } 
+        else { parts.join(" ") }
+    }
+}
+```
+
+**Display Examples:**
+```
+=== WALLET ===
+💎 Platinum: 2pp
+🟡 Gold: 47gp
+⚪ Silver: 93sp
+🟤 Copper: 15cp
+
+Total: 2,479,315 copper
+(~110 bytes)
+
+→ BUY sword
+*Purchased iron sword*
+Cost: 15gp
+Balance: 47gp 93sp 15cp
+       → 32gp 93sp 15cp
+(~95 bytes)
+
+=== SHOP: Blacksmith ===
+1. Dagger      5gp
+2. Sword       15gp
+3. Axe         20gp
+4. Plate Mail  150gp
+
+[B]uy [S]ell [E]xit
 (~100 bytes)
 ```
 
-### Banking System
-
+**Banking with Multi-Tier:**
 ```
 → A BANK
 
 === TOWN BANK ===
 Welcome, alice!
 
-Account balance: 500g
+Account: 500gp
 Vault storage: 3/10 items
 
 [D]eposit [W]ithdraw
@@ -2428,9 +2601,239 @@ Vault: 3/10 → 4/10
 (~140 bytes)
 ```
 
-**Player-to-Player Secure Trading:**
+---
+
+### Currency System Conversion
+
+**Scenario:** World builder wants to convert an existing world from one currency system to another.
+
+**Conversion Ratios:**
+
+The systems use a common internal representation to enable conversion:
+
+```rust
+// Standard conversion: 1 major decimal unit = 100 copper
+const DECIMAL_TO_COPPER_RATIO: u64 = 100;
+
+// Multi-tier ratios (configurable, defaults shown):
+// 1 platinum = 1,000,000 copper
+// 1 gold     = 10,000 copper  
+// 1 silver   = 100 copper
+// 1 copper   = 1 copper
+
+pub fn convert_decimal_to_multitier(
+    amount: &DecimalAmount, 
+    mt_config: &MultiTierCurrency
+) -> MultiTierAmount {
+    // Decimal minor units map directly to copper
+    let copper_value = amount.minor_units;
+    MultiTierAmount { copper_value }
+}
+
+pub fn convert_multitier_to_decimal(
+    amount: &MultiTierAmount,
+    dec_config: &DecimalCurrency
+) -> DecimalAmount {
+    // Copper maps directly to decimal minor units
+    let minor_units = amount.copper_value;
+    DecimalAmount { minor_units }
+}
+```
+
+**Conversion Examples:**
 
 ```
+Decimal → Multi-Tier:
+  $10.50 (1,050 cents)
+  = 1,050 copper
+  = 10gp 50cp
+
+  €1,234.56 (123,456 cents)
+  = 123,456 copper
+  = 12gp 34sp 56cp
+
+Multi-Tier → Decimal:
+  15gp 25sp 30cp
+  = 152,530 copper
+  = $1,525.30 (152,530 cents)
+  
+  2pp 50gp 75sp
+  = 2,507,500 copper
+  = €25,075.00
+```
+
+**World Migration Command (Admin Only):**
+
+```
+→ ADMIN CURRENCY CONVERT
+
+⚠️  WARNING: Currency Conversion
+This will convert all player wallets
+and item prices from multi-tier to
+decimal currency.
+
+Current: multi_tier
+Target:  decimal (Credits, ¤)
+Ratio:   100 copper = ¤1.00
+
+Affected:
+- 47 player wallets
+- 523 item prices
+- 12 shop inventories
+- 89 bank accounts
+
+Type YES to confirm:
+→ YES
+
+*Converting currency system...*
+*Updated 47 players*
+*Updated 523 items*
+*Updated 12 shops*
+*Updated 89 accounts*
+*Conversion complete!*
+
+New system: decimal (¤ Credits)
+(~195 bytes per message chunk)
+```
+
+---
+
+### Unified Transaction System
+
+**All economic interactions use the same underlying transaction engine regardless of currency system:**
+
+```rust
+pub enum CurrencyAmount {
+    Decimal(DecimalAmount),
+    MultiTier(MultiTierAmount),
+}
+
+impl CurrencyAmount {
+    /// Get the value in base units (copper or cents)
+    pub fn base_value(&self) -> i64 {
+        match self {
+            CurrencyAmount::Decimal(amt) => amt.minor_units,
+            CurrencyAmount::MultiTier(amt) => amt.copper_value,
+        }
+    }
+    
+    /// Add two amounts (must be same currency system)
+    pub fn add(&self, other: &Self) -> Result<Self, CurrencyError> {
+        match (self, other) {
+            (CurrencyAmount::Decimal(a), CurrencyAmount::Decimal(b)) => {
+                Ok(CurrencyAmount::Decimal(DecimalAmount {
+                    minor_units: a.minor_units + b.minor_units
+                }))
+            }
+            (CurrencyAmount::MultiTier(a), CurrencyAmount::MultiTier(b)) => {
+                Ok(CurrencyAmount::MultiTier(MultiTierAmount {
+                    copper_value: a.copper_value + b.copper_value
+                }))
+            }
+            _ => Err(CurrencyError::SystemMismatch)
+        }
+    }
+    
+    /// Check if amount is sufficient
+    pub fn can_afford(&self, cost: &Self) -> bool {
+        self.base_value() >= cost.base_value()
+    }
+}
+
+pub struct Transaction {
+    pub id: String,
+    pub from: Option<String>,     // Player/NPC ID or None for world
+    pub to: Option<String>,        // Player/NPC ID or None for world
+    pub amount: CurrencyAmount,
+    pub reason: TransactionReason,
+    pub timestamp: DateTime<Utc>,
+    pub rollback_possible: bool,
+}
+
+pub enum TransactionReason {
+    Purchase { item_id: String, shop_id: String },
+    Sale { item_id: String, shop_id: String },
+    Trade { other_player: String },
+    Quest { quest_id: String },
+    Loot { source: String },
+    Transfer { from_player: String, to_player: String },
+    BankDeposit,
+    BankWithdraw,
+    AdminGrant,
+    SystemCorrection,
+}
+
+impl Transaction {
+    pub fn execute(&self, store: &TinyMushStore) -> Result<(), TransactionError> {
+        // 1. Validate both parties exist
+        // 2. Check sender has sufficient funds
+        // 3. Perform atomic update
+        // 4. Log transaction
+        // 5. Return success or rollback on error
+        
+        store.transaction(|txn| {
+            if let Some(from_id) = &self.from {
+                let mut from_player = txn.get_player(from_id)?;
+                if !from_player.wallet.can_afford(&self.amount) {
+                    return Err(TransactionError::InsufficientFunds);
+                }
+                from_player.wallet = from_player.wallet.subtract(&self.amount)?;
+                txn.put_player(from_player)?;
+            }
+            
+            if let Some(to_id) = &self.to {
+                let mut to_player = txn.get_player(to_id)?;
+                to_player.wallet = to_player.wallet.add(&self.amount)?;
+                txn.put_player(to_player)?;
+            }
+            
+            txn.log_transaction(self)?;
+            Ok(())
+        })
+    }
+}
+```
+
+**Transaction Guarantees:**
+
+1. **Atomicity**: All updates succeed or all fail
+2. **Consistency**: Currency totals always balance
+3. **Isolation**: Concurrent transactions don't interfere  
+4. **Durability**: Completed transactions are logged
+5. **Rollback**: Recent transactions can be reversed (admin only)
+
+**Transaction Audit Log:**
+
+```
+→ ADMIN TRANSACTIONS alice 10
+
+=== TRANSACTION LOG: alice ===
+Last 10 transactions:
+
+[2025-10-06 14:32] PURCHASE
+ Paid: 15gp → Blacksmith Shop
+ Item: Iron Sword
+ Balance: 50gp → 35gp
+
+[2025-10-06 13:15] QUEST REWARD
+ Earned: 25gp ← Quest System
+ Quest: "Rat Extermination"
+ Balance: 25gp → 50gp
+
+[2025-10-06 12:00] BANK DEPOSIT
+ Moved: 100gp → Bank Account
+ Balance: 125gp → 25gp
+ Account: 500gp → 600gp
+
+[R]ollback [E]xport [C]ontinue
+(~195 bytes per entry)
+```
+
+---
+
+**Player-to-Player Secure Trading:**
+
+```````
 → TRADE bob
 
 *Trade request sent to bob*

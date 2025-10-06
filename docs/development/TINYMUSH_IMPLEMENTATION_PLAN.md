@@ -135,24 +135,102 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 
 ## Phase 5 – Economy, Inventory, Shops (Weeks 6-8)
 
-**Spec References**: _Enhanced Economy_, _Inventory Management_, _Shops & Vendors_.
+**Spec References**: _Enhanced Economy_, _Dual Currency Systems_, _Inventory Management_, _Shops & Vendors_.
 
 **Objectives**
-- Implement multi-currency wallet, inventory slots, item metadata.
-- Wire vendor interactions (Bakery, General Store, Blacksmith, etc.).
-- Add transaction logging and anti-duplication safeguards.
+- Implement **flexible dual currency system** supporting both decimal and multi-tier currencies
+- Wire inventory slots, item metadata, and transaction engine
+- Build vendor interactions (Bakery, General Store, Blacksmith, etc.)
+- Add transaction logging, rollback capability, and anti-duplication safeguards
+
+**Currency System Design** (new requirement)
+
+The economy must support **two distinct currency systems** to accommodate different world themes:
+
+1. **Decimal Currency** (modern/sci-fi): Single currency with configurable name, symbol, and decimal places
+   - Examples: Credits ($), MiniBucks (¤), Euros (€)
+   - Storage: Integer minor units (like cents) to avoid floating-point issues
+   - Display: Configurable decimal places (typically 2)
+
+2. **Multi-Tier Currency** (fantasy/medieval): Multiple denominations with conversion ratios
+   - Examples: Platinum/Gold/Silver/Copper with configurable names
+   - Storage: Base copper units with configurable tier ratios
+   - Display: Multiple denominations (e.g., "15gp 25sp 30cp")
+
+**World builders choose ONE system per world via configuration.**
 
 **Tasks**
-1. Currency struct with platinum/gold/silver/copper conversions.
-2. Inventory limit enforcement, weight/capacity rules.
-3. Vendor script interpreter for price tables, haggling, stock.
-4. Bank deposit/withdraw flow with ledger entries.
-5. Unit/integration tests for buying/selling, rollback on failure.
+
+**Currency Foundation (Week 6, Days 1-2):**
+1. Create `CurrencySystem` enum supporting both Decimal and MultiTier variants
+2. Implement `DecimalCurrency` config struct:
+   - name, symbol, minor_units_per_major, decimal_places
+3. Implement `MultiTierCurrency` config struct:
+   - tier names/symbols, conversion ratios (configurable, default: 1pp=1M cp, 1gp=10k cp, 1sp=100cp)
+4. Create `CurrencyAmount` enum with unified base_value() accessor
+5. Add currency config section to world settings (TOML)
+
+**Storage & Conversion (Week 6, Days 3-4):**
+6. Implement storage strategy:
+   - Decimal: Store as integer minor units (cents)
+   - Multi-tier: Store as base copper units
+   - Both use i64 for range and signed math
+7. Build conversion functions between systems:
+   - Standard ratio: 100 copper = 1 major decimal unit
+   - Bidirectional conversion preserving precision
+8. Create admin conversion command for world migration
+9. Unit tests for all conversion scenarios
+
+**Transaction Engine (Week 6, Day 5 - Week 7, Day 2):**
+10. Unified `Transaction` struct with system-agnostic operations:
+    - add(), subtract(), can_afford() work for both systems
+    - System mismatch errors for incompatible operations
+11. Transaction reasons enum (Purchase, Sale, Quest, Trade, etc.)
+12. Atomic transaction execution with rollback on failure
+13. Transaction audit log with timestamps and reason tracking
+14. Admin transaction history viewing and rollback capability
+
+**Display & Parsing (Week 7, Days 3-4):**
+15. Currency display formatting for both systems:
+    - Decimal: Symbol + formatted number (e.g., "$10.50")
+    - Multi-tier: Abbreviated tiers (e.g., "15gp 25sp 30cp")
+16. Input parsing for player currency commands:
+    - Decimal: Accept "10.50", "10", decimals optional
+    - Multi-tier: Accept "15gp 25sp", "15g 25s", tier combos
+17. Validation ensuring all displayed amounts fit 200-byte limit
+
+**Inventory System (Week 7, Day 5 - Week 8, Day 2):**
+18. Inventory struct with capacity and weight limits
+19. Item metadata: value (CurrencyAmount), weight, stackable flag
+20. Inventory management commands: GIVE, TAKE, DROP, INVENTORY
+21. Item quality/condition system for value degradation
+22. Prevent item duplication exploits (transaction-based item transfers)
+
+**Shop & Vendor System (Week 8, Days 3-5):**
+23. Shop configuration with inventory, pricing, and buy/sell ratios
+24. Dynamic pricing with stock levels and reputation discounts
+25. Vendor NPC integration with dialog and purchase flow
+26. Bank system: deposits, withdrawals, vault storage
+27. Player-to-player trading with two-phase commit
+
+**Testing & Validation:**
+28. Unit tests for each currency system independently
+29. Integration tests for currency conversion workflows
+30. Transaction rollback tests (failure recovery)
+31. Economy stress test (10k simulated transactions)
+32. Anti-duplication tests for items and currency
+33. 200-byte validation for all currency displays
 
 **Exit Criteria**
-- Buying/selling validated via automated scenario tests.
-- Transaction logs persisted and viewable by admins.
-- Economy stress test (simulated 10k transactions) within tolerances.
+- ✅ Both currency systems functional with world-level configuration
+- ✅ Currency conversion working bidirectionally with precision preserved
+- ✅ Buying/selling validated via automated scenario tests in both systems
+- ✅ Transaction logs persisted and viewable/rollbackable by admins
+- ✅ Inventory limits enforced, item transfers atomic
+- ✅ Economy stress test (10k transactions) within tolerances
+- ✅ Zero floating-point arithmetic in currency calculations
+- ✅ All currency displays fit 200-byte message constraint
+- ✅ Admin currency migration command tested and documented
 
 ## Phase 6 – Quest, Tutorial, Progression (Weeks 8-9)
 
