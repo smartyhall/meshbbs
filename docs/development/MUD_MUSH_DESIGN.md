@@ -198,6 +198,58 @@ Gold: 15→10
 (~50 bytes)
 ```
 
+#### Companion NPCs
+
+**Room with Companion:**
+```
+FOREST PATH
+Sunlight filters through trees.
+Your horse snorts nervously.
+
+[N][S][E] [L]ook [I]nv
+Companion: Storm (horse)
+(~85 bytes)
+```
+
+**Companion Behaviors:**
+```
+→ N
+*Storm follows you north*
+
+DARK CAVE
+Storm whickers uneasily.
+"Something's not right here,"
+you think, trusting your mount.
+
+Your dog, Patch, growls low.
+[L]ook [F]lee [C]alm companion
+(~145 bytes)
+```
+
+**Companion Assistance:**
+```
+GOBLIN AMBUSH!
+HP: 15/30 | In Combat
+
+Patch barks and lunges!
+*Dog deals 3 damage*
+Goblin HP: 12/15
+
+[A]ttack [D]efend [F]lee
+(~95 bytes)
+```
+
+**Companion Care:**
+```
+→ FEED horse
+*You feed Storm some oats*
+Storm nuzzles you gratefully.
+Happiness: 85/100
+
+>
+(~65 bytes)
+```
+
 #### Using Items
 
 ```
@@ -610,18 +662,44 @@ pub enum ObjectTrigger {
     OnPoke,         // Someone pokes/interacts with object
 }
 
+pub enum NpcType {
+    Merchant,                            // Buys/sells items
+    Guard,                               // Patrols, enforces rules
+    QuestGiver,                          // Provides quests
+    Enemy,                               // Hostile combat NPC
+    Companion(CompanionType),            // Player-bound helper NPCs
+    Ambient,                             // Atmospheric/flavor NPCs
+}
+
+pub enum CompanionType {
+    Horse,                               // Mount, carries extra inventory
+    Dog,                                 // Loyal, alerts to danger, tracks
+    Cat,                                 // Independent, finds hidden items
+    Familiar,                            // Magical, assists with spells
+    Mercenary,                           // Combat assistance, temporary hire
+    Construct,                           // Player-created magical servants
+}
+
 pub struct MudNpc {
     id: String,
     name: String,
     desc: String,
-    npc_type: NpcType,                   // Merchant, Guard, Quest, Enemy
+    npc_type: NpcType,
     dialog: DialogTree,
     shop_inventory: Option<Vec<MudItem>>,
     combat_stats: Option<CombatStats>,
     quest_id: Option<String>,
     mood: Mood,                          // Friendly, Neutral, Hostile
-    location: String,                    // Home room_id
+    location: String,                    // Current room_id
     roaming: bool,                       // Can move between rooms
+    
+    // Companion-specific fields
+    owner: Option<String>,               // Player username if companion
+    loyalty: Option<u8>,                 // 0-100 loyalty level
+    happiness: Option<u8>,               // 0-100 happiness level
+    last_fed: Option<DateTime<Utc>>,     // When last fed/cared for
+    skills: HashMap<String, u8>,         // Companion abilities (0-100)
+    behaviors: Vec<CompanionBehavior>,   // Automatic behaviors
 }
 
 pub enum Direction {
@@ -671,6 +749,19 @@ pub struct PlayerStats {
     intelligence: u8,
     constitution: u8,
     armor_class: u8,
+}
+
+pub enum CompanionBehavior {
+    AutoFollow,                          // Follows owner between rooms
+    IdleChatter(Vec<String>),           // Random messages when idle
+    AlertDanger,                         // Warns of enemies/traps
+    HealOwner(u32),                     // Heals owner when HP < threshold
+    FindItems,                           // Chance to find hidden items
+    DefendOwner,                         // Assists in combat
+    CarryItems(u32),                     // Extra inventory slots
+    TrackScents,                         // Can follow trails/find players
+    CastSpells(Vec<String>),            // Familiar spell assistance
+    RequireCare(Duration),               // Needs feeding/attention
 }
 
 pub struct Equipment {
@@ -784,6 +875,23 @@ pub enum MudCommand {
     Sell(String),                        // SELL junk
     List,                                // LIST (shop inventory)
     Repair(String),                      // REPAIR sword
+    
+    // Companion Commands
+    Companion,                           // COMPANION (view all companions)
+    CompanionStatus(String),             // COMPANION status horse
+    Feed(String),                        // FEED horse
+    Pet(String),                         // PET dog
+    Train(String, String),               // TRAIN dog tracking
+    CompanionStay(String),              // STAY dog (stop following)
+    CompanionCome(String),              // COME dog (resume following)
+    CompanionMount(String),             // MOUNT horse
+    CompanionDismount,                  // DISMOUNT
+    CompanionInventory(String),         // COMPANION inventory horse
+    CompanionGive(String, String),      // COMPANION give horse sword
+    CompanionTake(String, String),      // COMPANION take horse gold
+    CompanionSummon(String),            // SUMMON familiar (if magical)
+    CompanionDismiss(String),           // DISMISS familiar
+    CompanionRelease(String),           // RELEASE dog (permanent goodbye)
     
     // System
     Help(Option<String>),                // HELP, HELP combat
@@ -1859,6 +1967,41 @@ impl ActionLimiter {
       {"id": "shield_wood", "qty": 5, "price": 3},
       {"id": "potion_health", "qty": 10, "price": 2}
     ]
+  }
+}
+```
+
+### Companion Definition (logical JSON)
+
+```json
+{
+  "id": "companion_warhorse",
+  "name": "Storm",
+  "desc": "A powerful black warhorse with intelligent eyes.",
+  "type": "companion",
+  "companion_type": "horse",
+  "stats": {
+    "hp": 40,
+    "carry_capacity": 100,
+    "loyalty": 85,
+    "happiness": 90
+  },
+  "behaviors": [
+    "auto_follow",
+    {"idle_chatter": ["*snorts softly*", "*stamps hoof*", "*tosses mane*"]},
+    {"alert_danger": 80},
+    {"carry_items": 100},
+    {"require_care": "24h"}
+  ],
+  "skills": {
+    "riding": 90,
+    "combat": 60,
+    "carrying": 95
+  },
+  "needs": {
+    "food": "hay, oats, apples",
+    "care_interval": "12h",
+    "happiness_decay": 5
   }
 }
 ```

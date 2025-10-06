@@ -45,6 +45,13 @@ pub enum TinyMushCommand {
     Score,                  // SCORE - show player stats
     Time,                   // TIME - show game time
     
+    // Companion commands (Phase 6 feature)
+    Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
+    Feed(String),           // FEED horse - feed companion
+    Pet(String),            // PET dog - interact with companion
+    Mount(String),          // MOUNT horse - mount companion
+    Dismount,              // DISMOUNT - dismount from companion
+    
     // System
     Help(Option<String>),   // HELP, HELP topic
     Quit,                   // QUIT - leave TinyMUSH

@@ -115,6 +115,14 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
 - [ ] Script Gazebo → Mayor → City Hall tutorial flow
 - [ ] Quest engine (objectives, progress, rewards) with data templates
 - [ ] Achievement/title subsystem & announcement messaging
+- [ ] Companion NPC system (player-bound NPCs that follow and assist)
+  - [ ] Companion types: horses, dogs, cats, familiars, mercenaries
+  - [ ] Player binding and loyalty mechanics
+  - [ ] Auto-follow movement between rooms
+  - [ ] Periodic behaviors (idle chatter, alerts, skill assists)
+  - [ ] Combat assistance and healing capabilities
+  - [ ] Companion inventory and equipment slots
+  - [ ] Feed/care requirements and happiness system
 - [ ] Scenario tests for full tutorial completion transcript
 
 ## Phase 7 — Housing, Building, Triggers

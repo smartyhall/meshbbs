@@ -60,6 +60,7 @@ pub enum ObjectFlag {
     KeyItem,
     Container,
     Magical,
+    Companion,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -71,6 +72,10 @@ pub enum ObjectTrigger {
     OnDrop,
     OnUse,
     OnPoke,
+    OnFollow,
+    OnIdle,
+    OnCombat,
+    OnHeal,
 }
 
 pub type ObjectActions = HashMap<ObjectTrigger, String>;
