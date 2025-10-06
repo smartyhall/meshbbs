@@ -294,9 +294,9 @@ impl CommandProcessor {
                 let username = session.display_name();
                 // Load or use prior state from disk; forgiving of missing/malformed
                 let (gs0, _) =
-                    crate::bbs::tinyhack::load_or_new_and_render(&storage.base_dir(), &username);
+                    crate::bbs::tinyhack::load_or_new_and_render(storage.base_dir(), &username);
                 let screen =
-                    crate::bbs::tinyhack::apply_and_save(&storage.base_dir(), &username, gs0, raw);
+                    crate::bbs::tinyhack::apply_and_save(storage.base_dir(), &username, gs0, raw);
                 Ok(screen)
             }
             SessionState::TinyMush => {
@@ -495,7 +495,7 @@ impl CommandProcessor {
                         entry_counts.entries
                     );
                     let (gs, screen, _is_new) =
-                        crate::bbs::tinyhack::load_or_new_with_flag(&storage.base_dir(), &username);
+                        crate::bbs::tinyhack::load_or_new_with_flag(storage.base_dir(), &username);
                     session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
                     return Ok(screen);
                 }

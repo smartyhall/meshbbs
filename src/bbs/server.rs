@@ -1480,6 +1480,20 @@ impl BbsServer {
         Ok(())
     }
 
+    async fn process_help_text(
+        session: &mut crate::bbs::session::Session,
+        storage: &mut crate::storage::Storage,
+        config: &crate::config::Config,
+    ) -> Result<String> {
+        // Process help text via command processor and append one-time shortcuts hint
+        let mut help_text = session.process_command("H", storage, config).await?;
+        if !session.help_seen {
+            session.help_seen = true;
+            help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
+        }
+        Ok(help_text)
+    }
+
     #[cfg(feature = "meshtastic-proto")]
     async fn handle_node_detection(
         &mut self,
@@ -1613,7 +1627,7 @@ impl BbsServer {
                     };
                     let envelope =
                         MessageEnvelope::new(MessageCategory::System, Priority::Normal, delay, msg);
-                    let _ = scheduler.enqueue(envelope);
+                    scheduler.enqueue(envelope);
                 }
             }
         }
@@ -1652,7 +1666,7 @@ impl BbsServer {
                         std::time::Duration::from_secs(chunk_delay),
                         msg,
                     );
-                    let _ = scheduler.enqueue(envelope);
+                    scheduler.enqueue(envelope);
                 }
             }
         }
@@ -1667,6 +1681,7 @@ impl BbsServer {
 
     #[cfg(feature = "meshtastic-proto")]
     #[cfg_attr(test, allow(dead_code))]
+    #[allow(clippy::ifs_same_cond)] // Help condition legitimately appears in both DM and broadcast paths
     pub async fn route_text_event(&mut self, ev: TextEvent) -> Result<()> {
         // Trace-log every text event for debugging purposes
         trace!(
@@ -1880,16 +1895,9 @@ impl BbsServer {
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
-                    // Defer compact help text to command processor, then append one-time shortcuts hint server-side
-                    let mut help_text = session
-                        .process_command("H", &mut self.storage, &self.config)
-                        .await?;
-                    if !session.help_seen {
-                        session.help_seen = true;
-                        help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
-                    }
-                    self.send_session_message(&node_key, &help_text, true)
-                        .await?;
+                    // Process help command and send response
+                    let help_text = Self::process_help_text(session, &mut self.storage, &self.config).await?;
+                    self.send_session_message(&node_key, &help_text, true).await?;
                 } else if upper.starts_with("LOGIN ") {
                     // Enforce max_users only if this session is not yet logged in
                     if !session.is_logged_in()
@@ -2716,16 +2724,9 @@ impl BbsServer {
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
-                    // Use abbreviated help via command processor (ensures consistent text) + one-time shortcuts hint
-                    let mut help_text = session
-                        .process_command("H", &mut self.storage, &self.config)
-                        .await?;
-                    if !session.help_seen {
-                        session.help_seen = true;
-                        help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
-                    }
-                    self.send_session_message(&node_key, &help_text, true)
-                        .await?;
+                    // Process help command and send response
+                    let help_text = Self::process_help_text(session, &mut self.storage, &self.config).await?;
+                    self.send_session_message(&node_key, &help_text, true).await?;
                     return Ok(());
                 } else {
                     let redact = ["REGISTER ", "LOGIN ", "SETPASS ", "CHPASS "];
@@ -3522,7 +3523,7 @@ impl BbsServer {
                             session.state = super::session::SessionState::TinyHack;
                             let username = session.display_name();
                             let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(
-                                &self.storage.base_dir(),
+                                self.storage.base_dir(),
                                 &username,
                             );
                             session.filter_text =

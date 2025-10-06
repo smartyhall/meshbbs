@@ -155,7 +155,7 @@ impl GameState {
 }
 
 fn d6(rng: &mut StdRng) -> i32 {
-    (rng.gen_range(1..=6)) as i32
+    rng.gen_range(1..=6)
 }
 
 fn choose<'a>(rng: &mut StdRng, opts: &[&'a str]) -> &'a str {
@@ -195,6 +195,7 @@ fn write_json_atomic(path: &Path, content: &str) -> std::io::Result<()> {
     // Take an exclusive lock on the target path (create if missing)
     let lock_file = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .read(true)
         .write(true)
         .open(path)?;
@@ -361,7 +362,7 @@ fn place_world(rng: &mut StdRng, w: usize, h: usize, map: &mut [Room]) {
             {
                 continue;
             }
-            let d = ((x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs()) as i32;
+            let d = (x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs();
             let mk = if d <= 2 {
                 if rng.gen_bool(0.4) {
                     Some(MonsterKind::Rat)
@@ -1049,21 +1050,19 @@ fn do_pick_lock(gs: &mut GameState, rng: &mut StdRng) -> String {
         gs.player.gold += 2;
         gs.player.xp += 1;
         "You finesse the tumblers-click. The door yields (+2g, +1 XP).\n".into()
-    } else {
-        if rng.gen_bool(0.5) {
-            let dmg = rng.gen_range(1..=3);
-            gs.player.hp -= dmg;
-            if gs.player.hp <= 0 {
-                return death_text(gs);
-            }
-            format!("A needle trap snaps! You take {}.\n", dmg)
-        } else {
-            let (mhp, _matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
-            let r = gs.room_mut(x, y);
-            r.kind = RoomKind::Monster(MonsterKind::Rat);
-            r.mon_hp = Some(mhp);
-            "Your clumsy attempt draws a rat.\n".into()
+    } else if rng.gen_bool(0.5) {
+        let dmg = rng.gen_range(1..=3);
+        gs.player.hp -= dmg;
+        if gs.player.hp <= 0 {
+            return death_text(gs);
         }
+        format!("A needle trap snaps! You take {}.\n", dmg)
+    } else {
+        let (mhp, _matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
+        let r = gs.room_mut(x, y);
+        r.kind = RoomKind::Monster(MonsterKind::Rat);
+        r.mon_hp = Some(mhp);
+        "Your clumsy attempt draws a rat.\n".into()
     }
 }
 

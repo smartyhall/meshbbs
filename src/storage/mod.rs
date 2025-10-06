@@ -338,6 +338,7 @@ impl Storage {
         // Step 1: Open (or create) the destination file to acquire an exclusive lock
         let lock_file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(path)?;
@@ -400,6 +401,7 @@ impl Storage {
         // Open or create the file to take an exclusive lock
         let lock_file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .read(true)
             .write(true)
             .open(path)?;
@@ -407,10 +409,7 @@ impl Storage {
         lock_file.lock_exclusive()?;
 
         // Read existing content (if any) using a separate handle while holding the lock
-        let mut existing = match fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(_) => String::new(),
-        };
+        let mut existing = fs::read_to_string(path).unwrap_or_default();
         existing.push_str(content);
 
         // Write to a temp file and atomically replace

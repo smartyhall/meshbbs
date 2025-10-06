@@ -446,9 +446,7 @@ fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
     // Determine log file path
     let log_path = config
         .logging
-        .file
-        .as_ref()
-        .map(|s| s.as_str())
+        .file.as_deref()
         .unwrap_or("meshbbs.log");
 
     // Spawn ourselves as a background process

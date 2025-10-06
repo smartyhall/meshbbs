@@ -71,6 +71,12 @@ pub struct TinyMushProcessor {
     room_manager: Option<RoomManager>,
 }
 
+impl Default for TinyMushProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TinyMushProcessor {
     pub fn new() -> Self {
         Self { 
