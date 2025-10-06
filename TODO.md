@@ -71,9 +71,9 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
   - [x] `MAP` command with area overview and current location marker
 - [x] Player state persistence across movement (room tracking)
 - [x] Basic integration testing with TinyMUSH command parsing and session flows
-- [ ] Room manager with LRU caching + instancing (Gazebo, apartments, hotel)
-- [ ] Capacity enforcement tests (standard, shop, social room limits)
-- [ ] Comprehensive movement integration tests across full 6-room Old Towne Mesh layout
+- [x] Room manager with LRU caching + instancing (commit 3a7e9c4)
+- [x] Capacity enforcement tests (standard, shop, social room limits) (commit 3a7e9c4)
+- [x] Basic integration tests for TinyMUSH functionality validation (commit 3a7e9c4)
 
 ## Phase 4 — Social & Communication Systems
 (Ref: Plan §Phase 4, Design §§Social Features, Async Communication, Help System)

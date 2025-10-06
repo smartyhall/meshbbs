@@ -15,6 +15,7 @@ use crate::storage::Storage;
 use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord, REQUIRED_START_LOCATION_ID};
 use crate::tmush::types::Direction as TmushDirection;
 use crate::tmush::state::canonical_world_seed;
+use crate::tmush::room_manager::RoomManager;
 
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,11 +68,15 @@ pub enum Direction {
 /// TinyMUSH session state and command processor
 pub struct TinyMushProcessor {
     store: Option<TinyMushStore>,
+    room_manager: Option<RoomManager>,
 }
 
 impl TinyMushProcessor {
     pub fn new() -> Self {
-        Self { store: None }
+        Self { 
+            store: None,
+            room_manager: None,
+        }
     }
 
     /// Initialize or get the TinyMUSH store for this session
@@ -87,6 +92,25 @@ impl TinyMushProcessor {
         }
         
         Ok(self.store.as_ref().unwrap())
+    }
+
+    /// Initialize or get the room manager for this session
+    async fn get_room_manager(&mut self, config: &Config) -> Result<&mut RoomManager, TinyMushError> {
+        if self.room_manager.is_none() {
+            // Ensure store is initialized first
+            let _ = self.get_store(config).await?;
+            
+            let db_path = config.games.tinymush_db_path
+                .as_deref()
+                .unwrap_or("data/tinymush");
+            
+            debug!("Opening TinyMUSH room manager at: {}", db_path);
+            let store = TinyMushStore::open(db_path)?;
+            let room_manager = RoomManager::new(store);
+            self.room_manager = Some(room_manager);
+        }
+        
+        Ok(self.room_manager.as_mut().unwrap())
     }
 
     /// Get the store reference (assumes store is already initialized)
@@ -317,7 +341,7 @@ impl TinyMushProcessor {
         &mut self,
         session: &Session,
         target: Option<String>,
-        config: &Config,
+        _config: &Config,
     ) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
@@ -348,8 +372,11 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
+        // Get room manager
+        let room_manager = self.get_room_manager(config).await?;
+        
         // Get current room
-        let current_room = match self.store().get_room(&player.current_room) {
+        let current_room = match room_manager.get_room(&player.current_room) {
             Ok(room) => room,
             Err(_) => {
                 return Ok(format!(
@@ -381,25 +408,25 @@ impl TinyMushProcessor {
             }
         };
 
-        // Verify destination room exists
-        let store = self.get_store(config).await?;
-        let _destination_room = match store.get_room(destination_id) {
-            Ok(room) => room,
-            Err(_) => {
-                return Ok(format!(
-                    "The exit {} leads to nowhere (room '{}' not found).",
-                    format!("{:?}", direction).to_lowercase(),
-                    destination_id
-                ));
+        // Use room manager to move player (includes capacity and permission checks)
+        match room_manager.move_player_to_room(&mut player, destination_id) {
+            Ok(true) => {
+                // Movement successful
+                debug!("Player {} moved to room {}", player.username, destination_id);
+            },
+            Ok(false) => {
+                // Movement blocked (capacity or permissions)
+                let dir_str = format!("{:?}", direction).to_lowercase();
+                return Ok(format!("You can't go {} right now. The area might be full or restricted.", dir_str));
+            },
+            Err(e) => {
+                return Ok(format!("Movement failed: {}", e));
             }
-        };
-
-        // Move player to new room
-        player.current_room = destination_id.clone();
+        }
         
         // Save updated player state
         if let Err(e) = self.store().put_player(player.clone()) {
-            return Ok(format!("Movement failed: {}", e));
+            return Ok(format!("Movement failed to save: {}", e));
         }
 
         // Show the new room
@@ -422,13 +449,33 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        match self.store().get_room(&player.current_room) {
-            Ok(room) => Ok(format!(
-                "You are in: {} ({})\n{}",
-                room.name,
-                player.current_room,
-                room.short_desc
-            )),
+        let room_manager = self.get_room_manager(config).await?;
+        
+        match room_manager.get_room(&player.current_room) {
+            Ok(room) => {
+                let occupancy = room_manager.get_room_occupancy(&player.current_room);
+                let capacity_limit = if room.max_capacity > 0 {
+                    room.max_capacity
+                } else {
+                    // Use default capacity based on room type
+                    if room.flags.contains(&crate::tmush::types::RoomFlag::Shop) {
+                        10
+                    } else if room.flags.contains(&crate::tmush::types::RoomFlag::Indoor) {
+                        20
+                    } else {
+                        50
+                    }
+                };
+                
+                Ok(format!(
+                    "You are in: {} ({})\n{}\nOccupancy: {}/{}",
+                    room.name,
+                    player.current_room,
+                    room.short_desc,
+                    occupancy,
+                    capacity_limit
+                ))
+            },
             Err(_) => Ok(format!(
                 "You are lost in: {}\n(Room not found - contact admin)",
                 player.current_room
@@ -444,14 +491,14 @@ impl TinyMushProcessor {
         };
 
         let current_room_id = &player.current_room;
-        let store = self.get_store(config).await?;
+        let room_manager = self.get_room_manager(config).await?;
         
         // Build map display showing all rooms and their connections
         let mut response = String::new();
         response.push_str("=== Map of Old Towne Mesh ===\n\n");
 
         // Display current location prominently
-        if let Ok(current_room) = store.get_room(current_room_id) {
+        if let Ok(current_room) = room_manager.get_room(current_room_id) {
             response.push_str(&format!(
                 "Current Location: {}\n\n",
                 current_room.name
@@ -461,12 +508,12 @@ impl TinyMushProcessor {
         // Show all rooms with connections
         response.push_str("Area Overview:\n");
         
-        // Get all rooms from canonical seed data and fetch from store
+        // Get all rooms from canonical seed data and fetch via room manager
         let seed_rooms = canonical_world_seed(chrono::Utc::now());
         let mut rooms_with_ids: Vec<(String, crate::tmush::types::RoomRecord)> = Vec::new();
         
         for room in seed_rooms {
-            if let Ok(stored_room) = store.get_room(&room.id) {
+            if let Ok(stored_room) = room_manager.get_room(&room.id) {
                 rooms_with_ids.push((room.id.clone(), stored_room));
             }
         }
@@ -505,7 +552,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle INVENTORY command
-    async fn handle_inventory(&mut self, session: &Session, config: &Config) -> Result<String> {
+    async fn handle_inventory(&mut self, session: &Session, _config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
@@ -550,7 +597,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle SCORE command - show player stats
-    async fn handle_score(&mut self, session: &Session, config: &Config) -> Result<String> {
+    async fn handle_score(&mut self, session: &Session, _config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
@@ -616,7 +663,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle SAVE command - force save player state
-    async fn handle_save(&mut self, session: &Session, config: &Config) -> Result<String> {
+    async fn handle_save(&mut self, session: &Session, _config: &Config) -> Result<String> {
         match self.get_or_create_player(session).await {
             Ok(player) => {
                 match self.store().put_player(player) {

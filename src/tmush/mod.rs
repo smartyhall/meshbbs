@@ -5,6 +5,7 @@
 
 pub mod commands;
 pub mod errors;
+pub mod room_manager;
 pub mod state;
 pub mod storage;
 pub mod types;
