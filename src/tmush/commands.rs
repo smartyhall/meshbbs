@@ -50,6 +50,12 @@ pub enum TinyMushCommand {
     Post(String, String),   // POST subject message - post to bulletin board
     Read(u64),             // READ 123 - read specific bulletin message
     
+    // Mail system commands (Phase 4 feature)
+    Mail(Option<String>),   // MAIL, MAIL inbox - view mail folder
+    Send(String, String, String), // SEND player subject message - send mail
+    ReadMail(u64),         // RMAIL 123 - read specific mail message
+    DeleteMail(u64),       // DMAIL 123 - delete mail message
+    
     // Companion commands (Phase 6 feature)
     Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
     Feed(String),           // FEED horse - feed companion
@@ -218,6 +224,10 @@ impl TinyMushProcessor {
             TinyMushCommand::Board(board_id) => self.handle_board(session, board_id, config).await,
             TinyMushCommand::Post(subject, message) => self.handle_post(session, subject, message, config).await,
             TinyMushCommand::Read(message_id) => self.handle_read(session, message_id, config).await,
+            TinyMushCommand::Mail(folder) => self.handle_mail(session, folder, config).await,
+            TinyMushCommand::Send(recipient, subject, message) => self.handle_send(session, recipient, subject, message, config).await,
+            TinyMushCommand::ReadMail(message_id) => self.handle_read_mail(session, message_id, config).await,
+            TinyMushCommand::DeleteMail(message_id) => self.handle_delete_mail(session, message_id, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -374,6 +384,47 @@ impl TinyMushProcessor {
                     }
                 } else {
                     TinyMushCommand::Unknown("Usage: READ <message_id>".to_string())
+                }
+            },
+
+            // Mail system commands
+            "MAIL" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Mail(Some(parts[1].to_string()))
+                } else {
+                    TinyMushCommand::Mail(None)
+                }
+            },
+            "SEND" => {
+                if parts.len() > 3 {
+                    let recipient = parts[1].to_string();
+                    let subject = parts[2].to_string();
+                    let message = parts[3..].join(" ");
+                    TinyMushCommand::Send(recipient, subject, message)
+                } else {
+                    TinyMushCommand::Unknown("Usage: SEND <player> <subject> <message>".to_string())
+                }
+            },
+            "RMAIL" => {
+                if parts.len() > 1 {
+                    if let Ok(message_id) = parts[1].parse::<u64>() {
+                        TinyMushCommand::ReadMail(message_id)
+                    } else {
+                        TinyMushCommand::Unknown("Usage: RMAIL <message_id>".to_string())
+                    }
+                } else {
+                    TinyMushCommand::Unknown("Usage: RMAIL <message_id>".to_string())
+                }
+            },
+            "DMAIL" => {
+                if parts.len() > 1 {
+                    if let Ok(message_id) = parts[1].parse::<u64>() {
+                        TinyMushCommand::DeleteMail(message_id)
+                    } else {
+                        TinyMushCommand::Unknown("Usage: DMAIL <message_id>".to_string())
+                    }
+                } else {
+                    TinyMushCommand::Unknown("Usage: DMAIL <message_id>".to_string())
                 }
             },
 
@@ -845,6 +896,7 @@ impl TinyMushProcessor {
             Some("movement") | Some("MOVEMENT") => Ok(self.help_movement()),
             Some("social") | Some("SOCIAL") => Ok(self.help_social()),
             Some("board") | Some("BOARD") | Some("bulletin") | Some("BULLETIN") => Ok(self.help_bulletin()),
+            Some("mail") | Some("MAIL") => Ok(self.help_mail()),
             None => Ok(self.help_main()),
             Some(topic) => Ok(format!("No help available for: {}\nTry: HELP COMMANDS", topic)),
         }
@@ -1117,8 +1169,9 @@ impl TinyMushProcessor {
         "Info: I (inventory) WHO SCORE WHERE\n" +
         "Talk: SAY <text> EMOTE <action>\n" +
         "Board: BOARD POST <subj> <msg> READ <id>\n" +
+        "Mail: MAIL SEND <plyr> <subj> <msg>\n" +
         "System: HELP <topic> SAVE QUIT\n\n" +
-        "Topics: COMMANDS MOVEMENT SOCIAL BOARD"
+        "Topics: COMMANDS MOVEMENT SOCIAL BOARD MAIL"
     }
 
     /// Commands help
@@ -1133,6 +1186,10 @@ impl TinyMushProcessor {
         "BOARD - view bulletin board\n" +
         "POST <subject> <message> - post to board\n" +
         "READ <id> - read bulletin message\n" +
+        "MAIL [folder] - view mail inbox/sent\n" +
+        "SEND <player> <subj> <msg> - send mail\n" +
+        "RMAIL <id> - read mail message\n" +
+        "DMAIL <id> - delete mail message\n" +
         "HELP <topic> - get help\n" +
         "SAVE - save your progress\n" +
         "QUIT - return to main menu"
@@ -1181,6 +1238,211 @@ impl TinyMushProcessor {
         "- Must be at Town Square to use\n" +
         "- Subject max 50 chars, message max 300\n" +
         "- Old messages are automatically cleaned up"
+    }
+
+    /// Handle MAIL command - view mail folders
+    async fn handle_mail(&mut self, session: &Session, folder: Option<String>, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let folder = folder.unwrap_or_else(|| "inbox".to_string());
+        
+        // Only support inbox and sent folders for now
+        if folder != "inbox" && folder != "sent" {
+            return Ok("Available folders: MAIL inbox, MAIL sent".to_string());
+        }
+
+        // Get mail messages
+        let messages = match self.store().list_mail(&folder, &player.username, 0, 10) {
+            Ok(messages) => messages,
+            Err(e) => return Ok(format!("Error reading mail: {}", e)),
+        };
+
+        let mut response = format!("=== {} MAIL ===\n", folder.to_uppercase());
+        
+        if messages.is_empty() {
+            response.push_str("No mail messages.\n");
+        } else {
+            for (i, msg) in messages.iter().enumerate() {
+                let status = if msg.status == crate::tmush::types::MailStatus::Unread { "*" } else { " " };
+                let date = msg.sent_at.format("%m/%d");
+                let sender_recipient = if folder == "inbox" { &msg.sender } else { &msg.recipient };
+                
+                response.push_str(&format!(
+                    "{} [{}] {} - {} ({})\n",
+                    status, msg.id, msg.subject, sender_recipient, date
+                ));
+                
+                // Limit to fit in 200 bytes
+                if response.len() > 150 {
+                    let remaining = messages.len() - i - 1;
+                    if remaining > 0 {
+                        response.push_str(&format!("... and {} more.\n", remaining));
+                    }
+                    break;
+                }
+            }
+        }
+        
+        response.push_str("\nRMAIL <id> to read, DMAIL <id> to delete\nSEND <player> <subject> <message> to send");
+        Ok(response)
+    }
+
+    /// Handle SEND command - send mail to another player
+    async fn handle_send(&mut self, session: &Session, recipient: String, subject: String, message: String, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Validate input
+        if recipient.trim().is_empty() {
+            return Ok("Recipient cannot be empty.\nUsage: SEND <player> <subject> <message>".to_string());
+        }
+        
+        if subject.trim().is_empty() {
+            return Ok("Subject cannot be empty.\nUsage: SEND <player> <subject> <message>".to_string());
+        }
+        
+        if message.trim().is_empty() {
+            return Ok("Message cannot be empty.\nUsage: SEND <player> <subject> <message>".to_string());
+        }
+
+        if subject.len() > 50 {
+            return Ok("Subject too long (max 50 characters).".to_string());
+        }
+
+        if message.len() > 200 {
+            return Ok("Message too long (max 200 characters).".to_string());
+        }
+
+        // Check if recipient exists (basic validation)
+        let recipient_lower = recipient.to_ascii_lowercase();
+        match self.store().get_player(&recipient_lower) {
+            Ok(_) => {}, // Player exists
+            Err(TinyMushError::NotFound(_)) => {
+                return Ok(format!("Player '{}' not found.\nMake sure they have logged in at least once.", recipient));
+            },
+            Err(e) => return Ok(format!("Error checking recipient: {}", e)),
+        }
+
+        // Create the mail message
+        let mail = crate::tmush::types::MailMessage::new(
+            &player.username,
+            &recipient_lower,
+            &subject,
+            &message
+        );
+
+        // Send the message
+        match self.store().send_mail(mail) {
+            Ok(message_id) => {
+                // Enforce mail quota for recipient
+                let _ = self.store().enforce_mail_quota(&recipient_lower, 100);
+                
+                Ok(format!(
+                    "Mail sent to {}.\nMessage ID: {} - '{}'\nThey can read it with: RMAIL {}",
+                    recipient, message_id, subject, message_id
+                ))
+            },
+            Err(e) => Ok(format!("Failed to send mail: {}", e)),
+        }
+    }
+
+    /// Handle RMAIL command - read specific mail message
+    async fn handle_read_mail(&mut self, session: &Session, message_id: u64, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Try to find the message in inbox first, then sent
+        let message = match self.store().get_mail("inbox", &player.username, message_id) {
+            Ok(msg) => {
+                // Mark as read if it's in the inbox
+                let _ = self.store().mark_mail_read("inbox", &player.username, message_id);
+                msg
+            },
+            Err(TinyMushError::NotFound(_)) => {
+                // Try sent folder
+                match self.store().get_mail("sent", &player.username, message_id) {
+                    Ok(msg) => msg,
+                    Err(TinyMushError::NotFound(_)) => {
+                        return Ok(format!("No mail message with ID {}.\nUse MAIL to see available messages.", message_id));
+                    },
+                    Err(e) => return Ok(format!("Error reading mail: {}", e)),
+                }
+            },
+            Err(e) => return Ok(format!("Error reading mail: {}", e)),
+        };
+
+        let date = message.sent_at.format("%b %d, %Y at %H:%M");
+        let mut response = format!(
+            "=== Mail {} ===\n\
+            From: {}\n\
+            To: {}\n\
+            Subject: {}\n\
+            Date: {}\n\n\
+            {}",
+            message.id, message.sender, message.recipient, message.subject, date, message.body
+        );
+
+        // Ensure we stay under 200 bytes
+        if response.len() > 200 {
+            response.truncate(197);
+            response.push_str("...");
+        }
+
+        Ok(response)
+    }
+
+    /// Handle DMAIL command - delete mail message
+    async fn handle_delete_mail(&mut self, session: &Session, message_id: u64, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Try to delete from inbox first, then sent
+        match self.store().delete_mail("inbox", &player.username, message_id) {
+            Ok(()) => {
+                Ok(format!("Mail message {} deleted from inbox.", message_id))
+            },
+            Err(TinyMushError::NotFound(_)) => {
+                // Try sent folder
+                match self.store().delete_mail("sent", &player.username, message_id) {
+                    Ok(()) => {
+                        Ok(format!("Mail message {} deleted from sent folder.", message_id))
+                    },
+                    Err(TinyMushError::NotFound(_)) => {
+                        Ok(format!("No mail message with ID {}.\nUse MAIL to see available messages.", message_id))
+                    },
+                    Err(e) => Ok(format!("Error deleting mail: {}", e)),
+                }
+            },
+            Err(e) => Ok(format!("Error deleting mail: {}", e)),
+        }
+    }
+
+    /// Mail system help
+    fn help_mail(&self) -> String {
+        "=== MAIL SYSTEM ===\n".to_string() +
+        "Send private messages to other players.\n\n" +
+        "MAIL [folder] - view mail (inbox/sent)\n" +
+        "SEND <player> <subject> <message> - send mail\n" +
+        "RMAIL <id> - read specific mail message\n" +
+        "DMAIL <id> - delete mail message\n\n" +
+        "Examples:\n" +
+        "MAIL inbox\n" +
+        "SEND alice \"Quest Help\" Need tips for the forest\n" +
+        "RMAIL 456\n" +
+        "DMAIL 456\n\n" +
+        "Notes:\n" +
+        "- Subject max 50 chars, message max 200\n" +
+        "- * indicates unread messages\n" +
+        "- Old read mail auto-cleaned up"
     }
 }
 

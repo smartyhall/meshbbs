@@ -6,8 +6,9 @@ use sled::IVec;
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
-    BulletinBoard, BulletinMessage, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord, 
-    BULLETIN_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
+    BulletinBoard, BulletinMessage, MailMessage, MailStatus, ObjectOwner, ObjectRecord, 
+    PlayerRecord, RoomOwner, RoomRecord, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, 
+    OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 
 const TREE_PRIMARY: &str = "tinymush";
@@ -328,17 +329,209 @@ impl TinyMushStore {
         Ok(())
     }
 
-    /// Store a mail payload for a player. Future phases will consume these entries
-    /// to deliver asynchronous notifications.
-    pub fn enqueue_mail(&self, username: &str, body: &str) -> Result<(), TinyMushError> {
-        let key = format!(
-            "mail:{}:{}",
-            username.to_ascii_lowercase(),
-            next_timestamp_nanos()
-        )
-        .into_bytes();
-        self.mail.insert(key, body.as_bytes())?;
+    /// Send a mail message between players
+    pub fn send_mail(&self, mut message: MailMessage) -> Result<u64, TinyMushError> {
+        // Generate unique message ID based on timestamp
+        let message_id = next_timestamp_nanos() as u64;
+        message.id = message_id;
+        message.schema_version = MAIL_SCHEMA_VERSION;
+
+        // Store in recipient's inbox
+        let inbox_key = format!(
+            "mail:inbox:{}:{}:{:020}",
+            message.recipient.to_ascii_lowercase(),
+            message.sender.to_ascii_lowercase(),
+            message_id
+        ).into_bytes();
+        
+        // Store in sender's sent folder
+        let sent_key = format!(
+            "mail:sent:{}:{}:{:020}",
+            message.sender.to_ascii_lowercase(),
+            message.recipient.to_ascii_lowercase(),
+            message_id
+        ).into_bytes();
+
+        let bytes = Self::serialize(&message)?;
+        
+        self.mail.insert(inbox_key, bytes.clone())?;
+        self.mail.insert(sent_key, bytes)?;
         self.mail.flush()?;
+        
+        Ok(message_id)
+    }
+
+    /// Get a specific mail message
+    pub fn get_mail(&self, folder: &str, username: &str, message_id: u64) -> Result<MailMessage, TinyMushError> {
+        // Try to find the message in the specified folder
+        let prefix = format!("mail:{}:{}:", folder, username.to_ascii_lowercase());
+        
+        for result in self.mail.scan_prefix(prefix.as_bytes()) {
+            let (key, value) = result?;
+            let key_str = String::from_utf8_lossy(&key);
+            if key_str.ends_with(&format!(":{:020}", message_id)) {
+                let message: MailMessage = Self::deserialize(value)?;
+                return Ok(message);
+            }
+        }
+        
+        Err(TinyMushError::NotFound(format!("Mail message: {}", message_id)))
+    }
+
+    /// List mail messages for a player's folder
+    pub fn list_mail(&self, folder: &str, username: &str, offset: usize, limit: usize) -> Result<Vec<MailMessage>, TinyMushError> {
+        let prefix = format!("mail:{}:{}:", folder, username.to_ascii_lowercase());
+        
+        let messages: Result<Vec<_>, _> = self.mail
+            .scan_prefix(prefix.as_bytes())
+            .skip(offset)
+            .take(limit)
+            .map(|result| {
+                result.map_err(TinyMushError::from)
+                    .and_then(|(_key, value)| Self::deserialize::<MailMessage>(value))
+            })
+            .collect();
+        
+        let mut messages = messages?;
+        // Sort by sent date, newest first
+        messages.sort_by(|a, b| b.sent_at.cmp(&a.sent_at));
+        Ok(messages)
+    }
+
+    /// Mark a mail message as read
+    pub fn mark_mail_read(&self, folder: &str, username: &str, message_id: u64) -> Result<(), TinyMushError> {
+        let prefix = format!("mail:{}:{}:", folder, username.to_ascii_lowercase());
+        
+        for result in self.mail.scan_prefix(prefix.as_bytes()) {
+            let (key, value) = result?;
+            let key_str = String::from_utf8_lossy(&key);
+            if key_str.ends_with(&format!(":{:020}", message_id)) {
+                let mut message: MailMessage = Self::deserialize(value)?;
+                message.mark_read();
+                let updated_bytes = Self::serialize(&message)?;
+                self.mail.insert(key, updated_bytes)?;
+                self.mail.flush()?;
+                return Ok(());
+            }
+        }
+        
+        Err(TinyMushError::NotFound(format!("Mail message: {}", message_id)))
+    }
+
+    /// Delete a mail message
+    pub fn delete_mail(&self, folder: &str, username: &str, message_id: u64) -> Result<(), TinyMushError> {
+        let prefix = format!("mail:{}:{}:", folder, username.to_ascii_lowercase());
+        
+        for result in self.mail.scan_prefix(prefix.as_bytes()) {
+            let (key, _value) = result?;
+            let key_str = String::from_utf8_lossy(&key);
+            if key_str.ends_with(&format!(":{:020}", message_id)) {
+                self.mail.remove(key)?;
+                self.mail.flush()?;
+                return Ok(());
+            }
+        }
+        
+        Err(TinyMushError::NotFound(format!("Mail message: {}", message_id)))
+    }
+
+    /// Count mail messages in a folder
+    pub fn count_mail(&self, folder: &str, username: &str) -> Result<usize, TinyMushError> {
+        let prefix = format!("mail:{}:{}:", folder, username.to_ascii_lowercase());
+        let count = self.mail.scan_prefix(prefix.as_bytes()).count();
+        Ok(count)
+    }
+
+    /// Count unread mail messages in inbox
+    pub fn count_unread_mail(&self, username: &str) -> Result<usize, TinyMushError> {
+        let prefix = format!("mail:inbox:{}:", username.to_ascii_lowercase());
+        let mut unread_count = 0;
+        
+        for result in self.mail.scan_prefix(prefix.as_bytes()) {
+            let (_key, value) = result?;
+            let message: MailMessage = Self::deserialize(value)?;
+            if message.status == MailStatus::Unread {
+                unread_count += 1;
+            }
+        }
+        
+        Ok(unread_count)
+    }
+
+    /// Cleanup old read mail messages
+    pub fn cleanup_old_mail(&self, username: &str, days_old: u32) -> Result<usize, TinyMushError> {
+        let cutoff_date = Utc::now() - chrono::Duration::days(days_old as i64);
+        let prefix = format!("mail:inbox:{}:", username.to_ascii_lowercase());
+        let mut removed = 0;
+        
+        let mut keys_to_remove = Vec::new();
+        
+        for result in self.mail.scan_prefix(prefix.as_bytes()) {
+            let (key, value) = result?;
+            let message: MailMessage = Self::deserialize(value)?;
+            
+            // Only delete read messages older than cutoff
+            if message.status != MailStatus::Unread && message.sent_at < cutoff_date {
+                keys_to_remove.push(key);
+            }
+        }
+        
+        for key in keys_to_remove {
+            self.mail.remove(key)?;
+            removed += 1;
+        }
+        
+        if removed > 0 {
+            self.mail.flush()?;
+        }
+        
+        Ok(removed)
+    }
+
+    /// Enforce mail quota for a player
+    pub fn enforce_mail_quota(&self, username: &str, max_messages: u32) -> Result<usize, TinyMushError> {
+        let inbox_count = self.count_mail("inbox", username)?;
+        
+        if inbox_count <= max_messages as usize {
+            return Ok(0);
+        }
+        
+        // Get all messages sorted by date (oldest first)
+        let prefix = format!("mail:inbox:{}:", username.to_ascii_lowercase());
+        let mut messages_with_keys = Vec::new();
+        
+        for result in self.mail.scan_prefix(prefix.as_bytes()) {
+            let (key, value) = result?;
+            let message: MailMessage = Self::deserialize(value)?;
+            messages_with_keys.push((key, message));
+        }
+        
+        // Sort by sent date, oldest first
+        messages_with_keys.sort_by(|a, b| a.1.sent_at.cmp(&b.1.sent_at));
+        
+        // Remove oldest messages to get under quota
+        let to_remove = inbox_count - max_messages as usize;
+        let mut removed = 0;
+        
+        for (key, message) in messages_with_keys.iter().take(to_remove) {
+            // Only remove read messages to preserve unread mail
+            if message.status != MailStatus::Unread {
+                self.mail.remove(key)?;
+                removed += 1;
+            }
+        }
+        
+        if removed > 0 {
+            self.mail.flush()?;
+        }
+        
+        Ok(removed)
+    }
+
+    /// Legacy method for simple mail notifications (kept for compatibility)
+    pub fn enqueue_mail(&self, username: &str, body: &str) -> Result<(), TinyMushError> {
+        let message = MailMessage::new("system", username, "System Message", body);
+        self.send_mail(message)?;
         Ok(())
     }
 }

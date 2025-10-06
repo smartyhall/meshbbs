@@ -325,3 +325,97 @@ impl BulletinBoard {
         }
     }
 }
+
+pub const MAIL_SCHEMA_VERSION: u8 = 1;
+
+/// Status of a mail message
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MailStatus {
+    Unread,
+    Read,
+    Replied,
+    Forwarded,
+}
+
+/// A mail message between players
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MailMessage {
+    pub id: u64,
+    pub sender: String,
+    pub recipient: String,
+    pub subject: String,
+    pub body: String,
+    pub sent_at: DateTime<Utc>,
+    pub read_at: Option<DateTime<Utc>>,
+    pub status: MailStatus,
+    pub reply_to: Option<u64>,
+    pub schema_version: u8,
+}
+
+impl MailMessage {
+    pub fn new(sender: &str, recipient: &str, subject: &str, body: &str) -> Self {
+        Self {
+            id: 0, // Will be set by storage layer
+            sender: sender.to_string(),
+            recipient: recipient.to_string(),
+            subject: subject.to_string(),
+            body: body.to_string(),
+            sent_at: Utc::now(),
+            read_at: None,
+            status: MailStatus::Unread,
+            reply_to: None,
+            schema_version: MAIL_SCHEMA_VERSION,
+        }
+    }
+
+    pub fn reply(sender: &str, subject: &str, body: &str, original: &MailMessage) -> Self {
+        let reply_subject = if original.subject.starts_with("Re: ") {
+            original.subject.clone()
+        } else {
+            format!("Re: {}", original.subject)
+        };
+
+        Self {
+            id: 0,
+            sender: sender.to_string(),
+            recipient: original.sender.clone(),
+            subject: if subject.is_empty() { reply_subject } else { subject.to_string() },
+            body: body.to_string(),
+            sent_at: Utc::now(),
+            read_at: None,
+            status: MailStatus::Unread,
+            reply_to: Some(original.id),
+            schema_version: MAIL_SCHEMA_VERSION,
+        }
+    }
+
+    pub fn mark_read(&mut self) {
+        if self.status == MailStatus::Unread {
+            self.status = MailStatus::Read;
+            self.read_at = Some(Utc::now());
+        }
+    }
+}
+
+/// Mail system configuration and quotas
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MailConfig {
+    pub max_messages_per_player: u32,
+    pub max_subject_length: u32,
+    pub max_body_length: u32,
+    pub auto_cleanup_days: u32,
+    pub allow_anonymous: bool,
+}
+
+impl Default for MailConfig {
+    fn default() -> Self {
+        Self {
+            max_messages_per_player: 50,
+            max_subject_length: 50,
+            max_body_length: 1000,
+            auto_cleanup_days: 30,
+            allow_anonymous: false,
+        }
+    }
+}

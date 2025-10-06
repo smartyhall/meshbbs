@@ -95,8 +95,16 @@ This checklist## Phase 2 — Command Parser & Session Plumbing
   - [x] OOC <text> - out of character communication
   - [x] Room occupancy detection and feedback
   - [x] Input validation and comprehensive help system
-- [x] Town Stump bulletin board with pagination & persistence — commit [next]
-- [ ] In-game mail storage (Sled-backed) with quotas and cleanup tasks
+- [x] Town Stump bulletin board with pagination & persistence — commit 6cecd07
+- [x] In-game mail storage (Sled-backed) with quotas and cleanup tasks — commit [current]
+  - [x] MAIL [folder] - view inbox/sent mail folders
+  - [x] SEND <player> <subject> <message> - send private mail
+  - [x] RMAIL <id> - read specific mail message (marks as read)
+  - [x] DMAIL <id> - delete mail message from folder
+  - [x] Mail persistence with sender/recipient folders
+  - [x] Quota enforcement (auto-cleanup of old read messages)
+  - [x] Unread message tracking and status management
+  - [x] Comprehensive test coverage (5 tests) - mail_system_basic.rs
 - [ ] Help/tutorial command integration (contextual responses)
 - [ ] Tests guaranteeing all outbound messages < 200 bytes
 
