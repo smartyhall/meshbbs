@@ -13,6 +13,8 @@ use crate::logutil::escape_log;
 use crate::metrics;
 use crate::storage::Storage;
 use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord, REQUIRED_START_LOCATION_ID};
+use crate::tmush::types::Direction as TmushDirection;
+use crate::tmush::state::canonical_world_seed;
 
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,16 +161,17 @@ impl TinyMushProcessor {
         );
 
         match parsed_command {
-            TinyMushCommand::Look(target) => self.handle_look(session, target).await,
-            TinyMushCommand::Move(direction) => self.handle_move(session, direction).await,
-            TinyMushCommand::Where => self.handle_where(session).await,
-            TinyMushCommand::Inventory => self.handle_inventory(session).await,
-            TinyMushCommand::Who => self.handle_who(session).await,
-            TinyMushCommand::Score => self.handle_score(session).await,
-            TinyMushCommand::Say(text) => self.handle_say(session, text).await,
-            TinyMushCommand::Help(topic) => self.handle_help(session, topic).await,
-            TinyMushCommand::Quit => self.handle_quit(session).await,
-            TinyMushCommand::Save => self.handle_save(session).await,
+            TinyMushCommand::Look(target) => self.handle_look(session, target, config).await,
+            TinyMushCommand::Move(direction) => self.handle_move(session, direction, config).await,
+            TinyMushCommand::Where => self.handle_where(session, config).await,
+            TinyMushCommand::Map => self.handle_map(session, config).await,
+            TinyMushCommand::Inventory => self.handle_inventory(session, config).await,
+            TinyMushCommand::Who => self.handle_who(session, config).await,
+            TinyMushCommand::Score => self.handle_score(session, config).await,
+            TinyMushCommand::Say(text) => self.handle_say(session, text, config).await,
+            TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
+            TinyMushCommand::Quit => self.handle_quit(session, config).await,
+            TinyMushCommand::Save => self.handle_save(session, config).await,
             TinyMushCommand::Unknown(cmd) => Ok(format!(
                 "Unknown command: '{}'\nType HELP for available commands.",
                 cmd
@@ -314,6 +317,7 @@ impl TinyMushProcessor {
         &mut self,
         session: &Session,
         target: Option<String>,
+        config: &Config,
     ) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
@@ -325,7 +329,7 @@ impl TinyMushProcessor {
             return self.describe_current_room(&player).await;
         }
 
-        // Look at specific target (not implemented in Phase 2)
+        // Look at specific target (not implemented in Phase 3)
         Ok(format!(
             "You don't see '{}' here.\nType LOOK to see the room.",
             target.unwrap()
@@ -337,47 +341,171 @@ impl TinyMushProcessor {
         &mut self,
         session: &Session,
         direction: Direction,
+        config: &Config,
     ) -> Result<String> {
-        let _player = match self.get_or_create_player(session).await {
+        let mut player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // Phase 2: Basic movement validation, room lookup in Phase 3
-        let dir_str = match direction {
-            Direction::North => "north",
-            Direction::South => "south", 
-            Direction::East => "east",
-            Direction::West => "west",
-            Direction::Up => "up",
-            Direction::Down => "down",
-            Direction::Northeast => "northeast",
-            Direction::Northwest => "northwest",
-            Direction::Southeast => "southeast",
-            Direction::Southwest => "southwest",
+        // Get current room
+        let current_room = match self.store().get_room(&player.current_room) {
+            Ok(room) => room,
+            Err(_) => {
+                return Ok(format!(
+                    "You seem to be lost! Your current location '{}' doesn't exist.\nType WHERE for help.",
+                    player.current_room
+                ));
+            }
         };
 
-        Ok(format!(
-            "You attempt to go {}.\n\n(Movement not yet implemented - Phase 3 feature)",
-            dir_str
-        ))
+        // Check if exit exists in that direction
+        let tmush_direction = match direction {
+            Direction::North => TmushDirection::North,
+            Direction::South => TmushDirection::South,
+            Direction::East => TmushDirection::East,
+            Direction::West => TmushDirection::West,
+            Direction::Up => TmushDirection::Up,
+            Direction::Down => TmushDirection::Down,
+            Direction::Northeast => TmushDirection::Northeast,
+            Direction::Northwest => TmushDirection::Northwest,
+            Direction::Southeast => TmushDirection::Southeast,
+            Direction::Southwest => TmushDirection::Southwest,
+        };
+        
+        let destination_id = match current_room.exits.get(&tmush_direction) {
+            Some(dest) => dest,
+            None => {
+                let dir_str = format!("{:?}", direction).to_lowercase();
+                return Ok(format!("You can't go {} from here.", dir_str));
+            }
+        };
+
+        // Verify destination room exists
+        let store = self.get_store(config).await?;
+        let _destination_room = match store.get_room(destination_id) {
+            Ok(room) => room,
+            Err(_) => {
+                return Ok(format!(
+                    "The exit {} leads to nowhere (room '{}' not found).",
+                    format!("{:?}", direction).to_lowercase(),
+                    destination_id
+                ));
+            }
+        };
+
+        // Move player to new room
+        player.current_room = destination_id.clone();
+        
+        // Save updated player state
+        if let Err(e) = self.store().put_player(player.clone()) {
+            return Ok(format!("Movement failed: {}", e));
+        }
+
+        // Show the new room
+        let mut response = String::new();
+        response.push_str(&format!("You go {}.\n\n", format!("{:?}", direction).to_lowercase()));
+        
+        // Add room description
+        match self.describe_current_room(&player).await {
+            Ok(desc) => response.push_str(&desc),
+            Err(_) => response.push_str("The room description is unavailable."),
+        }
+
+        Ok(response)
     }
 
     /// Handle WHERE command - show current location
-    async fn handle_where(&mut self, session: &Session) -> Result<String> {
+    async fn handle_where(&mut self, session: &Session, config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        Ok(format!(
-            "You are in: {}\n\n(Room details in Phase 3)",
-            player.current_room
-        ))
+        match self.store().get_room(&player.current_room) {
+            Ok(room) => Ok(format!(
+                "You are in: {} ({})\n{}",
+                room.name,
+                player.current_room,
+                room.short_desc
+            )),
+            Err(_) => Ok(format!(
+                "You are lost in: {}\n(Room not found - contact admin)",
+                player.current_room
+            ))
+        }
+    }
+
+    /// Handle MAP command - show overview of the game world
+    async fn handle_map(&mut self, session: &Session, config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let current_room_id = &player.current_room;
+        let store = self.get_store(config).await?;
+        
+        // Build map display showing all rooms and their connections
+        let mut response = String::new();
+        response.push_str("=== Map of Old Towne Mesh ===\n\n");
+
+        // Display current location prominently
+        if let Ok(current_room) = store.get_room(current_room_id) {
+            response.push_str(&format!(
+                "Current Location: {}\n\n",
+                current_room.name
+            ));
+        }
+
+        // Show all rooms with connections
+        response.push_str("Area Overview:\n");
+        
+        // Get all rooms from canonical seed data and fetch from store
+        let seed_rooms = canonical_world_seed(chrono::Utc::now());
+        let mut rooms_with_ids: Vec<(String, crate::tmush::types::RoomRecord)> = Vec::new();
+        
+        for room in seed_rooms {
+            if let Ok(stored_room) = store.get_room(&room.id) {
+                rooms_with_ids.push((room.id.clone(), stored_room));
+            }
+        }
+        
+        // Sort for consistent display
+        rooms_with_ids.sort_by(|(a, _), (b, _)| a.cmp(b));
+        
+        for (room_id, room) in rooms_with_ids {
+            let marker = if &room_id == current_room_id {
+                "➤"
+            } else {
+                " "
+            };
+            
+            response.push_str(&format!(
+                "{} {} - {}\n",
+                marker, room.name, room.short_desc
+            ));
+            
+            // Show exits
+            if !room.exits.is_empty() {
+                let mut exits: Vec<_> = room.exits.keys().map(|d| format!("{:?}", d).to_lowercase()).collect();
+                exits.sort();
+                response.push_str(&format!(
+                    "    Exits: {}\n",
+                    exits.join(", ")
+                ));
+            }
+            response.push('\n');
+        }
+
+        response.push_str("Use LOOK to examine your current room in detail.\n");
+        response.push_str("Use movement commands (north, south, east, west, etc.) to travel.\n");
+
+        Ok(response)
     }
 
     /// Handle INVENTORY command
-    async fn handle_inventory(&mut self, session: &Session) -> Result<String> {
+    async fn handle_inventory(&mut self, session: &Session, config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
@@ -399,7 +527,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle WHO command - list online players
-    async fn handle_who(&mut self, _session: &Session) -> Result<String> {
+    async fn handle_who(&mut self, _session: &Session, _config: &Config) -> Result<String> {
         let player_ids = match self.store().list_player_ids() {
             Ok(ids) => ids,
             Err(e) => return Ok(format!("Error listing players: {}", e)),
@@ -422,7 +550,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle SCORE command - show player stats
-    async fn handle_score(&mut self, session: &Session) -> Result<String> {
+    async fn handle_score(&mut self, session: &Session, config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
@@ -440,7 +568,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle SAY command - speak to room
-    async fn handle_say(&mut self, session: &Session, text: String) -> Result<String> {
+    async fn handle_say(&mut self, session: &Session, text: String, _config: &Config) -> Result<String> {
         if text.trim().is_empty() {
             return Ok("Say what?".to_string());
         }
@@ -453,7 +581,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle HELP command
-    async fn handle_help(&mut self, _session: &Session, topic: Option<String>) -> Result<String> {
+    async fn handle_help(&mut self, _session: &Session, topic: Option<String>, _config: &Config) -> Result<String> {
         match topic.as_deref() {
             Some("commands") | Some("COMMANDS") => Ok(self.help_commands()),
             Some("movement") | Some("MOVEMENT") => Ok(self.help_movement()),
@@ -464,7 +592,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle QUIT command - exit TinyMUSH
-    async fn handle_quit(&mut self, session: &mut Session) -> Result<String> {
+    async fn handle_quit(&mut self, session: &mut Session, _config: &Config) -> Result<String> {
         // Record game exit metrics
         if let Some(slug) = session.current_game_slug.take() {
             let counters = metrics::record_game_exit(&slug);
@@ -488,7 +616,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle SAVE command - force save player state
-    async fn handle_save(&mut self, session: &Session) -> Result<String> {
+    async fn handle_save(&mut self, session: &Session, config: &Config) -> Result<String> {
         match self.get_or_create_player(session).await {
             Ok(player) => {
                 match self.store().put_player(player) {
@@ -524,11 +652,39 @@ impl TinyMushProcessor {
 
     /// Describe the current room (placeholder for Phase 3)
     async fn describe_current_room(&self, player: &PlayerRecord) -> Result<String> {
-        Ok(format!(
-            "=== {} ===\n\n(Room descriptions in Phase 3)\n\nYou are standing in {}.",
-            player.current_room.to_uppercase(),
-            player.current_room
-        ))
+        match self.store().get_room(&player.current_room) {
+            Ok(room) => {
+                let mut response = String::new();
+                
+                // Room name
+                response.push_str(&format!("=== {} ===\n", room.name));
+                
+                // Room description
+                response.push_str(&format!("{}\n\n", room.long_desc));
+                
+                // Show exits if any
+                if !room.exits.is_empty() {
+                    response.push_str("Obvious exits: ");
+                    let mut exit_names: Vec<String> = room.exits.keys()
+                        .map(|dir| format!("{:?}", dir).to_lowercase())
+                        .collect();
+                    exit_names.sort(); // Consistent ordering
+                    response.push_str(&exit_names.join(", "));
+                    response.push('\n');
+                }
+                
+                // Show other players (Phase 4 feature - placeholder for now)
+                // response.push_str("Players here: (none visible)\n");
+                
+                Ok(response)
+            }
+            Err(_) => {
+                Ok(format!(
+                    "You are in a mysterious void (room '{}' not found).\nType WHERE for help.",
+                    player.current_room
+                ))
+            }
+        }
     }
 
     /// Main help text
