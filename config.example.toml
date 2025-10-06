@@ -85,9 +85,10 @@ cache_ttl = 300
 timeout = 10
 
 [games]
-# Optional mini‑games and doors
-# Show [T]inyHack in the main menu and enable the TinyHack DM door
+# Optional mini‑games and doors (Games submenu)
+# TinyHack is playable today; TinyMUSH appears as a coming-soon preview when enabled
 tinyhack_enabled = false
+tinymush_enabled = false
 
 # New User Welcome System
 # Automatically greet nodes with default Meshtastic names

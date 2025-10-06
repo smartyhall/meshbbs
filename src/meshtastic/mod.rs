@@ -67,9 +67,9 @@
 //! ```
 
 use crate::logutil::escape_log; // for sanitizing log output
-use anyhow::Result;
 #[cfg(feature = "meshtastic-proto")]
 use anyhow::anyhow;
+use anyhow::Result;
 use log::{debug, info};
 #[cfg(feature = "meshtastic-proto")]
 use log::{error, trace, warn};
@@ -1637,7 +1637,7 @@ impl MeshtasticReader {
         }
 
         let mut interval = tokio::time::interval(Duration::from_millis(10));
-        
+
         // Prune stale nodes every 10 minutes (nodes not seen in 24 hours)
         let mut prune_interval = tokio::time::interval(Duration::from_secs(600)); // 10 minutes
         prune_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -1654,7 +1654,7 @@ impl MeshtasticReader {
                         }
                     }
                 }
-                
+
                 // Check for control messages
                 control_msg = self.control_rx.recv() => {
                     match control_msg {
@@ -1886,7 +1886,7 @@ impl MeshtasticReader {
                                 if let Ok(user) = proto::User::decode(&mut payload_buf) {
                                     let long_name = user.long_name.trim().to_string();
                                     let short_name = user.short_name.trim().to_string();
-                                    
+
                                     if !long_name.is_empty() || !short_name.is_empty() {
                                         // Update in-memory node map
                                         let node_info = proto::NodeInfo {
@@ -1894,23 +1894,30 @@ impl MeshtasticReader {
                                             user: Some(user),
                                             ..Default::default()
                                         };
-                                    self.nodes.insert(pkt.from, node_info);
-                                    
-                                    // Emit node detection event for welcome system
-                                    let _ = self.node_detection_tx.send(NodeDetectionEvent {
-                                        node_id: pkt.from,
-                                        long_name: long_name.clone(),
-                                        short_name: short_name.clone(),
-                                        is_from_startup_queue: false, // Real-time NODEINFO detection
-                                    });                                        // Update persistent cache
-                                        self.node_cache.update_node(pkt.from, long_name.clone(), short_name.clone());
-                                        
+                                        self.nodes.insert(pkt.from, node_info);
+
+                                        // Emit node detection event for welcome system
+                                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                                            node_id: pkt.from,
+                                            long_name: long_name.clone(),
+                                            short_name: short_name.clone(),
+                                            is_from_startup_queue: false, // Real-time NODEINFO detection
+                                        }); // Update persistent cache
+                                        self.node_cache.update_node(
+                                            pkt.from,
+                                            long_name.clone(),
+                                            short_name.clone(),
+                                        );
+
                                         // Save cache (best effort)
                                         if let Err(e) = self.save_node_cache() {
                                             debug!("Failed to save node cache: {}", e);
                                         }
-                                        
-                                        debug!("Updated node info for 0x{:08x}: {} ({})", pkt.from, long_name, short_name);
+
+                                        debug!(
+                                            "Updated node info for 0x{:08x}: {} ({})",
+                                            pkt.from, long_name, short_name
+                                        );
                                     }
                                 }
                             }
@@ -2010,15 +2017,16 @@ impl MeshtasticReader {
                         let long_name = user.long_name.clone();
                         let short_name = user.short_name.clone();
 
-                    self.nodes.insert(n.num, n.clone());
-                    
-                    // Emit node detection event for welcome system
-                    let _ = self.node_detection_tx.send(NodeDetectionEvent {
-                        node_id: n.num,
-                        long_name: long_name.clone(),
-                        short_name: short_name.clone(),
-                        is_from_startup_queue: false, // Config-based detection
-                    });                        self.node_cache.update_node(n.num, long_name, short_name);
+                        self.nodes.insert(n.num, n.clone());
+
+                        // Emit node detection event for welcome system
+                        let _ = self.node_detection_tx.send(NodeDetectionEvent {
+                            node_id: n.num,
+                            long_name: long_name.clone(),
+                            short_name: short_name.clone(),
+                            is_from_startup_queue: false, // Config-based detection
+                        });
+                        self.node_cache.update_node(n.num, long_name, short_name);
 
                         // Save cache (best effort)
                         if let Err(e) = self.save_node_cache() {
@@ -2296,12 +2304,12 @@ impl MeshtasticWriter {
         use proto::mesh_packet::PayloadVariant as MPPayload;
         use proto::to_radio::PayloadVariant as TRPayload;
         use proto::{Data, MeshPacket, PortNum, ToRadio};
-        
+
         // Use TEXT_MESSAGE_APP with single "." character
         // This leverages routing ACK system - much more reliable than position requests
         let data_msg = Data {
             portnum: PortNum::TextMessageApp as i32,
-            payload: ".".as_bytes().to_vec().into(),  // Minimal non-intrusive payload
+            payload: ".".as_bytes().to_vec().into(), // Minimal non-intrusive payload
             want_response: false,
             dest: 0,
             source: 0,
@@ -2310,18 +2318,18 @@ impl MeshtasticWriter {
             emoji: 0,
             bitfield: None,
         };
-        
-        let from_node = self.our_node_id.ok_or_else(||
-            anyhow!("Cannot send ping: our_node_id not yet known")
-        )?;
-        
+
+        let from_node = self
+            .our_node_id
+            .ok_or_else(|| anyhow!("Cannot send ping: our_node_id not yet known"))?;
+
         // Generate unique packet ID
         use std::time::{SystemTime, UNIX_EPOCH};
         let since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
         let packet_id = (since_epoch.as_secs() as u32) ^ (since_epoch.subsec_nanos());
-        
+
         let pkt = MeshPacket {
             from: from_node,
             to,
@@ -2331,15 +2339,15 @@ impl MeshtasticWriter {
             rx_time: 0,
             rx_snr: 0.0,
             hop_limit: 3,
-            want_ack: true,   // Critical: request routing ACK to confirm delivery
-            priority: 10,      // Use ACK priority for faster delivery
+            want_ack: true, // Critical: request routing ACK to confirm delivery
+            priority: 10,   // Use ACK priority for faster delivery
             ..Default::default()
         };
-        
+
         let toradio = ToRadio {
             payload_variant: Some(TRPayload::Packet(pkt)),
         };
-        
+
         let mut guard = self.port.lock().unwrap();
         let mut payload_bytes = Vec::with_capacity(128);
         toradio.encode(&mut payload_bytes)?;
@@ -2352,14 +2360,14 @@ impl MeshtasticWriter {
         guard.write_all(&payload_bytes)?;
         guard.flush()?;
         drop(guard);
-        
+
         std::thread::sleep(std::time::Duration::from_millis(50));
-        
+
         debug!(
             "Sent TEXT_MESSAGE_APP ping: to=0x{:08x} channel={} id=0x{:08x}",
             to, channel, packet_id
         );
-        
+
         Ok(packet_id)
     }
 

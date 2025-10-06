@@ -67,6 +67,7 @@ pub mod commands;
 pub mod dispatch;
 pub mod eightball;
 pub mod fortune;
+pub mod games;
 pub mod public;
 pub mod roles;
 pub mod server;

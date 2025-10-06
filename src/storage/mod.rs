@@ -452,32 +452,37 @@ impl Storage {
     /// Format: timestamp(4 bytes) + random(2 bytes) = 6 bytes total
     fn generate_message_id() -> String {
         use std::time::{SystemTime, UNIX_EPOCH};
-        
+
         // Get 4 bytes from current timestamp (seconds since epoch)
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as u32;
-        
+
         // Get 2 bytes of randomness
         let random: u16 = rand::random();
-        
+
         // Combine: 4 bytes timestamp + 2 bytes random = 6 bytes
         format!("{:08x}{:04x}", timestamp, random)
     }
-    
+
     /// Calculate CRC-16 checksum for message integrity verification
     /// Uses CRC-16-IBM-SDLC (polynomial 0x1021, also known as CRC-16-CCITT)
-    fn calculate_message_crc(topic: &str, author: &str, content: &str, timestamp: &DateTime<Utc>) -> u16 {
+    fn calculate_message_crc(
+        topic: &str,
+        author: &str,
+        content: &str,
+        timestamp: &DateTime<Utc>,
+    ) -> u16 {
         const CRC16: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
         let mut digest = CRC16.digest();
-        
+
         // Include all message fields in CRC calculation
         digest.update(topic.as_bytes());
         digest.update(author.as_bytes());
         digest.update(content.as_bytes());
         digest.update(timestamp.to_rfc3339().as_bytes());
-        
+
         digest.finalize()
     }
 
@@ -796,12 +801,8 @@ impl Storage {
 
         let timestamp = Utc::now();
         let message_id = Self::generate_message_id();
-        let crc16 = Self::calculate_message_crc(
-            &validated_topic,
-            author,
-            &sanitized_content,
-            &timestamp,
-        );
+        let crc16 =
+            Self::calculate_message_crc(&validated_topic, author, &sanitized_content, &timestamp);
 
         let message = Message {
             id: Uuid::new_v4().to_string(),

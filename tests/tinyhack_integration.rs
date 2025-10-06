@@ -24,7 +24,10 @@ async fn tinyhack_enter_play_persist() {
 
     // Enter TinyHack via main menu
     let before = server.test_messages().len();
-    server.route_test_text_direct(&node_key, "T").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "G1")
+        .await
+        .unwrap();
     // Collect all chunks produced by this command for our node and join them
     let first_chunks: Vec<String> = server.test_messages()[before..]
         .iter()
@@ -85,8 +88,12 @@ async fn tinyhack_enter_play_persist() {
     server.route_test_text_direct(&node_key, "B").await.unwrap();
     let back_to_menu = server.test_messages().last().unwrap().1.clone();
     assert!(back_to_menu.contains("Main Menu:"));
+    assert!(back_to_menu.contains("[G]ames"));
     let before2 = server.test_messages().len();
-    server.route_test_text_direct(&node_key, "T").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "G1")
+        .await
+        .unwrap();
     let re_chunks: Vec<String> = server.test_messages()[before2..]
         .iter()
         .filter(|(k, _)| k == &node_key)

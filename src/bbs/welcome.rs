@@ -22,19 +22,19 @@ pub struct WelcomeConfig {
     /// Enable the welcome system
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Send public greeting to mesh
     #[serde(default = "default_true")]
     pub public_greeting: bool,
-    
+
     /// Send private guide via DM
     #[serde(default = "default_true")]
     pub private_guide: bool,
-    
+
     /// Minutes to wait between any welcomes (global rate limit)
     #[serde(default = "default_cooldown")]
     pub cooldown_minutes: u64,
-    
+
     /// Maximum times to welcome the same node
     #[serde(default = "default_max_welcomes")]
     pub max_welcomes_per_node: u32,
@@ -90,19 +90,19 @@ impl WelcomeState {
     pub fn new(data_dir: &str) -> Self {
         let state_path = std::path::Path::new(data_dir).join("welcomed_nodes.json");
         let welcomed_nodes = Self::load_state(&state_path).unwrap_or_default();
-        
+
         info!(
             "Welcome system initialized: {} nodes tracked",
             welcomed_nodes.len()
         );
-        
+
         Self {
             welcomed_nodes,
             last_welcome_time: None,
             state_path,
         }
     }
-    
+
     /// Load welcomed nodes from disk
     fn load_state(path: &std::path::Path) -> Option<HashMap<u32, WelcomeRecord>> {
         match std::fs::read_to_string(path) {
@@ -119,14 +119,14 @@ impl WelcomeState {
             }
         }
     }
-    
+
     /// Save state to disk atomically
     fn save_state(&self) -> std::io::Result<()> {
         let json = serde_json::to_string_pretty(&self.welcomed_nodes)?;
         std::fs::write(&self.state_path, json)?;
         Ok(())
     }
-    
+
     /// Check if node should be welcomed
     pub fn should_welcome(
         &self,
@@ -139,7 +139,7 @@ impl WelcomeState {
         if !is_default_name(node_name) {
             return false;
         }
-        
+
         // Check global rate limit (skip for startup queue welcomes)
         if !skip_rate_limit {
             if let Some(last_time) = self.last_welcome_time {
@@ -147,15 +147,12 @@ impl WelcomeState {
                 let cooldown = Duration::from_secs(config.cooldown_minutes * 60);
                 if elapsed < cooldown {
                     let remaining = cooldown.saturating_sub(elapsed).as_secs();
-                    debug!(
-                        "Welcome rate limit active: {}s remaining",
-                        remaining
-                    );
+                    debug!("Welcome rate limit active: {}s remaining", remaining);
                     return false;
                 }
             }
         }
-        
+
         // Check per-node limit
         if let Some(record) = self.welcomed_nodes.get(&node_id) {
             if record.count >= config.max_welcomes_per_node {
@@ -166,10 +163,10 @@ impl WelcomeState {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Record that a node was welcomed
     pub fn record_welcome(&mut self, node_id: u32, node_name: &str) {
         let record = self
@@ -180,24 +177,24 @@ impl WelcomeState {
                 count: 0,
                 name: node_name.to_string(),
             });
-        
+
         record.count += 1;
         record.timestamp = SystemTime::now();
         record.name = node_name.to_string();
-        
+
         self.last_welcome_time = Some(Instant::now());
-        
+
         info!(
             "Recorded welcome for node 0x{:08X} ({}): count={}",
             node_id, node_name, record.count
         );
-        
+
         // Persist to disk
         if let Err(e) = self.save_state() {
             warn!("Failed to save welcome state: {}", e);
         }
     }
-    
+
     /// Get stats for logging/debugging
     pub fn stats(&self) -> WelcomeStats {
         let cooldown_remaining = self
@@ -207,7 +204,7 @@ impl WelcomeState {
                 (5u64 * 60).saturating_sub(elapsed)
             })
             .unwrap_or(0);
-        
+
         WelcomeStats {
             total_nodes_welcomed: self.welcomed_nodes.len(),
             cooldown_remaining_secs: cooldown_remaining,
@@ -228,43 +225,57 @@ pub fn is_default_name(name: &str) -> bool {
     if !name.starts_with("Meshtastic ") {
         return false;
     }
-    
+
     let suffix = &name[11..]; // After "Meshtastic "
     if suffix.len() != 4 {
         return false;
     }
-    
+
     suffix.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 /// Generate a fun random callsign (adjective + animal) with emoji
 pub fn generate_callsign() -> (String, String) {
     let mut rng = rand::thread_rng();
-    
+
     let adjective = ADJECTIVES.choose(&mut rng).unwrap();
     let animal = ANIMALS.choose(&mut rng).unwrap();
     let emoji = get_animal_emoji(animal);
-    
+
     let callsign = format!("{} {}", adjective, animal);
     let emoji_string = emoji.to_string();
-    
+
     (callsign, emoji_string)
 }
 
 /// Generate public greeting message
 pub fn public_greeting(node_name: &str) -> String {
     let templates = [
-        format!("🎉 Welcome to the mesh, {}! Check your DMs for a quick setup tip.", node_name),
-        format!("👋 Hey {}, welcome aboard! MeshBBS sent you a getting-started message.", node_name),
-        format!("🌐 {} just joined the mesh! Welcome - check your DMs for help.", node_name),
+        format!(
+            "🎉 Welcome to the mesh, {}! Check your DMs for a quick setup tip.",
+            node_name
+        ),
+        format!(
+            "👋 Hey {}, welcome aboard! MeshBBS sent you a getting-started message.",
+            node_name
+        ),
+        format!(
+            "🌐 {} just joined the mesh! Welcome - check your DMs for help.",
+            node_name
+        ),
     ];
-    
+
     let mut rng = rand::thread_rng();
     templates[rng.gen_range(0..templates.len())].clone()
 }
 
 /// Generate private guide DM
-pub fn private_guide(node_name: &str, suggested_callsign: &str, emoji: &str, cmd_prefix: char) -> String {
+pub fn private_guide(
+    node_name: &str,
+    suggested_callsign: &str,
+    emoji: &str,
+    cmd_prefix: char,
+) -> String {
     format!(
         "👋 Welcome to Meshtastic, {}!\n\
         \n\
@@ -281,45 +292,165 @@ pub fn private_guide(node_name: &str, suggested_callsign: &str, emoji: &str, cmd
 
 // Clean, friendly adjectives
 const ADJECTIVES: &[&str] = &[
-    "Adventurous", "Brave", "Clever", "Daring", "Eager",
-    "Friendly", "Gentle", "Happy", "Inventive", "Jolly",
-    "Kind", "Lively", "Merry", "Noble", "Optimistic",
-    "Playful", "Quick", "Radiant", "Swift", "Thoughtful",
-    "Upbeat", "Valiant", "Wise", "Zesty", "Cheerful",
-    "Bold", "Cosmic", "Dynamic", "Electric", "Fearless",
-    "Graceful", "Heroic", "Intrepid", "Joyful", "Keen",
-    "Lucky", "Mighty", "Nimble", "Outstanding", "Peaceful",
-    "Quirky", "Resilient", "Spirited", "Tenacious", "Unstoppable",
-    "Vibrant", "Wonderful", "Xtraordinary", "Youthful", "Zealous",
+    "Adventurous",
+    "Brave",
+    "Clever",
+    "Daring",
+    "Eager",
+    "Friendly",
+    "Gentle",
+    "Happy",
+    "Inventive",
+    "Jolly",
+    "Kind",
+    "Lively",
+    "Merry",
+    "Noble",
+    "Optimistic",
+    "Playful",
+    "Quick",
+    "Radiant",
+    "Swift",
+    "Thoughtful",
+    "Upbeat",
+    "Valiant",
+    "Wise",
+    "Zesty",
+    "Cheerful",
+    "Bold",
+    "Cosmic",
+    "Dynamic",
+    "Electric",
+    "Fearless",
+    "Graceful",
+    "Heroic",
+    "Intrepid",
+    "Joyful",
+    "Keen",
+    "Lucky",
+    "Mighty",
+    "Nimble",
+    "Outstanding",
+    "Peaceful",
+    "Quirky",
+    "Resilient",
+    "Spirited",
+    "Tenacious",
+    "Unstoppable",
+    "Vibrant",
+    "Wonderful",
+    "Xtraordinary",
+    "Youthful",
+    "Zealous",
 ];
 
 // Fun animal names
 const ANIMALS: &[&str] = &[
-    "Albatross", "Bear", "Cheetah", "Dolphin", "Eagle",
-    "Fox", "Giraffe", "Hawk", "Iguana", "Jaguar",
-    "Kangaroo", "Lion", "Moose", "Narwhal", "Otter",
-    "Panda", "Quail", "Raven", "Seal", "Tiger",
-    "Unicorn", "Vulture", "Wolf", "Xerus", "Yak",
-    "Zebra", "Alpaca", "Beaver", "Condor", "Deer",
-    "Elephant", "Falcon", "Gazelle", "Heron", "Impala",
-    "Koala", "Leopard", "Meerkat", "Newt", "Owl",
-    "Penguin", "Rabbit", "Squirrel", "Turtle", "Uakari",
-    "Viper", "Wombat", "Xenops", "Yellowhammer", "Zebu",
+    "Albatross",
+    "Bear",
+    "Cheetah",
+    "Dolphin",
+    "Eagle",
+    "Fox",
+    "Giraffe",
+    "Hawk",
+    "Iguana",
+    "Jaguar",
+    "Kangaroo",
+    "Lion",
+    "Moose",
+    "Narwhal",
+    "Otter",
+    "Panda",
+    "Quail",
+    "Raven",
+    "Seal",
+    "Tiger",
+    "Unicorn",
+    "Vulture",
+    "Wolf",
+    "Xerus",
+    "Yak",
+    "Zebra",
+    "Alpaca",
+    "Beaver",
+    "Condor",
+    "Deer",
+    "Elephant",
+    "Falcon",
+    "Gazelle",
+    "Heron",
+    "Impala",
+    "Koala",
+    "Leopard",
+    "Meerkat",
+    "Newt",
+    "Owl",
+    "Penguin",
+    "Rabbit",
+    "Squirrel",
+    "Turtle",
+    "Uakari",
+    "Viper",
+    "Wombat",
+    "Xenops",
+    "Yellowhammer",
+    "Zebu",
 ];
 
 /// Get the emoji for a given animal name
 fn get_animal_emoji(animal: &str) -> &'static str {
     match animal {
-        "Albatross" => "🦅", "Bear" => "🐻", "Cheetah" => "🐆", "Dolphin" => "🐬", "Eagle" => "🦅",
-        "Fox" => "🦊", "Giraffe" => "🦒", "Hawk" => "🦅", "Iguana" => "🦎", "Jaguar" => "🐆",
-        "Kangaroo" => "🦘", "Lion" => "🦁", "Moose" => "🦌", "Narwhal" => "🐋", "Otter" => "🦦",
-        "Panda" => "🐼", "Quail" => "🐦", "Raven" => "🐦‍⬛", "Seal" => "🦭", "Tiger" => "🐯",
-        "Unicorn" => "🦄", "Vulture" => "🦅", "Wolf" => "🐺", "Xerus" => "🐿️", "Yak" => "🦬",
-        "Zebra" => "🦓", "Alpaca" => "🦙", "Beaver" => "🦫", "Condor" => "🦅", "Deer" => "🦌",
-        "Elephant" => "🐘", "Falcon" => "🦅", "Gazelle" => "🦌", "Heron" => "🦩", "Impala" => "🦌",
-        "Koala" => "🐨", "Leopard" => "🐆", "Meerkat" => "🦡", "Newt" => "🦎", "Owl" => "🦉",
-        "Penguin" => "🐧", "Rabbit" => "🐰", "Squirrel" => "🐿️", "Turtle" => "🐢", "Uakari" => "🐵",
-        "Viper" => "🐍", "Wombat" => "🦡", "Xenops" => "🐦", "Yellowhammer" => "🐦", "Zebu" => "🐂",
+        "Albatross" => "🦅",
+        "Bear" => "🐻",
+        "Cheetah" => "🐆",
+        "Dolphin" => "🐬",
+        "Eagle" => "🦅",
+        "Fox" => "🦊",
+        "Giraffe" => "🦒",
+        "Hawk" => "🦅",
+        "Iguana" => "🦎",
+        "Jaguar" => "🐆",
+        "Kangaroo" => "🦘",
+        "Lion" => "🦁",
+        "Moose" => "🦌",
+        "Narwhal" => "🐋",
+        "Otter" => "🦦",
+        "Panda" => "🐼",
+        "Quail" => "🐦",
+        "Raven" => "🐦‍⬛",
+        "Seal" => "🦭",
+        "Tiger" => "🐯",
+        "Unicorn" => "🦄",
+        "Vulture" => "🦅",
+        "Wolf" => "🐺",
+        "Xerus" => "🐿️",
+        "Yak" => "🦬",
+        "Zebra" => "🦓",
+        "Alpaca" => "🦙",
+        "Beaver" => "🦫",
+        "Condor" => "🦅",
+        "Deer" => "🦌",
+        "Elephant" => "🐘",
+        "Falcon" => "🦅",
+        "Gazelle" => "🦌",
+        "Heron" => "🦩",
+        "Impala" => "🦌",
+        "Koala" => "🐨",
+        "Leopard" => "🐆",
+        "Meerkat" => "🦡",
+        "Newt" => "🦎",
+        "Owl" => "🦉",
+        "Penguin" => "🐧",
+        "Rabbit" => "🐰",
+        "Squirrel" => "🐿️",
+        "Turtle" => "🐢",
+        "Uakari" => "🐵",
+        "Viper" => "🐍",
+        "Wombat" => "🦡",
+        "Xenops" => "🐦",
+        "Yellowhammer" => "🐦",
+        "Zebu" => "🐂",
         _ => "🎭", // Fallback
     }
 }
@@ -334,7 +465,7 @@ mod tests {
         assert!(is_default_name("Meshtastic 1234"));
         assert!(is_default_name("Meshtastic ABCD"));
         assert!(is_default_name("Meshtastic 0000"));
-        
+
         assert!(!is_default_name("CoolNode A3F2"));
         assert!(!is_default_name("Meshtastic"));
         assert!(!is_default_name("Meshtastic 123"));
@@ -350,13 +481,13 @@ mod tests {
             assert!(name.contains(' '));
             assert!(name.len() < 40);
             assert!(name.len() > 5);
-            
+
             // Verify it's from our lists
             let parts: Vec<&str> = name.split(' ').collect();
             assert_eq!(parts.len(), 2);
             assert!(ADJECTIVES.contains(&parts[0]));
             assert!(ANIMALS.contains(&parts[1]));
-            
+
             // Verify emoji is not empty
             assert!(!emoji.is_empty());
         }
@@ -378,7 +509,7 @@ mod tests {
         assert!(guide.contains("Brave Eagle"));
         assert!(guide.contains("🦅"));
         assert!(guide.contains("^HELP"));
-        
+
         // Test with different prefix
         let guide_alt = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '!');
         assert!(guide_alt.contains("!HELP"));
@@ -387,7 +518,7 @@ mod tests {
     #[test]
     fn test_welcome_state_rate_limiting() {
         use tempfile::tempdir;
-        
+
         let tmp = tempdir().unwrap();
         let mut state = WelcomeState::new(tmp.path().to_str().unwrap());
         let config = WelcomeConfig {
@@ -396,16 +527,16 @@ mod tests {
             max_welcomes_per_node: 1,
             ..Default::default()
         };
-        
+
         // First welcome should be allowed (test with rate limit enabled)
         assert!(state.should_welcome(0xA3F2, "Meshtastic A3F2", &config, false));
-        
+
         // Record the welcome
         state.record_welcome(0xA3F2, "Meshtastic A3F2");
-        
+
         // Same node should not be welcomed again (per-node limit)
         assert!(!state.should_welcome(0xA3F2, "Meshtastic A3F2", &config, false));
-        
+
         // Different node should also be blocked (global cooldown)
         assert!(!state.should_welcome(0xB4E1, "Meshtastic B4E1", &config, false));
     }
@@ -413,16 +544,16 @@ mod tests {
     #[test]
     fn test_welcome_state_persistence() {
         use tempfile::tempdir;
-        
+
         let tmp = tempdir().unwrap();
         let path = tmp.path().to_str().unwrap();
-        
+
         // Create state and welcome a node
         {
             let mut state = WelcomeState::new(path);
             state.record_welcome(0xA3F2, "Meshtastic A3F2");
         }
-        
+
         // Load state again and verify node is tracked
         {
             let state = WelcomeState::new(path);

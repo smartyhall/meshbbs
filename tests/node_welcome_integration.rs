@@ -1,7 +1,6 @@
 /// Integration tests for the node detection welcome system.
 /// This tests the feature that automatically welcomes new Meshtastic nodes
 /// with default names (e.g., "Meshtastic 1A2B") when they appear in the network.
-
 use meshbbs::bbs::welcome::WelcomeConfig;
 use meshbbs::bbs::BbsServer;
 use meshbbs::config::Config;
@@ -17,7 +16,7 @@ fn create_test_node_cache(data_dir: &str, nodes: Vec<TestNode>) -> std::io::Resu
     use std::fs;
 
     let cache_path = PathBuf::from(data_dir).join("node_cache.json");
-    
+
     let cache_entries: Vec<_> = nodes
         .iter()
         .map(|node| {
@@ -29,11 +28,11 @@ fn create_test_node_cache(data_dir: &str, nodes: Vec<TestNode>) -> std::io::Resu
             })
         })
         .collect();
-    
+
     let cache_json = json!({
         "nodes": cache_entries
     });
-    
+
     fs::write(cache_path, serde_json::to_string_pretty(&cache_json)?)?;
     Ok(())
 }
@@ -218,7 +217,9 @@ async fn test_rate_limiting_across_server_restarts() {
 
     // First server instance - should queue welcome
     {
-        let _server1 = BbsServer::new(cfg.clone()).await.expect("Failed to create server 1");
+        let _server1 = BbsServer::new(cfg.clone())
+            .await
+            .expect("Failed to create server 1");
         sleep(Duration::from_millis(100)).await;
 
         // In full implementation: verify welcome was sent
@@ -234,7 +235,9 @@ async fn test_rate_limiting_across_server_restarts() {
 
     // Second server instance - should NOT queue welcome (already welcomed)
     {
-        let _server2 = BbsServer::new(cfg).await.expect("Failed to create server 2");
+        let _server2 = BbsServer::new(cfg)
+            .await
+            .expect("Failed to create server 2");
         sleep(Duration::from_millis(100)).await;
 
         // In full implementation: verify NO welcome was sent
@@ -372,7 +375,9 @@ async fn test_empty_cache_handling() {
         max_welcomes_per_node: 1,
     };
 
-    let server = BbsServer::new(cfg).await.expect("Failed to create server with empty cache");
+    let server = BbsServer::new(cfg)
+        .await
+        .expect("Failed to create server with empty cache");
     sleep(Duration::from_millis(100)).await;
 
     // Should not panic, should not queue any welcomes
@@ -398,7 +403,9 @@ async fn test_missing_cache_file_handling() {
         max_welcomes_per_node: 1,
     };
 
-    let server = BbsServer::new(cfg).await.expect("Failed to create server with missing cache");
+    let server = BbsServer::new(cfg)
+        .await
+        .expect("Failed to create server with missing cache");
     sleep(Duration::from_millis(100)).await;
 
     // Should handle gracefully, not panic

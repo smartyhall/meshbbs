@@ -22,8 +22,10 @@
 use anyhow::Result;
 // use log::{debug}; // retained for future detailed command tracing
 use crate::logutil::escape_log;
+use crate::metrics;
 use log::{error, info, warn};
 
+use super::games::{self, GameDoorKind};
 use super::roles::LEVEL_MODERATOR;
 use super::session::{Session, SessionState};
 use crate::config::Config;
@@ -113,8 +115,8 @@ impl CommandProcessor {
     /// Render the top-level main menu based on enabled modules
     fn render_main_menu(&self, _session: &Session, config: &Config) -> String {
         let mut line = String::from("Main Menu:\n[M]essages ");
-        if config.games.tinyhack_enabled {
-            line.push_str("[T]inyhack ");
+        if games::has_enabled_doors(&config.games) {
+            line.push_str("[G]ames ");
         }
         line.push_str("[P]references [Q]uit\n");
         line
@@ -262,6 +264,26 @@ impl CommandProcessor {
                     || cmd_upper == "Q"
                     || cmd_upper == "QUIT"
                 {
+                    let slug = session
+                        .current_game_slug
+                        .clone()
+                        .unwrap_or_else(|| "tinyhack".to_string());
+                    let exit_counts = metrics::record_game_exit(&slug);
+                    let user = session.display_name();
+                    info!(
+                        target: "meshbbs::games",
+                        "game.exit slug={} session={} user={} node={} reason=command command={} active={} exits={} entries={} peak={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&user),
+                        escape_log(&session.node_id),
+                        escape_log(cmd_upper.as_str()),
+                        exit_counts.currently_active,
+                        exit_counts.exits,
+                        exit_counts.entries,
+                        exit_counts.concurrent_peak
+                    );
+                    session.current_game_slug = None;
                     session.state = SessionState::MainMenu;
                     return Ok(self.render_main_menu(session, config));
                 }
@@ -404,6 +426,45 @@ impl CommandProcessor {
         storage: &mut Storage,
         config: &Config,
     ) -> Result<String> {
+        let game_doors = games::enabled_doors(&config.games);
+        if cmd == "G" || cmd == "GAMES" {
+            if game_doors.is_empty() {
+                return Ok("No games are currently enabled.\n".to_string());
+            }
+            return Ok(games::format_games_menu(&game_doors));
+        }
+
+        if let Some(door) = games::resolve_games_command(cmd, &game_doors) {
+            match door.kind {
+                GameDoorKind::TinyHack => {
+                    let slug = door.slug;
+                    session.state = SessionState::TinyHack;
+                    session.current_game_slug = Some(slug.to_string());
+                    let username = session.display_name();
+                    let entry_counts = metrics::record_game_entry(slug);
+                    info!(
+                        target: "meshbbs::games",
+                        "game.entry slug={} session={} user={} node={} command={} active={} peak={} entries={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&username),
+                        escape_log(&session.node_id),
+                        escape_log(cmd),
+                        entry_counts.currently_active,
+                        entry_counts.concurrent_peak,
+                        entry_counts.entries
+                    );
+                    let (gs, screen, _is_new) =
+                        crate::bbs::tinyhack::load_or_new_with_flag(&storage.base_dir(), &username);
+                    session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
+                    return Ok(screen);
+                }
+                GameDoorKind::TinyMushPreview => {
+                    return Ok("TinyMUSH is still under construction. Check back soon!\n".into());
+                }
+            }
+        }
+
         match cmd {
             "M" => {
                 // New compact Topics UI (paged, ≤5 items)
@@ -419,17 +480,6 @@ impl CommandProcessor {
                 session.logout().await?;
                 Ok("Goodbye!".to_string())
             }
-            "T" if config.games.tinyhack_enabled => {
-                // Enter TinyHack loop and render current snapshot (server may send separate welcome)
-                session.state = SessionState::TinyHack;
-                let username = session.display_name();
-                let (gs, screen, _is_new) =
-                    crate::bbs::tinyhack::load_or_new_with_flag(&storage.base_dir(), &username);
-                // Cache minimal blob in session filter_text to avoid adding new fields; serialize small state id
-                // We will reload from disk on each turn for simplicity and resilience.
-                session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
-                Ok(screen)
-            }
             "H" | "?" => {
                 // Build compact contextual help to fit within 230 bytes
                 let mut out = String::new();
@@ -439,6 +489,9 @@ impl CommandProcessor {
                 }
                 out.push_str("ACCT: P then [C]hange/[N]ew pass | [L]ogout\n");
                 out.push_str("MSG: M topics; digits pick; +/- next; F <txt> filter\n");
+                if !game_doors.is_empty() {
+                    out.push_str("GAME: G list; G# launch\n");
+                }
                 if session.user_level >= 5 {
                     out.push_str(
                         "MOD: D<n> delete | P<n> pin | R<n> rename | K lock | DL [p] log\n",
@@ -890,7 +943,9 @@ impl CommandProcessor {
         config: &Config,
     ) -> Result<String> {
         match upper {
-            "H" | "?" => return Ok("Subtopics: 1-9 pick, U up, L more, M topics, B back, Q quit\n".into()),
+            "H" | "?" => {
+                return Ok("Subtopics: 1-9 pick, U up, L more, M topics, B back, Q quit\n".into())
+            }
             "M" => {
                 session.state = SessionState::Topics;
                 session.list_page = 1;

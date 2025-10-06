@@ -1,5 +1,11 @@
 # MUD/MUSH Design Proposal for Meshbbs
 
+> [!NOTE]
+> This proposal is archived. The authoritative TinyMUSH specification now lives in
+> [`docs/development/MUD_MUSH_DESIGN.md`](./MUD_MUSH_DESIGN.md) and
+> [`docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md`](./TINYMUSH_IMPLEMENTATION_PLAN.md).
+> Keep this file for historical context only.
+
 ## Overview
 
 This document explores how to create a rich Multi-User Dungeon (MUD) or Multi-User Shared Hallucination (MUSH) experience within meshbbs's unique constraints: ~200-character messages, high latency (30s-5min), and text-only interface.

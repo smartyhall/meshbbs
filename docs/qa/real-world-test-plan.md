@@ -5,7 +5,8 @@ description: Comprehensive checklist to validate MeshBBS 1.0.41-beta on live Mes
 
 # Real‑World QA Test Plan — 1.0.41-beta
 
-Use this comprehensive checklist to validate MeshBBS behavior on a live Meshtastic device and shared mesh network. Document all test results with exact commands, observed responses, and relevant log excerpts from `meshbbs.log`.
+Use this comprehensive checklist to validate MeshBBS behavior on a live Meshtastic device and shared mesh network.
+Document each test run with exact commands, observed responses, and relevant log excerpts from `meshbbs.log`.
 
 **Print-friendly:** Use your browser's Print function to save as PDF.
 
@@ -249,10 +250,10 @@ MeshBBS 1.0.40+ uses a compact, keyboard-driven UI optimized for small messages.
 - [ ] Banner: `[<BBS Name>] Main Menu`
 - [ ] Options displayed:
   - `[M]essages` - Browse topics
-  - `[U]ser account` - Account settings
-  - `[T]inyHack` - Game (if `games.tinyhack_enabled = true`)
+  - `[G]ames` - Enumerated submenu (only shown when at least one game is enabled)
+  - `[P]references` - Account settings
   - `[Q]uit` - Logout
-- [ ] Single-letter shortcuts work: `M`, `U`, `T`, `Q`
+- [ ] Single-letter shortcuts work: `M`, `G`, `P`, `Q`
 - [ ] Prompt: `testuser (lvl1)>`
 
 ### Test: Topics Menu (Messages)
@@ -687,7 +688,7 @@ DASHBOARD
 
 ### Test: TinyHack Access
 
-**Command**: From main menu, press `T`
+**Command**: From main menu, press `G` then `G1` (TinyHack)
 
 **Expected Behavior**:
 - [ ] TinyHack game starts in DM
@@ -1034,7 +1035,8 @@ description: Printer‑friendly checklist to validate meshbbs on a live Meshtast
 
 # Real‑World QA Test Plan
 
-Use this printer‑friendly checklist to validate meshbbs behavior against a live Meshtastic device and the shared mesh. Keep a notes doc during testing with exact commands sent, observed responses, and relevant `meshbbs.log` snippets.
+Use this printer‑friendly checklist to validate meshbbs behavior against a live Meshtastic device and the shared mesh.
+Keep a notes doc during testing with exact commands sent, observed responses, and relevant `meshbbs.log` snippets.
 
 Tip for printing: Use your browser’s Print function to save this page as a PDF.
 

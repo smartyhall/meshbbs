@@ -50,7 +50,13 @@ async fn passwordless_user_prompt_and_set() {
         ident_beacon: IdentBeaconConfig::default(),
         weather: Default::default(),
         games: GamesConfig::default(),
-        welcome: meshbbs::bbs::welcome::WelcomeConfig { enabled: false, public_greeting: true, private_guide: true, cooldown_minutes: 5, max_welcomes_per_node: 1 },
+        welcome: meshbbs::bbs::welcome::WelcomeConfig {
+            enabled: false,
+            public_greeting: true,
+            private_guide: true,
+            cooldown_minutes: 5,
+            max_welcomes_per_node: 1,
+        },
     };
     // Server instance not required for this test; we manipulate user file directly.
     // Use test helper to create passwordless legacy user via storage public method not exposed; mimic by writing file through create_or_update_user equivalent path: call internal method via public test_register? Not possible without password.
