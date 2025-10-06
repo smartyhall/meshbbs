@@ -40,6 +40,11 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
    - Executing UTF-8 byte-length validation for sample payloads.
 3. Update `CONTRIBUTING.md` with TinyMUSH-specific development expectations.
 4. Inventory existing changes (e.g., `Cargo.lock`, `MUD_MUSH_DESIGN.md`) and ensure rebasing plan.
+5. Specify the **enumerated G)ames submenu** contract:
+   - Render games as numbered entries (e.g., `1) TinyHack`, `2) TinyMUSH`).
+   - Accept `G` + number (and optional slug aliases) for selection.
+   - Document fallback behavior when games are toggled off/on or when additional titles appear.
+   - Update design notes so TinyMUSH leverages the shared numbering system from day one.
 
 **Exit Criteria**
 - Branch `tinymush` pushed (or ready) with baseline scaffolding.
