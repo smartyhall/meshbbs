@@ -26,4 +26,16 @@ pub enum TinyMushError {
         expected: u8,
         found: u8,
     },
+
+    /// Currency operation errors
+    #[error("invalid currency operation: {0}")]
+    InvalidCurrency(String),
+
+    /// Insufficient funds for transaction
+    #[error("insufficient funds")]
+    InsufficientFunds,
+
+    /// Transaction not found
+    #[error("transaction not found")]
+    TransactionNotFound,
 }

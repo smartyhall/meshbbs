@@ -6,9 +6,10 @@ use sled::IVec;
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
-    BulletinBoard, BulletinMessage, MailMessage, MailStatus, ObjectOwner, ObjectRecord, 
-    PlayerRecord, RoomOwner, RoomRecord, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, 
-    OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
+    BulletinBoard, BulletinMessage, CurrencyAmount, CurrencyTransaction, MailMessage,
+    MailStatus, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord,
+    TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION,
+    PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 
 const TREE_PRIMARY: &str = "tinymush";
@@ -533,6 +534,371 @@ impl TinyMushStore {
         let message = MailMessage::new("system", username, "System Message", body);
         self.send_mail(message)?;
         Ok(())
+    }
+
+    // ========================================================================
+    // Currency & Economy Methods
+    // ========================================================================
+
+    /// Transfer currency from one player to another (atomic transaction)
+    pub fn transfer_currency(
+        &self,
+        from_username: &str,
+        to_username: &str,
+        amount: &CurrencyAmount,
+        reason: TransactionReason,
+    ) -> Result<CurrencyTransaction, TinyMushError> {
+        // Validate amount is positive
+        if amount.is_zero_or_negative() {
+            return Err(TinyMushError::InvalidCurrency(
+                "Transfer amount must be positive".to_string(),
+            ));
+        }
+
+        // Get both players (locks the records)
+        let mut from_player = self.get_player(from_username)?;
+        let mut to_player = self.get_player(to_username)?;
+
+        // Check if sender can afford it
+        if !from_player.currency.can_afford(amount) {
+            return Err(TinyMushError::InsufficientFunds);
+        }
+
+        // Perform the transfer
+        from_player.currency = from_player.currency.subtract(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency subtraction failed: {}", e))
+        })?;
+
+        to_player.currency = to_player.currency.add(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency addition failed: {}", e))
+        })?;
+
+        // Save both players
+        self.put_player(from_player)?;
+        self.put_player(to_player)?;
+
+        // Create transaction record
+        let transaction = CurrencyTransaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            from: Some(from_username.to_string()),
+            to: Some(to_username.to_string()),
+            amount: amount.clone(),
+            reason,
+            rolled_back: false,
+        };
+
+        // Log the transaction
+        self.log_transaction(&transaction)?;
+
+        Ok(transaction)
+    }
+
+    /// Grant currency to a player from the system (admin/quest rewards)
+    pub fn grant_currency(
+        &self,
+        username: &str,
+        amount: &CurrencyAmount,
+        reason: TransactionReason,
+    ) -> Result<CurrencyTransaction, TinyMushError> {
+        if amount.is_zero_or_negative() {
+            return Err(TinyMushError::InvalidCurrency(
+                "Grant amount must be positive".to_string(),
+            ));
+        }
+
+        let mut player = self.get_player(username)?;
+        player.currency = player.currency.add(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency addition failed: {}", e))
+        })?;
+        self.put_player(player)?;
+
+        let transaction = CurrencyTransaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            from: None, // System grant
+            to: Some(username.to_string()),
+            amount: amount.clone(),
+            reason,
+            rolled_back: false,
+        };
+
+        self.log_transaction(&transaction)?;
+        Ok(transaction)
+    }
+
+    /// Deduct currency from a player to the system (admin/rent payments)
+    pub fn deduct_currency(
+        &self,
+        username: &str,
+        amount: &CurrencyAmount,
+        reason: TransactionReason,
+    ) -> Result<CurrencyTransaction, TinyMushError> {
+        if amount.is_zero_or_negative() {
+            return Err(TinyMushError::InvalidCurrency(
+                "Deduct amount must be positive".to_string(),
+            ));
+        }
+
+        let mut player = self.get_player(username)?;
+        if !player.currency.can_afford(amount) {
+            return Err(TinyMushError::InsufficientFunds);
+        }
+
+        player.currency = player.currency.subtract(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency subtraction failed: {}", e))
+        })?;
+        self.put_player(player)?;
+
+        let transaction = CurrencyTransaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            from: Some(username.to_string()),
+            to: None, // System deduction
+            amount: amount.clone(),
+            reason,
+            rolled_back: false,
+        };
+
+        self.log_transaction(&transaction)?;
+        Ok(transaction)
+    }
+
+    /// Deposit currency to bank (move from pocket to vault)
+    pub fn bank_deposit(
+        &self,
+        username: &str,
+        amount: &CurrencyAmount,
+    ) -> Result<CurrencyTransaction, TinyMushError> {
+        if amount.is_zero_or_negative() {
+            return Err(TinyMushError::InvalidCurrency(
+                "Deposit amount must be positive".to_string(),
+            ));
+        }
+
+        let mut player = self.get_player(username)?;
+        if !player.currency.can_afford(amount) {
+            return Err(TinyMushError::InsufficientFunds);
+        }
+
+        // Move from pocket to bank
+        player.currency = player.currency.subtract(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency subtraction failed: {}", e))
+        })?;
+
+        player.banked_currency = player.banked_currency.add(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency addition failed: {}", e))
+        })?;
+
+        self.put_player(player)?;
+
+        let transaction = CurrencyTransaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            from: Some(username.to_string()),
+            to: Some(format!("{}:bank", username)),
+            amount: amount.clone(),
+            reason: TransactionReason::BankDeposit,
+            rolled_back: false,
+        };
+
+        self.log_transaction(&transaction)?;
+        Ok(transaction)
+    }
+
+    /// Withdraw currency from bank (move from vault to pocket)
+    pub fn bank_withdraw(
+        &self,
+        username: &str,
+        amount: &CurrencyAmount,
+    ) -> Result<CurrencyTransaction, TinyMushError> {
+        if amount.is_zero_or_negative() {
+            return Err(TinyMushError::InvalidCurrency(
+                "Withdrawal amount must be positive".to_string(),
+            ));
+        }
+
+        let mut player = self.get_player(username)?;
+        if !player.banked_currency.can_afford(amount) {
+            return Err(TinyMushError::InsufficientFunds);
+        }
+
+        // Move from bank to pocket
+        player.banked_currency = player.banked_currency.subtract(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency subtraction failed: {}", e))
+        })?;
+
+        player.currency = player.currency.add(amount).map_err(|e| {
+            TinyMushError::InvalidCurrency(format!("Currency addition failed: {}", e))
+        })?;
+
+        self.put_player(player)?;
+
+        let transaction = CurrencyTransaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            from: Some(format!("{}:bank", username)),
+            to: Some(username.to_string()),
+            amount: amount.clone(),
+            reason: TransactionReason::BankWithdrawal,
+            rolled_back: false,
+        };
+
+        self.log_transaction(&transaction)?;
+        Ok(transaction)
+    }
+
+    /// Log a transaction to the audit tree
+    fn log_transaction(&self, transaction: &CurrencyTransaction) -> Result<(), TinyMushError> {
+        let key = format!("transaction:{}", transaction.id);
+        self.mail
+            .insert(key.as_bytes(), Self::serialize(transaction)?)?;
+        self.mail.flush()?;
+        Ok(())
+    }
+
+    /// Get a transaction by ID
+    pub fn get_transaction(&self, id: &str) -> Result<CurrencyTransaction, TinyMushError> {
+        let key = format!("transaction:{}", id);
+        match self.mail.get(key.as_bytes())? {
+            Some(bytes) => Ok(Self::deserialize(bytes)?),
+            None => Err(TinyMushError::TransactionNotFound),
+        }
+    }
+
+    /// Rollback a transaction (reverse the currency movement)
+    pub fn rollback_transaction(&self, transaction_id: &str) -> Result<(), TinyMushError> {
+        let mut transaction = self.get_transaction(transaction_id)?;
+
+        if transaction.rolled_back {
+            return Err(TinyMushError::InvalidCurrency(
+                "Transaction already rolled back".to_string(),
+            ));
+        }
+
+        // Reverse the transaction based on type
+        match (&transaction.from, &transaction.to) {
+            (Some(from), Some(to)) if to.contains(":bank") => {
+                // Reverse bank deposit
+                let username = from;
+                let mut player = self.get_player(username)?;
+
+                player.currency = player.currency.subtract(&transaction.amount).map_err(|e| {
+                    TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                })?;
+
+                player.banked_currency =
+                    player.banked_currency.add(&transaction.amount).map_err(|e| {
+                        TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                    })?;
+
+                self.put_player(player)?;
+            }
+            (Some(from), Some(to)) if from.contains(":bank") => {
+                // Reverse bank withdrawal
+                let username = to;
+                let mut player = self.get_player(username)?;
+
+                player.banked_currency =
+                    player.banked_currency.subtract(&transaction.amount).map_err(|e| {
+                        TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                    })?;
+
+                player.currency = player.currency.add(&transaction.amount).map_err(|e| {
+                    TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                })?;
+
+                self.put_player(player)?;
+            }
+            (Some(from), Some(to)) => {
+                // Reverse player-to-player transfer
+                let mut from_player = self.get_player(from)?;
+                let mut to_player = self.get_player(to)?;
+
+                from_player.currency =
+                    from_player.currency.add(&transaction.amount).map_err(|e| {
+                        TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                    })?;
+
+                to_player.currency =
+                    to_player.currency.subtract(&transaction.amount).map_err(|e| {
+                        TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                    })?;
+
+                self.put_player(from_player)?;
+                self.put_player(to_player)?;
+            }
+            (None, Some(to)) => {
+                // Reverse system grant
+                let mut player = self.get_player(to)?;
+                player.currency =
+                    player.currency.subtract(&transaction.amount).map_err(|e| {
+                        TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                    })?;
+                self.put_player(player)?;
+            }
+            (Some(from), None) => {
+                // Reverse system deduction
+                let mut player = self.get_player(from)?;
+                player.currency = player.currency.add(&transaction.amount).map_err(|e| {
+                    TinyMushError::InvalidCurrency(format!("Rollback failed: {}", e))
+                })?;
+                self.put_player(player)?;
+            }
+            _ => {
+                return Err(TinyMushError::InvalidCurrency(
+                    "Invalid transaction format".to_string(),
+                ))
+            }
+        }
+
+        // Mark transaction as rolled back
+        transaction.rolled_back = true;
+        self.log_transaction(&transaction)?;
+
+        Ok(())
+    }
+
+    /// Get transaction history for a player
+    pub fn get_player_transactions(
+        &self,
+        username: &str,
+        limit: usize,
+    ) -> Result<Vec<CurrencyTransaction>, TinyMushError> {
+        let mut transactions = Vec::new();
+        let prefix = b"transaction:";
+
+        for result in self.mail.scan_prefix(prefix) {
+            let (_key, value) = result?;
+            let transaction: CurrencyTransaction = Self::deserialize(value)?;
+
+            // Check if player is involved in this transaction
+            let involved = match (&transaction.from, &transaction.to) {
+                (Some(from), Some(to)) => {
+                    from == username
+                        || to == username
+                        || from == &format!("{}:bank", username)
+                        || to == &format!("{}:bank", username)
+                }
+                (Some(from), None) => from == username,
+                (None, Some(to)) => to == username,
+                _ => false,
+            };
+
+            if involved {
+                transactions.push(transaction);
+            }
+
+            if transactions.len() >= limit {
+                break;
+            }
+        }
+
+        // Sort by timestamp, newest first
+        transactions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        transactions.truncate(limit);
+
+        Ok(transactions)
     }
 }
 

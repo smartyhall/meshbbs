@@ -95,6 +95,11 @@ pub struct ObjectRecord {
     pub owner: ObjectOwner,
     pub created_at: DateTime<Utc>,
     pub weight: u8,
+    /// New currency-aware value field
+    #[serde(default)]
+    pub currency_value: CurrencyAmount,
+    /// Legacy value field for backward compatibility (deprecated)
+    #[serde(default)]
     pub value: u32,
     pub takeable: bool,
     pub usable: bool,
@@ -114,6 +119,7 @@ impl ObjectRecord {
             owner: ObjectOwner::World,
             created_at: Utc::now(),
             weight: 0,
+            currency_value: CurrencyAmount::default(),
             value: 0,
             takeable: false,
             usable: false,
@@ -242,6 +248,14 @@ pub struct PlayerRecord {
     pub stats: PlayerStats,
     #[serde(default)]
     pub inventory: Vec<String>,
+    /// Current currency on hand (replaces legacy credits field)
+    #[serde(default)]
+    pub currency: CurrencyAmount,
+    /// Currency in bank vault (safe storage)
+    #[serde(default)]
+    pub banked_currency: CurrencyAmount,
+    /// Legacy credits field for backward compatibility (deprecated)
+    #[serde(default)]
     pub credits: u32,
     pub schema_version: u8,
 }
@@ -258,6 +272,8 @@ impl PlayerRecord {
             state: PlayerState::Exploring,
             stats: PlayerStats::default(),
             inventory: Vec::new(),
+            currency: CurrencyAmount::default(),
+            banked_currency: CurrencyAmount::default(),
             credits: 0,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
@@ -418,4 +434,237 @@ impl Default for MailConfig {
             allow_anonymous: false,
         }
     }
+}
+
+// ============================================================================
+// Currency System - Dual Mode Support (Decimal vs Multi-Tier)
+// ============================================================================
+
+/// Currency system configuration - choose between decimal or multi-tier
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum CurrencySystem {
+    /// Modern/sci-fi style decimal currency (e.g., credits, dollars)
+    Decimal(DecimalCurrency),
+    /// Fantasy/medieval style multi-tier currency (e.g., gold/silver/copper)
+    MultiTier(MultiTierCurrency),
+}
+
+/// Decimal currency configuration (single unit with decimal subdivisions)
+/// Internally we store as integer minor units (e.g., cents).
+/// So $12.34 is stored as 1234 minor units.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DecimalCurrency {
+    /// Display name for the currency (e.g., "credit", "dollar", "gil")
+    pub name: String,
+    /// Plural form (e.g., "credits", "dollars", "gil")
+    pub name_plural: String,
+    /// Symbol prefix (e.g., "$", "₹", "¤")
+    pub symbol: String,
+    /// Number of decimal places (2 for cents, 0 for whole units only)
+    pub decimals: u8,
+}
+
+impl Default for DecimalCurrency {
+    fn default() -> Self {
+        Self {
+            name: "credit".to_string(),
+            name_plural: "credits".to_string(),
+            symbol: "¤".to_string(),
+            decimals: 2,
+        }
+    }
+}
+
+/// Multi-tier currency configuration (fantasy-style tiers)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MultiTierCurrency {
+    /// Currency tiers from lowest to highest
+    /// Each tier has: name, plural, symbol, and conversion ratio to base unit
+    pub tiers: Vec<CurrencyTier>,
+    /// Name of the base unit (typically the lowest tier, e.g., "copper")
+    pub base_unit: String,
+}
+
+/// A single tier in a multi-tier currency system
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CurrencyTier {
+    /// Singular name (e.g., "copper", "silver", "gold")
+    pub name: String,
+    /// Plural name (e.g., "coppers", "silvers", "golds")
+    pub name_plural: String,
+    /// Display symbol (e.g., "c", "s", "g")
+    pub symbol: String,
+    /// How many base units this tier is worth
+    /// Base tier should have ratio=1, silver might be 10, gold might be 100
+    pub ratio_to_base: u64,
+}
+
+impl Default for MultiTierCurrency {
+    fn default() -> Self {
+        Self {
+            tiers: vec![
+                CurrencyTier {
+                    name: "copper".to_string(),
+                    name_plural: "coppers".to_string(),
+                    symbol: "c".to_string(),
+                    ratio_to_base: 1,
+                },
+                CurrencyTier {
+                    name: "silver".to_string(),
+                    name_plural: "silvers".to_string(),
+                    symbol: "s".to_string(),
+                    ratio_to_base: 10,
+                },
+                CurrencyTier {
+                    name: "gold".to_string(),
+                    name_plural: "golds".to_string(),
+                    symbol: "g".to_string(),
+                    ratio_to_base: 100,
+                },
+            ],
+            base_unit: "copper".to_string(),
+        }
+    }
+}
+
+/// A currency amount that can represent either decimal or multi-tier currency
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CurrencyAmount {
+    /// Decimal amount stored as integer minor units (e.g., cents)
+    Decimal { minor_units: i64 },
+    /// Multi-tier amount stored as base units (e.g., coppers)
+    MultiTier { base_units: i64 },
+}
+
+impl CurrencyAmount {
+    /// Create a decimal currency amount
+    pub fn decimal(minor_units: i64) -> Self {
+        Self::Decimal { minor_units }
+    }
+
+    /// Create a multi-tier currency amount
+    pub fn multi_tier(base_units: i64) -> Self {
+        Self::MultiTier { base_units }
+    }
+
+    /// Get the base value (minor units for decimal, base units for multi-tier)
+    pub fn base_value(&self) -> i64 {
+        match self {
+            Self::Decimal { minor_units } => *minor_units,
+            Self::MultiTier { base_units } => *base_units,
+        }
+    }
+
+    /// Check if this amount is zero or negative
+    pub fn is_zero_or_negative(&self) -> bool {
+        self.base_value() <= 0
+    }
+
+    /// Check if this amount is positive
+    pub fn is_positive(&self) -> bool {
+        self.base_value() > 0
+    }
+
+    /// Add another amount (must be same type)
+    pub fn add(&self, other: &CurrencyAmount) -> Result<CurrencyAmount, String> {
+        match (self, other) {
+            (Self::Decimal { minor_units: a }, Self::Decimal { minor_units: b }) => {
+                Ok(Self::Decimal {
+                    minor_units: a.saturating_add(*b),
+                })
+            }
+            (Self::MultiTier { base_units: a }, Self::MultiTier { base_units: b }) => {
+                Ok(Self::MultiTier {
+                    base_units: a.saturating_add(*b),
+                })
+            }
+            _ => Err("Cannot add different currency types".to_string()),
+        }
+    }
+
+    /// Subtract another amount (must be same type)
+    pub fn subtract(&self, other: &CurrencyAmount) -> Result<CurrencyAmount, String> {
+        match (self, other) {
+            (Self::Decimal { minor_units: a }, Self::Decimal { minor_units: b }) => {
+                Ok(Self::Decimal {
+                    minor_units: a.saturating_sub(*b),
+                })
+            }
+            (Self::MultiTier { base_units: a }, Self::MultiTier { base_units: b }) => {
+                Ok(Self::MultiTier {
+                    base_units: a.saturating_sub(*b),
+                })
+            }
+            _ => Err("Cannot subtract different currency types".to_string()),
+        }
+    }
+
+    /// Check if we have enough currency to afford a cost
+    pub fn can_afford(&self, cost: &CurrencyAmount) -> bool {
+        match (self, cost) {
+            (Self::Decimal { minor_units: have }, Self::Decimal { minor_units: need }) => {
+                have >= need
+            }
+            (Self::MultiTier { base_units: have }, Self::MultiTier { base_units: need }) => {
+                have >= need
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Default for CurrencyAmount {
+    fn default() -> Self {
+        Self::Decimal { minor_units: 0 }
+    }
+}
+
+/// Transaction record for audit logging
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CurrencyTransaction {
+    /// Unique transaction ID
+    pub id: String,
+    /// Timestamp of transaction
+    pub timestamp: DateTime<Utc>,
+    /// Source player (None for system transactions)
+    pub from: Option<String>,
+    /// Destination player (None for system transactions)
+    pub to: Option<String>,
+    /// Amount transferred
+    pub amount: CurrencyAmount,
+    /// Reason for transaction
+    pub reason: TransactionReason,
+    /// Whether this transaction was rolled back
+    pub rolled_back: bool,
+}
+
+/// Reason for a currency transaction
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TransactionReason {
+    /// Initial grant from system
+    SystemGrant,
+    /// Purchase from shop/vendor
+    Purchase,
+    /// Sale to shop/vendor
+    Sale,
+    /// Player-to-player trade
+    Trade,
+    /// Admin grant
+    AdminGrant,
+    /// Admin deduction
+    AdminDeduct,
+    /// Quest reward
+    QuestReward,
+    /// Room rent payment
+    RoomRent,
+    /// Bank deposit
+    BankDeposit,
+    /// Bank withdrawal
+    BankWithdrawal,
+    /// Combat/loot reward
+    CombatLoot,
+    /// Transaction rollback
+    Rollback,
+    /// Other reason
+    Other { description: String },
 }
