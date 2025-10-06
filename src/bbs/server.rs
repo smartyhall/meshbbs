@@ -492,7 +492,7 @@ impl BbsServer {
             );
         }
         if server.config.games.tinymush_enabled {
-            info!("[games] TinyMUSH preview enabled: listed in Games menu (coming soon)");
+            info!("[games] TinyMUSH enabled: available in Games menu");
         }
         Ok(server)
     }
@@ -2622,6 +2622,7 @@ impl BbsServer {
                                 super::session::SessionState::UserChangePassNew => "Pass Update",
                                 super::session::SessionState::UserSetPassNew => "Pass Set",
                                 super::session::SessionState::TinyHack => "TinyHack",
+                                super::session::SessionState::TinyMush => "TinyMUSH",
                                 super::session::SessionState::Disconnected => "Disconnected",
                             };
                             response.push_str(&format!(
@@ -3535,10 +3536,10 @@ impl BbsServer {
                             self.send_session_message(node_key, &screen, true).await?;
                             return Ok(());
                         }
-                        GameDoorKind::TinyMushPreview => {
-                            deferred_reply = Some(
-                                "TinyMUSH is still under construction. Check back soon!\n".into(),
-                            );
+                        GameDoorKind::TinyMush => {
+                            // TinyMUSH is handled through regular session routing
+                            // This should not be reached in normal operation
+                            deferred_reply = Some("TinyMUSH game active. Use regular session commands.\n".into());
                         }
                     }
                 } else {

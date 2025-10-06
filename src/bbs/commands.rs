@@ -30,6 +30,7 @@ use super::roles::LEVEL_MODERATOR;
 use super::session::{Session, SessionState};
 use crate::config::Config;
 use crate::storage::{ReplyEntry, Storage};
+use crate::tmush::commands::TinyMushProcessor;
 use crate::validation::{sanitize_message_content, validate_user_name};
 
 /// UI rendering helpers for compact, 230-byte-safe outputs
@@ -210,6 +211,9 @@ impl CommandProcessor {
             SessionState::TinyHack => {
                 parts.push("TinyHack".into());
             }
+            SessionState::TinyMush => {
+                parts.push("TinyMUSH".into());
+            }
             SessionState::ReadingMessages => {
                 parts.push("Topics".into());
                 if let Some(t) = &session.current_topic {
@@ -294,6 +298,42 @@ impl CommandProcessor {
                 let screen =
                     crate::bbs::tinyhack::apply_and_save(&storage.base_dir(), &username, gs0, raw);
                 Ok(screen)
+            }
+            SessionState::TinyMush => {
+                // TinyMUSH game loop: 'B', 'BACK', 'MENU', 'Q', or 'QUIT' to return to main menu
+                if cmd_upper == "B"
+                    || cmd_upper == "BACK"
+                    || cmd_upper == "MENU"
+                    || cmd_upper == "Q"
+                    || cmd_upper == "QUIT"
+                {
+                    let slug = session
+                        .current_game_slug
+                        .clone()
+                        .unwrap_or_else(|| "tinymush".to_string());
+                    let exit_counts = metrics::record_game_exit(&slug);
+                    let user = session.display_name();
+                    info!(
+                        target: "meshbbs::games",
+                        "game.exit slug={} session={} user={} node={} reason=command command={} active={} exits={} entries={} peak={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&user),
+                        escape_log(&session.node_id),
+                        escape_log(cmd_upper.as_str()),
+                        exit_counts.currently_active,
+                        exit_counts.exits,
+                        exit_counts.entries,
+                        exit_counts.concurrent_peak
+                    );
+                    session.current_game_slug = None;
+                    session.state = SessionState::MainMenu;
+                    return Ok(self.render_main_menu(session, config));
+                }
+                
+                // Forward all other commands to TinyMUSH command processor
+                let mut processor = TinyMushProcessor::new();
+                processor.process_command(session, raw, storage, config).await
             }
             SessionState::Topics => {
                 self.handle_topics(session, raw, &cmd_upper, storage, config)
@@ -459,8 +499,28 @@ impl CommandProcessor {
                     session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
                     return Ok(screen);
                 }
-                GameDoorKind::TinyMushPreview => {
-                    return Ok("TinyMUSH is still under construction. Check back soon!\n".into());
+                GameDoorKind::TinyMush => {
+                    let slug = door.slug;
+                    session.state = SessionState::TinyMush;
+                    session.current_game_slug = Some(slug.to_string());
+                    let username = session.display_name();
+                    let entry_counts = metrics::record_game_entry(slug);
+                    info!(
+                        target: "meshbbs::games",
+                        "game.entry slug={} session={} user={} node={} command={} active={} peak={} entries={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&username),
+                        escape_log(&session.node_id),
+                        escape_log(cmd),
+                        entry_counts.currently_active,
+                        entry_counts.concurrent_peak,
+                        entry_counts.entries
+                    );
+                    
+                    // Initialize TinyMUSH for the user and return welcome screen
+                    let mut processor = TinyMushProcessor::new();
+                    return processor.initialize_player(session, storage, config).await;
                 }
             }
         }

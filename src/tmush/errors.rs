@@ -1,0 +1,29 @@
+use thiserror::Error;
+
+/// Errors that can arise while interacting with the TinyMUSH storage layer.
+#[derive(Debug, Error)]
+pub enum TinyMushError {
+    /// Wrapper around sled's error type.
+    #[error("sled error: {0}")]
+    Sled(#[from] sled::Error),
+
+    /// Wrapper around bincode serialization and deserialization errors.
+    #[error("serialization error: {0}")]
+    Bincode(#[from] bincode::Error),
+
+    /// Wrapper around IO errors (directory creation, etc.).
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Returned when fetching a record that is not present.
+    #[error("record not found: {0}")]
+    NotFound(String),
+
+    /// Returned when deserializing a record with an unexpected schema version.
+    #[error("schema mismatch for {entity}: expected {expected}, got {found}")]
+    SchemaMismatch {
+        entity: &'static str,
+        expected: u8,
+        found: u8,
+    },
+}

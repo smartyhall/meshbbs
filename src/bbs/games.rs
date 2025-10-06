@@ -4,7 +4,7 @@ use crate::config::GamesConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameDoorKind {
     TinyHack,
-    TinyMushPreview,
+    TinyMush,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -35,10 +35,10 @@ pub fn enabled_doors(config: &GamesConfig) -> Vec<GameDoor> {
     }
     if config.tinymush_enabled {
         doors.push(GameDoor {
-            kind: GameDoorKind::TinyMushPreview,
+            kind: GameDoorKind::TinyMush,
             title: "TinyMUSH",
             slug: "tinymush",
-            status_note: Some("coming soon"),
+            status_note: None,
             legacy_aliases: &["MUSH", "TINYMUSH"],
         });
     }
@@ -153,9 +153,9 @@ mod tests {
         assert_eq!(doors.len(), 2);
         let menu = format_games_menu(&doors);
         assert!(menu.contains("1) TinyHack"));
-        assert!(menu.contains("2) TinyMUSH (coming soon)"));
+        assert!(menu.contains("2) TinyMUSH"));
         let mush = resolve_games_command("G2", &doors).expect("G2 should resolve");
-        assert_eq!(mush.kind, GameDoorKind::TinyMushPreview);
+        assert_eq!(mush.kind, GameDoorKind::TinyMush);
         assert!(resolve_games_command("TINYMUSH", &doors).is_some());
     }
 }

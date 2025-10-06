@@ -112,6 +112,8 @@ pub enum SessionState {
     UserSetPassNew,
     /// TinyHack mini-game play loop
     TinyHack,
+    /// TinyMUSH multi-user shared world game
+    TinyMush,
     Disconnected,
 }
 
@@ -312,6 +314,10 @@ impl Session {
                 )
             }
             SessionState::TinyHack => {
+                // Keep prompt short in game mode
+                format!("{} (lvl{})>", self.display_name(), level)
+            }
+            SessionState::TinyMush => {
                 // Keep prompt short in game mode
                 format!("{} (lvl{})>", self.display_name(), level)
             }
