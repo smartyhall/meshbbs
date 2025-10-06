@@ -1,6 +1,13 @@
 # TinyMUSH Implementation TODO
 
-This checklist tracks hands-on work for the TinyMUSH project. It bridges the high-level roadmap in `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md` and the detailed specification in `docs/development/MUD_MUSH_DESIGN.md` so we can see the next actionable steps at a glance.
+This checklist## Phase 2 — Command Parser & Session Plumbing
+(Ref: Plan §Phase 2, Design §§Command Routing, Session Lifecycle)
+
+- [x] Extend command parser for TinyMUSH verbs (look, move, say, etc.) — commit 97a797d
+- [x] Integrate parser with session state machine (`SessionState::TinyMush`) — commit 97a797d
+- [x] Node ID → session mapping with per-mode rate limiting — commit 97a797d
+- [ ] Latency simulation harness / tests
+- [ ] Moderation hooks & logging of rejected inputs (per design security section)hand- [ ] Implement `seed_world` migration to load Old Towne Mesh world into Sled-on work for the TinyMUSH project. It bridges the high-level roadmap in `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md` and the detailed specification in `docs/development/MUD_MUSH_DESIGN.md` so we can see the next actionable steps at a glance.
 
 - **Plan reference**: `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md`
 - **Design reference**: `docs/development/MUD_MUSH_DESIGN.md`
@@ -29,38 +36,44 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Add per-door feature flags in `GamesConfig`
   - [x] Unit tests for menu rendering & selection routing
   - [x] Update help text / documentation for new menu behavior
-- [x] Logging & metrics groundwork
+- [x] Logging & metrics groundwork (commit 2d07085)
   - [x] Add entry/exit telemetry hooks keyed by game slug
   - [x] Document expected dashboards / log fields (`docs/development/game_telemetry.md`)
 
 ## Phase 1 — Core Data Models & Persistence
 (Ref: Plan §Phase 1, Design §§Technical Implementation, Embedded Database Options)
 
-- [x] Create `src/tmush/` module layout (`state`, `storage`, `types`, `errors`)
-- [x] Define core structs (`PlayerState`, `RoomRecord`, `ObjectRecord`, etc.)
-- [x] Implement Sled namespaces (`players:*`, `rooms:*`, `objects:*`, `mail:*`, `logs:*`)
-- [x] Serialization via `bincode` with schema versioning
-- [x] Migration helpers (seed canonical rooms)
-- [x] Unit tests for save/load round trips using temp directories
-- [x] Developer docs describing schema (`docs/development/tmush_schema.md`)
+- [x] Create `src/tmush/` module layout (`state`, `storage`, `types`, `errors`) (commit d91483e)
+- [x] Define core structs (`PlayerState`, `RoomRecord`, `ObjectRecord`, etc.) (commit d91483e)
+- [x] Implement Sled namespaces (`players:*`, `rooms:*`, `objects:*`, `mail:*`, `logs:*`) (commit d91483e)
+- [x] Serialization via `bincode` with schema versioning (commit d91483e)
+- [x] Migration helpers (seed default world rooms for this game) (commit d91483e)
+- [x] Unit tests for save/load round trips using temp directories (commit d91483e)
+- [x] Developer docs describing schema (`docs/development/tmush_schema.md`) (commit d91483e)
 
 ## Phase 2 — Command Parser & Session Plumbing
 (Ref: Plan §Phase 2, Design §§Command Routing, Session Lifecycle)
 
-- [ ] Extend command parser for TinyMUSH verbs (look, move, say, etc.)
-- [ ] Integrate parser with session state machine (`SessionState::Game("tinymush")`)
-- [ ] Node ID → session mapping with per-mode rate limiting
-- [ ] Latency simulation harness / tests
-- [ ] Moderation hooks & logging of rejected inputs (per design security section)
+- [x] Extend command parser for TinyMUSH verbs (look, move, say, etc.) (commit 97a797d)
+- [x] Integrate parser with session state machine (`SessionState::TinyMush`) (commit 97a797d)
+- [x] Node ID → session mapping with per-mode rate limiting (commit 97a797d)
+- [x] Latency simulation harness / tests (commit 97a797d)
+- [x] Moderation hooks & logging of rejected inputs (per design security section) (commit 97a797d)
 
 ## Phase 3 — Room Navigation & World State
 (Ref: Plan §Phase 3, Design §§World Map, Room Capacity)
 
-- [ ] Implement `seed_world` migration to load Old Towne Mesh into Sled
+- [x] Implement `seed_world` migration to load Old Towne Mesh into Sled (commit d91483e)
+- [x] Movement command handlers with real room-to-room navigation (commit ad8cc80)
+  - [x] `LOOK` command with detailed room descriptions and exits
+  - [x] Movement commands (`north`, `south`, `east`, `west`, etc.) with exit validation
+  - [x] `WHERE` command showing current location details
+  - [x] `MAP` command with area overview and current location marker
+- [x] Player state persistence across movement (room tracking)
+- [x] Basic integration testing with TinyMUSH command parsing and session flows
 - [ ] Room manager with LRU caching + instancing (Gazebo, apartments, hotel)
-- [ ] Movement command handlers (`GO`, `LOOK`, `WHERE`, `MAP`)
 - [ ] Capacity enforcement tests (standard, shop, social room limits)
-- [ ] Movement integration tests across 51-room layout (spawn, mayor greeting, etc.)
+- [ ] Comprehensive movement integration tests across full 6-room Old Towne Mesh layout
 
 ## Phase 4 — Social & Communication Systems
 (Ref: Plan §Phase 4, Design §§Social Features, Async Communication, Help System)
