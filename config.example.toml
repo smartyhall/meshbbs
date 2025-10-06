@@ -89,6 +89,7 @@ timeout = 10
 # TinyHack is playable today; TinyMUSH appears as a coming-soon preview when enabled
 tinyhack_enabled = false
 tinymush_enabled = false
+# tinymush_db_path = "./data/tinymush"
 
 # New User Welcome System
 # Automatically greet nodes with default Meshtastic names

@@ -36,13 +36,13 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 ## Phase 1 — Core Data Models & Persistence
 (Ref: Plan §Phase 1, Design §§Technical Implementation, Embedded Database Options)
 
-- [ ] Create `src/tmush/` module layout (`state`, `storage`, `types`, `errors`)
-- [ ] Define core structs (`PlayerState`, `RoomRecord`, `ObjectRecord`, etc.)
-- [ ] Implement Sled namespaces (`players:*`, `rooms:*`, `objects:*`, `mail:*`, `logs:*`)
-- [ ] Serialization via `bincode` with schema versioning
-- [ ] Migration helpers (seed canonical rooms)
-- [ ] Unit tests for save/load round trips using temp directories
-- [ ] Developer docs describing schema
+- [x] Create `src/tmush/` module layout (`state`, `storage`, `types`, `errors`)
+- [x] Define core structs (`PlayerState`, `RoomRecord`, `ObjectRecord`, etc.)
+- [x] Implement Sled namespaces (`players:*`, `rooms:*`, `objects:*`, `mail:*`, `logs:*`)
+- [x] Serialization via `bincode` with schema versioning
+- [x] Migration helpers (seed canonical rooms)
+- [x] Unit tests for save/load round trips using temp directories
+- [x] Developer docs describing schema (`docs/development/tmush_schema.md`)
 
 ## Phase 2 — Command Parser & Session Plumbing
 (Ref: Plan §Phase 2, Design §§Command Routing, Session Lifecycle)

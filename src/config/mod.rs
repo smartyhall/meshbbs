@@ -197,6 +197,9 @@ pub struct GamesConfig {
     /// Surface the upcoming TinyMUSH experience in the Games submenu.
     #[serde(default)]
     pub tinymush_enabled: bool,
+    /// Optional override for TinyMUSH Sled database path; defaults to `<data_dir>/tinymush`.
+    #[serde(default)]
+    pub tinymush_db_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
