@@ -212,6 +212,41 @@ impl TinyMushStore {
         Ok(())
     }
 
+    pub fn get_object(&self, id: &str) -> Result<ObjectRecord, TinyMushError> {
+        // Try world objects first
+        let world_key = format!("objects:world:{}", id);
+        if let Some(bytes) = self.objects.get(world_key.as_bytes())? {
+            let object: ObjectRecord = Self::deserialize(bytes)?;
+            if object.schema_version != OBJECT_SCHEMA_VERSION {
+                return Err(TinyMushError::SchemaMismatch {
+                    entity: "object",
+                    expected: OBJECT_SCHEMA_VERSION,
+                    found: object.schema_version,
+                });
+            }
+            return Ok(object);
+        }
+
+        // Scan player-owned objects
+        let prefix = format!("objects:player:");
+        for result in self.objects.scan_prefix(prefix.as_bytes()) {
+            let (_key, value) = result?;
+            let object: ObjectRecord = Self::deserialize(value)?;
+            if object.id == id {
+                if object.schema_version != OBJECT_SCHEMA_VERSION {
+                    return Err(TinyMushError::SchemaMismatch {
+                        entity: "object",
+                        expected: OBJECT_SCHEMA_VERSION,
+                        found: object.schema_version,
+                    });
+                }
+                return Ok(object);
+            }
+        }
+
+        Err(TinyMushError::NotFound(format!("object {}", id)))
+    }
+
     pub fn seed_world_if_needed(&self) -> Result<usize, TinyMushError> {
         if self
             .primary
@@ -899,6 +934,150 @@ impl TinyMushStore {
         transactions.truncate(limit);
 
         Ok(transactions)
+    }
+
+    // ========================================================================
+    // Inventory Management Methods
+    // ========================================================================
+
+    /// Add an item to player's inventory with capacity checks
+    pub fn player_add_item(
+        &self,
+        username: &str,
+        object_id: &str,
+        quantity: u32,
+        config: &crate::tmush::types::InventoryConfig,
+    ) -> Result<crate::tmush::types::InventoryResult, TinyMushError> {
+        let mut player = self.get_player(username)?;
+        let item = self.get_object(object_id)?;
+
+        // Check if we can add the item
+        let get_item_fn = |id: &str| self.get_object(id).ok();
+        if let Err(reason) = crate::tmush::inventory::can_add_item(
+            &player,
+            &item,
+            quantity,
+            config,
+            get_item_fn,
+        ) {
+            return Ok(crate::tmush::types::InventoryResult::Failed { reason });
+        }
+
+        // Add the item
+        let result = crate::tmush::inventory::add_item_to_inventory(&mut player, &item, quantity, config);
+        
+        // Save the player
+        player.touch();
+        self.put_player(player)?;
+
+        Ok(result)
+    }
+
+    /// Remove an item from player's inventory
+    pub fn player_remove_item(
+        &self,
+        username: &str,
+        object_id: &str,
+        quantity: u32,
+    ) -> Result<crate::tmush::types::InventoryResult, TinyMushError> {
+        let mut player = self.get_player(username)?;
+        
+        let result = crate::tmush::inventory::remove_item_from_inventory(&mut player, object_id, quantity);
+        
+        // Save the player if successful
+        if !matches!(result, crate::tmush::types::InventoryResult::Failed { .. }) {
+            player.touch();
+            self.put_player(player)?;
+        }
+
+        Ok(result)
+    }
+
+    /// Check if player has an item in inventory
+    pub fn player_has_item(&self, username: &str, object_id: &str, quantity: u32) -> Result<bool, TinyMushError> {
+        let player = self.get_player(username)?;
+        Ok(crate::tmush::inventory::has_item(&player, object_id, quantity))
+    }
+
+    /// Get quantity of an item in player's inventory
+    pub fn player_item_quantity(&self, username: &str, object_id: &str) -> Result<u32, TinyMushError> {
+        let player = self.get_player(username)?;
+        Ok(crate::tmush::inventory::get_item_quantity(&player, object_id))
+    }
+
+    /// Get formatted inventory list for player
+    pub fn player_inventory_list(&self, username: &str) -> Result<Vec<String>, TinyMushError> {
+        let player = self.get_player(username)?;
+        let get_item_fn = |id: &str| self.get_object(id).ok();
+        Ok(crate::tmush::inventory::format_inventory_compact(&player, get_item_fn))
+    }
+
+    /// Calculate total weight of player's inventory
+    pub fn player_inventory_weight(&self, username: &str) -> Result<u32, TinyMushError> {
+        let player = self.get_player(username)?;
+        let get_item_fn = |id: &str| self.get_object(id).ok();
+        Ok(crate::tmush::inventory::calculate_total_weight(&player.inventory_stacks, get_item_fn))
+    }
+
+    /// Transfer an item from one player to another (for trading)
+    pub fn transfer_item(
+        &self,
+        from_username: &str,
+        to_username: &str,
+        object_id: &str,
+        quantity: u32,
+        config: &crate::tmush::types::InventoryConfig,
+    ) -> Result<(), TinyMushError> {
+        // Get both players
+        let mut from_player = self.get_player(from_username)?;
+        let mut to_player = self.get_player(to_username)?;
+        
+        // Check if sender has the item
+        if !crate::tmush::inventory::has_item(&from_player, object_id, quantity) {
+            return Err(TinyMushError::InvalidCurrency(
+                "Sender does not have enough of that item".to_string(),
+            ));
+        }
+
+        // Get the item
+        let item = self.get_object(object_id)?;
+
+        // Check if receiver can accept the item
+        let get_item_fn = |id: &str| self.get_object(id).ok();
+        if let Err(reason) = crate::tmush::inventory::can_add_item(
+            &to_player,
+            &item,
+            quantity,
+            config,
+            get_item_fn,
+        ) {
+            return Err(TinyMushError::InvalidCurrency(reason));
+        }
+
+        // Perform the transfer
+        let remove_result = crate::tmush::inventory::remove_item_from_inventory(&mut from_player, object_id, quantity);
+        if matches!(remove_result, crate::tmush::types::InventoryResult::Failed { .. }) {
+            return Err(TinyMushError::InvalidCurrency(
+                "Failed to remove item from sender".to_string(),
+            ));
+        }
+
+        let add_result = crate::tmush::inventory::add_item_to_inventory(&mut to_player, &item, quantity, config);
+        if matches!(add_result, crate::tmush::types::InventoryResult::Failed { .. }) {
+            // Rollback - add item back to sender
+            crate::tmush::inventory::add_item_to_inventory(&mut from_player, &item, quantity, config);
+            return Err(TinyMushError::InvalidCurrency(
+                "Failed to add item to receiver".to_string(),
+            ));
+        }
+
+        // Save both players
+        from_player.touch();
+        to_player.touch();
+        self.put_player(from_player)?;
+        self.put_player(to_player)?;
+
+        Ok(())
     }
 }
 

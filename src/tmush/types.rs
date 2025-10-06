@@ -246,6 +246,10 @@ pub struct PlayerRecord {
     pub current_room: String,
     pub state: PlayerState,
     pub stats: PlayerStats,
+    /// Inventory as item stacks (new system)
+    #[serde(default)]
+    pub inventory_stacks: Vec<ItemStack>,
+    /// Legacy inventory (deprecated, for backward compatibility)
     #[serde(default)]
     pub inventory: Vec<String>,
     /// Current currency on hand (replaces legacy credits field)
@@ -271,6 +275,7 @@ impl PlayerRecord {
             current_room: starting_room.to_string(),
             state: PlayerState::Exploring,
             stats: PlayerStats::default(),
+            inventory_stacks: Vec::new(),
             inventory: Vec::new(),
             currency: CurrencyAmount::default(),
             banked_currency: CurrencyAmount::default(),
@@ -282,6 +287,68 @@ impl PlayerRecord {
     pub fn touch(&mut self) {
         self.updated_at = Utc::now();
     }
+}
+
+// ============================================================================
+// Inventory System
+// ============================================================================
+
+/// Inventory configuration limits
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct InventoryConfig {
+    /// Maximum number of unique item stacks a player can carry
+    pub max_stacks: u32,
+    /// Maximum total weight a player can carry (abstract units)
+    pub max_weight: u32,
+    /// Whether to allow item stacking
+    pub allow_stacking: bool,
+}
+
+impl Default for InventoryConfig {
+    fn default() -> Self {
+        Self {
+            max_stacks: 100,
+            max_weight: 1000,
+            allow_stacking: true,
+        }
+    }
+}
+
+/// Represents a stack of identical items in inventory
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ItemStack {
+    /// Object ID of the item
+    pub object_id: String,
+    /// Number of items in this stack (1 for non-stackable)
+    pub quantity: u32,
+    /// When this stack was first added to inventory
+    pub added_at: DateTime<Utc>,
+}
+
+impl ItemStack {
+    pub fn new(object_id: String, quantity: u32) -> Self {
+        Self {
+            object_id,
+            quantity,
+            added_at: Utc::now(),
+        }
+    }
+
+    /// Get total weight of this stack
+    pub fn total_weight(&self, item_weight: u8) -> u32 {
+        self.quantity * item_weight as u32
+    }
+}
+
+/// Inventory management result
+#[derive(Debug, Clone, PartialEq)]
+pub enum InventoryResult {
+    /// Item added successfully
+    Added { quantity: u32, stacked: bool },
+    /// Item removed successfully
+    Removed { quantity: u32 },
+    /// Operation failed
+    Failed { reason: String },
 }
 
 pub const BULLETIN_SCHEMA_VERSION: u8 = 1;

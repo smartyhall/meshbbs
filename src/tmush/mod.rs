@@ -6,6 +6,7 @@
 pub mod commands;
 pub mod currency;
 pub mod errors;
+pub mod inventory;
 pub mod room_manager;
 pub mod state;
 pub mod storage;
@@ -17,6 +18,10 @@ pub use currency::{
     parse_currency, STANDARD_CONVERSION_RATIO,
 };
 pub use errors::TinyMushError;
+pub use inventory::{
+    add_item_to_inventory, calculate_total_weight, can_add_item, format_inventory_compact,
+    format_item_examination, get_item_quantity, has_item, remove_item_from_inventory,
+};
 pub use state::{
     canonical_world_seed, OLD_TOWNE_WORLD_ROOM_IDS, REQUIRED_LANDING_LOCATION_ID,
     REQUIRED_START_LOCATION_ID,
