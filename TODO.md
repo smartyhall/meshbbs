@@ -1,5 +1,13 @@
 # TinyMUSH Implementation TODO
 
+## Development Standards
+
+**⚠️ CRITICAL: Zero Tolerance for Compiler Warnings**
+- All warnings emitted by the Rust compiler must be fixed before committing
+- All warnings in unit tests must be resolved
+- Use `cargo check` and `cargo test` to verify clean builds
+- This policy applies to all phases and contributions
+
 This checklist## Phase 2 — Command Parser & Session Plumbing
 (Ref: Plan §Phase 2, Design §§Command Routing, Session Lifecycle)
 

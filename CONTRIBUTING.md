@@ -164,15 +164,13 @@ Fixes #(issue number)
 - Update README.md for user-facing changes
 - Maintain inline code comments for complex logic
 
-### TinyMUSH contributions
+### TinyMUSH Development
 
-TinyMUSH work introduces tighter guardrails so that gameplay remains mesh-friendly:
-
-- **Honor the 200-byte budget** for every user-facing message (DM prompts, room descriptions, help text).  Run `just utf8-check --limit 200 <path-or-glob>` before opening a PR to verify your payloads, and add a regression test when you fix an over-budget message.
-- **Keep door toggles accurate.**  Whenever you add or rename a TinyMUSH door, update `GamesConfig` defaults, `config.example.toml`, and in-flight documentation (`docs/user-guide/games.md`, `docs/qa/200-byte-compliance.md`).
-- **Store scripted transcripts under `tests/test-data-int/`.**  Check them with the UTF-8 validator so integration tests can copy/paste safe output.
-- **Add checklist updates** in `docs/qa/200-byte-compliance.md` describing the scenarios you covered (new commands, tutorials, events) so QA can replay them on hardware.
-- **Prefer deterministic tests.**  Use helpers like `find_path_to_new_tile` in `tests/tinyhack_minimap.rs` when randomness might cause flakiness.
+- Follow the phased implementation plan in `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md`
+- Reference the detailed design in `docs/development/MUD_MUSH_DESIGN.md`
+- All TinyMUSH features must respect the 200-byte message limit
+- Update the TODO.md checklist as phases are completed
+- **Critical**: Fix all compiler warnings before committing - no warnings allowed in builds or tests
 
 ## Communication
 
