@@ -1,6 +1,6 @@
 # TinyMUSH Implementation Plan
 
-_Last updated: 2025-10-05_
+_Last updated: 2025-10-06 (Phase 5 Week 3 Complete - commit 2cbd47d)_
 
 This document converts the design captured in `MUD_MUSH_DESIGN.md` into a disciplined implementation roadmap for the MeshBBS TinyMUSH feature set. It lays out phased milestones, guardrails, and verification steps to keep development focused, measurable, and tightly coupled to the specification.
 
@@ -50,9 +50,11 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 - Branch `tinymush` pushed (or ready) with baseline scaffolding.
 - Engineering discipline artifacts stored in `docs/development`.
 
-## Phase 1 – Core Data Models & Persistence (Weeks 1-2)
+## Phase 1 – Core Data Models & Persistence (Weeks 1-2) ✅ COMPLETE
 
 **Spec References**: Sections _Technical Implementation_, _Embedded Database Options_, _Player State_.
+
+**Status**: ✅ Complete (commit d91483e)
 
 **Objectives**
 - Implement foundational data structures (`PlayerState`, `RoomState`, `SessionState`, `InventoryItem`).
@@ -71,9 +73,11 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 - Example scripts demonstrate save/load round-trips with schema checksum.
 - Data structures documented in `docs/development` addendum (link back to design).
 
-## Phase 2 – Command Parser & Session Plumbing (Weeks 2-3)
+## Phase 2 – Command Parser & Session Plumbing (Weeks 2-3) ✅ COMPLETE
 
 **Spec References**: _Command Routing_, _Session Lifecycle_, _Security & Moderation_.
+
+**Status**: ✅ Complete (commit 97a797d)
 
 **Objectives**
 - Build command dispatch layer translating mesh input to engine actions.
@@ -92,9 +96,11 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 - Session transitions verified with integration test capturing DM transcripts.
 - Moderation hooks (logging, anti-spam) wired but stubbed for later phases.
 
-## Phase 3 – Room Navigation & World State (Weeks 3-5)
+## Phase 3 – Room Navigation & World State (Weeks 3-5) ✅ COMPLETE
 
 **Spec References**: _World Map: Old Towne Mesh_, _Room Capacity System_, _Movement Commands_.
+
+**Status**: ✅ Complete (commits ad8cc80, 3a7e9c4)
 
 **Objectives**
 - Implement room graph loader for `Old Towne Mesh` layout seeded directly into Sled.
@@ -113,9 +119,11 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 - Capacity enforcement tested (entering full room returns proper message).
 - Performance benchmark: 100 concurrent sessions moving stays within latency budget.
 
-## Phase 4 – Social & Communication Systems (Weeks 5-6)
+## Phase 4 – Social & Communication Systems (Weeks 5-6) ✅ COMPLETE
 
 **Spec References**: _Social Features_, _Async Communication_, _Help System_.
+
+**Status**: ✅ Complete (commits a06bafe, 6cecd07, bd6e7f1)
 
 **Objectives**
 - Implement say/whisper, emotes, poses, bulletin boards, mail.
@@ -133,9 +141,17 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 - Help/tutorial flows accessible from City Hall tutorial rooms.
 - Logging and moderation capture communication events.
 
-## Phase 5 – Economy, Inventory, Shops (Weeks 6-8)
+## Phase 5 – Economy, Inventory, Shops (Weeks 6-8) 🔄 WEEK 3 COMPLETE
 
 **Spec References**: _Enhanced Economy_, _Dual Currency Systems_, _Inventory Management_, _Shops & Vendors_.
+
+**Status**: 
+- ✅ Week 1 Complete: Currency foundation (12 tests) - commits afe6ebe, 33543d9
+- ✅ Week 2 Complete: Inventory system (19 tests) - commits ff19fc6, 716041e, c7d8b5f
+- ✅ Week 3 Complete: Shop system (13 tests) - commits a22e66a, 8868d8d, c2695d4, 2cbd47d
+- **Total: 260 tests passing (89 unit + 171 integration)**
+- ⏳ Week 4 TODO: Player trading, banking commands
+- ⏳ Week 5-6 TODO: Stress testing, polish
 
 **Objectives**
 - Implement **flexible dual currency system** supporting both decimal and multi-tier currencies
@@ -161,65 +177,65 @@ The economy must support **two distinct currency systems** to accommodate differ
 
 **Tasks**
 
-**Currency Foundation (Week 6, Days 1-2):**
-1. Create `CurrencySystem` enum supporting both Decimal and MultiTier variants
-2. Implement `DecimalCurrency` config struct:
+**Currency Foundation (Week 6, Days 1-2): ✅ COMPLETE**
+1. ✅ Create `CurrencySystem` enum supporting both Decimal and MultiTier variants
+2. ✅ Implement `DecimalCurrency` config struct:
    - name, symbol, minor_units_per_major, decimal_places
-3. Implement `MultiTierCurrency` config struct:
+3. ✅ Implement `MultiTierCurrency` config struct:
    - tier names/symbols, conversion ratios (configurable, default: 1pp=1M cp, 1gp=10k cp, 1sp=100cp)
-4. Create `CurrencyAmount` enum with unified base_value() accessor
-5. Add currency config section to world settings (TOML)
+4. ✅ Create `CurrencyAmount` enum with unified base_value() accessor
+5. ✅ Add currency config section to world settings (TOML)
 
-**Storage & Conversion (Week 6, Days 3-4):**
-6. Implement storage strategy:
+**Storage & Conversion (Week 6, Days 3-4): ✅ COMPLETE**
+6. ✅ Implement storage strategy:
    - Decimal: Store as integer minor units (cents)
    - Multi-tier: Store as base copper units
    - Both use i64 for range and signed math
-7. Build conversion functions between systems:
+7. ✅ Build conversion functions between systems:
    - Standard ratio: 100 copper = 1 major decimal unit
    - Bidirectional conversion preserving precision
-8. Create admin conversion command for world migration
-9. Unit tests for all conversion scenarios
+8. ⏳ Create admin conversion command for world migration (deferred to Phase 8)
+9. ✅ Unit tests for all conversion scenarios
 
-**Transaction Engine (Week 6, Day 5 - Week 7, Day 2):**
-10. Unified `Transaction` struct with system-agnostic operations:
+**Transaction Engine (Week 6, Day 5 - Week 7, Day 2): ✅ COMPLETE**
+10. ✅ Unified `Transaction` struct with system-agnostic operations:
     - add(), subtract(), can_afford() work for both systems
     - System mismatch errors for incompatible operations
-11. Transaction reasons enum (Purchase, Sale, Quest, Trade, etc.)
-12. Atomic transaction execution with rollback on failure
-13. Transaction audit log with timestamps and reason tracking
-14. Admin transaction history viewing and rollback capability
+11. ✅ Transaction reasons enum (Purchase, Sale, Quest, Trade, etc.)
+12. ✅ Atomic transaction execution with rollback on failure
+13. ✅ Transaction audit log with timestamps and reason tracking
+14. ✅ Admin transaction history viewing and rollback capability
 
-**Display & Parsing (Week 7, Days 3-4):**
-15. Currency display formatting for both systems:
+**Display & Parsing (Week 7, Days 3-4): ✅ COMPLETE**
+15. ✅ Currency display formatting for both systems:
     - Decimal: Symbol + formatted number (e.g., "$10.50")
     - Multi-tier: Abbreviated tiers (e.g., "15gp 25sp 30cp")
-16. Input parsing for player currency commands:
+16. ✅ Input parsing for player currency commands:
     - Decimal: Accept "10.50", "10", decimals optional
     - Multi-tier: Accept "15gp 25sp", "15g 25s", tier combos
-17. Validation ensuring all displayed amounts fit 200-byte limit
+17. ✅ Validation ensuring all displayed amounts fit 200-byte limit
 
-**Inventory System (Week 7, Day 5 - Week 8, Day 2):**
-18. Inventory struct with capacity and weight limits
-19. Item metadata: value (CurrencyAmount), weight, stackable flag
-20. Inventory management commands: GIVE, TAKE, DROP, INVENTORY
-21. Item quality/condition system for value degradation
-22. Prevent item duplication exploits (transaction-based item transfers)
+**Inventory System (Week 7, Day 5 - Week 8, Day 2): ✅ COMPLETE**
+18. ✅ Inventory struct with capacity and weight limits
+19. ✅ Item metadata: value (CurrencyAmount), weight, stackable flag
+20. ✅ Inventory management commands: GIVE, TAKE, DROP, INVENTORY
+21. ⏳ Item quality/condition system for value degradation (future feature)
+22. ✅ Prevent item duplication exploits (transaction-based item transfers)
 
-**Shop & Vendor System (Week 8, Days 3-5):**
-23. Shop configuration with inventory, pricing, and buy/sell ratios
-24. Dynamic pricing with stock levels and reputation discounts
-25. Vendor NPC integration with dialog and purchase flow
-26. Bank system: deposits, withdrawals, vault storage
-27. Player-to-player trading with two-phase commit
+**Shop & Vendor System (Week 8, Days 3-5): ✅ COMPLETE**
+23. ✅ Shop configuration with inventory, pricing, and buy/sell ratios
+24. ✅ Dynamic pricing with stock levels and reputation discounts
+25. ⏳ Vendor NPC integration with dialog and purchase flow (future Phase 6)
+26. ⏳ Bank system: deposits, withdrawals, vault storage (Week 4 TODO)
+27. ⏳ Player-to-player trading with two-phase commit (Week 4 TODO)
 
-**Testing & Validation:**
-28. Unit tests for each currency system independently
-29. Integration tests for currency conversion workflows
-30. Transaction rollback tests (failure recovery)
-31. Economy stress test (10k simulated transactions)
-32. Anti-duplication tests for items and currency
-33. 200-byte validation for all currency displays
+**Testing & Validation: ✅ WEEKS 1-3 COMPLETE**
+28. ✅ Unit tests for each currency system independently (12 tests)
+29. ✅ Integration tests for currency conversion workflows (included in 12)
+30. ✅ Transaction rollback tests (failure recovery)
+31. ⏳ Economy stress test (10k simulated transactions) (Week 5 TODO)
+32. ✅ Anti-duplication tests for items and currency
+33. ✅ 200-byte validation for all currency displays
 
 **Exit Criteria**
 - ✅ Both currency systems functional with world-level configuration
@@ -227,10 +243,12 @@ The economy must support **two distinct currency systems** to accommodate differ
 - ✅ Buying/selling validated via automated scenario tests in both systems
 - ✅ Transaction logs persisted and viewable/rollbackable by admins
 - ✅ Inventory limits enforced, item transfers atomic
-- ✅ Economy stress test (10k transactions) within tolerances
+- ⏳ Economy stress test (10k transactions) within tolerances (Week 5 TODO)
 - ✅ Zero floating-point arithmetic in currency calculations
 - ✅ All currency displays fit 200-byte message constraint
-- ✅ Admin currency migration command tested and documented
+- ⏳ Admin currency migration command tested and documented (Phase 8)
+
+**Phase 5 Summary**: Weeks 1-3 complete with 260 tests passing. Currency, inventory, and shop systems fully functional. Banking commands and player trading remain for Week 4.
 
 ## Phase 6 – Quest, Tutorial, Progression (Weeks 8-9)
 
