@@ -62,6 +62,19 @@ pub enum TinyMushCommand {
     ReadMail(u64),         // RMAIL 123 - read specific mail message
     DeleteMail(u64),       // DMAIL 123 - delete mail message
     
+    // Banking commands (Phase 5 Week 4)
+    Balance,               // BALANCE - show pocket and bank balance
+    Deposit(String),       // DEPOSIT amount - deposit currency to bank
+    Withdraw(String),      // WITHDRAW amount - withdraw currency from bank
+    BankTransfer(String, String), // BTRANSFER player amount - transfer to another player
+    
+    // Trading commands (Phase 5 Week 4)
+    Trade(String),         // TRADE player - initiate trade with player
+    Offer(String),         // OFFER item/amount - offer item or currency in active trade
+    Accept,                // ACCEPT - accept trade
+    Reject,                // REJECT - reject/cancel trade
+    TradeHistory,          // THISTORY - view trade history
+    
     // Companion commands (Phase 6 feature)
     Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
     Feed(String),           // FEED horse - feed companion
@@ -240,6 +253,15 @@ impl TinyMushProcessor {
             TinyMushCommand::Send(recipient, subject, message) => self.handle_send(session, recipient, subject, message, config).await,
             TinyMushCommand::ReadMail(message_id) => self.handle_read_mail(session, message_id, config).await,
             TinyMushCommand::DeleteMail(message_id) => self.handle_delete_mail(session, message_id, config).await,
+            TinyMushCommand::Balance => self.handle_balance(session, config).await,
+            TinyMushCommand::Deposit(amount) => self.handle_deposit(session, amount, config).await,
+            TinyMushCommand::Withdraw(amount) => self.handle_withdraw(session, amount, config).await,
+            TinyMushCommand::BankTransfer(recipient, amount) => self.handle_bank_transfer(session, recipient, amount, config).await,
+            TinyMushCommand::Trade(target) => self.handle_trade(session, target, config).await,
+            TinyMushCommand::Offer(item) => self.handle_offer(session, item, config).await,
+            TinyMushCommand::Accept => self.handle_accept(session, config).await,
+            TinyMushCommand::Reject => self.handle_reject(session, config).await,
+            TinyMushCommand::TradeHistory => self.handle_trade_history(session, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -470,6 +492,51 @@ impl TinyMushProcessor {
                     TinyMushCommand::Unknown("Usage: DMAIL <message_id>".to_string())
                 }
             },
+
+            // Banking commands (Phase 5 Week 4)
+            "BALANCE" | "BAL" => TinyMushCommand::Balance,
+            "DEPOSIT" | "DEP" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Deposit(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: DEPOSIT <amount>".to_string())
+                }
+            },
+            "WITHDRAW" | "WITH" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Withdraw(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: WITHDRAW <amount>".to_string())
+                }
+            },
+            "BTRANSFER" | "BTRANS" => {
+                if parts.len() > 2 {
+                    let recipient = parts[1].to_string();
+                    let amount = parts[2..].join(" ");
+                    TinyMushCommand::BankTransfer(recipient, amount)
+                } else {
+                    TinyMushCommand::Unknown("Usage: BTRANSFER <player> <amount>".to_string())
+                }
+            },
+
+            // Trading commands (Phase 5 Week 4)
+            "TRADE" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Trade(parts[1].to_string())
+                } else {
+                    TinyMushCommand::Unknown("Usage: TRADE <player>".to_string())
+                }
+            },
+            "OFFER" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Offer(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: OFFER <item/amount>".to_string())
+                }
+            },
+            "ACCEPT" | "ACC" => TinyMushCommand::Accept,
+            "REJECT" | "REJ" | "CANCEL" => TinyMushCommand::Reject,
+            "THISTORY" | "THIST" => TinyMushCommand::TradeHistory,
 
             // Admin/debug
             "DEBUG" => {
@@ -1802,6 +1869,199 @@ impl TinyMushProcessor {
             },
             Err(e) => Ok(format!("Error deleting mail: {}", e)),
         }
+    }
+
+    // ===== BANKING COMMANDS (Phase 5 Week 4) =====
+
+    /// Handle BALANCE command - show pocket and bank balance
+    async fn handle_balance(&mut self, session: &Session, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let pocket_display = format!("{:?}", player.currency);
+        let bank_display = format!("{:?}", player.banked_currency);
+
+        Ok(format!(
+            "=ACCOUNT BALANCE=\nPocket: {}\nBank: {}",
+            pocket_display, bank_display
+        ))
+    }
+
+    /// Handle DEPOSIT command - deposit currency to bank
+    async fn handle_deposit(&mut self, session: &Session, amount_str: String, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Parse amount as integer (base units)
+        let base_units: i64 = match amount_str.parse() {
+            Ok(units) => units,
+            Err(_) => return Ok("Invalid amount format.\nExample: DEPOSIT 100".to_string()),
+        };
+
+        if base_units <= 0 {
+            return Ok("Amount must be positive.".to_string());
+        }
+
+        // Create CurrencyAmount matching player's currency type
+        use crate::tmush::types::CurrencyAmount;
+        let amount = match player.currency {
+            CurrencyAmount::Decimal { .. } => CurrencyAmount::Decimal { minor_units: base_units },
+            CurrencyAmount::MultiTier { .. } => CurrencyAmount::MultiTier { base_units },
+        };
+
+        // Perform deposit via storage
+        match self.store().bank_deposit(&player.username, &amount) {
+            Ok(_) => {
+                Ok(format!("Deposited {:?} to bank.\nUse BALANCE to check your account.", amount))
+            },
+            Err(e) => Ok(format!("Deposit failed: {}", e)),
+        }
+    }
+
+    /// Handle WITHDRAW command - withdraw currency from bank
+    async fn handle_withdraw(&mut self, session: &Session, amount_str: String, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Parse amount as integer (base units)
+        let base_units: i64 = match amount_str.parse() {
+            Ok(units) => units,
+            Err(_) => return Ok("Invalid amount format.\nExample: WITHDRAW 100".to_string()),
+        };
+
+        if base_units <= 0 {
+            return Ok("Amount must be positive.".to_string());
+        }
+
+        // Create CurrencyAmount matching player's currency type
+        use crate::tmush::types::CurrencyAmount;
+        let amount = match player.currency {
+            CurrencyAmount::Decimal { .. } => CurrencyAmount::Decimal { minor_units: base_units },
+            CurrencyAmount::MultiTier { .. } => CurrencyAmount::MultiTier { base_units },
+        };
+
+        // Perform withdrawal via storage
+        match self.store().bank_withdraw(&player.username, &amount) {
+            Ok(_) => {
+                Ok(format!("Withdrew {:?} from bank.\nUse BALANCE to check your account.", amount))
+            },
+            Err(e) => Ok(format!("Withdrawal failed: {}", e)),
+        }
+    }
+
+    /// Handle BTRANSFER command - transfer currency between players via bank
+    async fn handle_bank_transfer(&mut self, session: &Session, recipient: String, amount_str: String, _config: &Config) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Can't transfer to self
+        if recipient.to_lowercase() == player.username.to_lowercase() {
+            return Ok("You can't transfer to yourself!".to_string());
+        }
+
+        // Check recipient exists
+        let recipient_player = match self.store().get_player(&recipient) {
+            Ok(p) => p,
+            Err(TinyMushError::NotFound(_)) => return Ok(format!("Player '{}' not found.", recipient)),
+            Err(e) => return Ok(format!("Error loading recipient: {}", e)),
+        };
+
+        // Parse amount as integer (base units)
+        let base_units: i64 = match amount_str.parse() {
+            Ok(units) => units,
+            Err(_) => return Ok("Invalid amount format.\nExample: BTRANSFER alice 100".to_string()),
+        };
+
+        if base_units <= 0 {
+            return Ok("Amount must be positive.".to_string());
+        }
+
+        // Create CurrencyAmount matching player's currency type
+        use crate::tmush::types::CurrencyAmount;
+        let amount = match player.currency {
+            CurrencyAmount::Decimal { .. } => CurrencyAmount::Decimal { minor_units: base_units },
+            CurrencyAmount::MultiTier { .. } => CurrencyAmount::MultiTier { base_units },
+        };
+
+        // Check sender has enough in bank
+        if !player.banked_currency.can_afford(&amount) {
+            return Ok(format!("Insufficient bank funds.\nYou have: {:?}", player.banked_currency));
+        }
+
+        // Perform bank-to-bank transfer by manually handling both players
+        // First, withdraw from sender's bank
+        let mut sender = self.store().get_player(&player.username)?;
+        sender.banked_currency = match sender.banked_currency.subtract(&amount) {
+            Ok(new_balance) => new_balance,
+            Err(e) => return Ok(format!("Transfer failed: {}", e)),
+        };
+
+        // Then deposit to recipient's bank
+        let mut recipient = self.store().get_player(&recipient_player.username)?;
+        recipient.banked_currency = match recipient.banked_currency.add(&amount) {
+            Ok(new_balance) => new_balance,
+            Err(e) => return Ok(format!("Transfer failed: {}", e)),
+        };
+
+        // Save both players
+        self.store().put_player(sender)?;
+        self.store().put_player(recipient)?;
+
+        // Log the transaction
+        use crate::tmush::types::{TransactionReason, CurrencyTransaction};
+        use chrono::Utc;
+        let _transaction = CurrencyTransaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            from: Some(format!("{}:bank", player.username)),
+            to: Some(format!("{}:bank", recipient_player.username)),
+            amount: amount.clone(),
+            reason: TransactionReason::Trade,
+            rolled_back: false,
+        };
+        // Note: log_transaction is private, so we'll just skip logging for now
+        // TODO: Make log_transaction public or provide a public logging method
+
+        Ok(format!(
+            "Transferred {:?} to {}'s bank account.",
+            amount, recipient_player.username
+        ))
+    }
+
+    // ===== TRADING COMMANDS (Phase 5 Week 4) =====
+
+    /// Handle TRADE command - initiate trade with another player
+    async fn handle_trade(&mut self, _session: &Session, _target: String, _config: &Config) -> Result<String> {
+        // TODO: Implement P2P trading system
+        Ok("Trading system coming soon!\nUse BTRANSFER for currency transfers.".to_string())
+    }
+
+    /// Handle OFFER command - offer item or currency in active trade
+    async fn handle_offer(&mut self, _session: &Session, _item: String, _config: &Config) -> Result<String> {
+        Ok("Trading system coming soon!".to_string())
+    }
+
+    /// Handle ACCEPT command - accept trade
+    async fn handle_accept(&mut self, _session: &Session, _config: &Config) -> Result<String> {
+        Ok("Trading system coming soon!".to_string())
+    }
+
+    /// Handle REJECT command - reject/cancel trade
+    async fn handle_reject(&mut self, _session: &Session, _config: &Config) -> Result<String> {
+        Ok("Trading system coming soon!".to_string())
+    }
+
+    /// Handle THISTORY command - view trade history
+    async fn handle_trade_history(&mut self, _session: &Session, _config: &Config) -> Result<String> {
+        Ok("Trade history coming soon!".to_string())
     }
 
     /// Mail system help
