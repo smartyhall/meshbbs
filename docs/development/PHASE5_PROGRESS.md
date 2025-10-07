@@ -132,17 +132,59 @@
 - **Total: 247 tests passing** (228 previous + 19 new)
 
 ### Week 2 Remaining: Commands (IN PROGRESS)
-- [ ] GET command - pick up items from room
-- [ ] DROP command - drop items into room  
-- [ ] INVENTORY (I) command - list carried items
-- [ ] EXAMINE (EX) command - detailed item inspection
-- [ ] Command parsing and TinyMUSH integration
+- [x] GET command - pick up items from room (stub - needs room contents)
+- [x] DROP command - drop items into room (stub - needs room transfer)
+- [x] INVENTORY (I) command - list carried items (complete)
+- [x] EXAMINE (EX) command - detailed item inspection (stub - needs object lookup)
+- [x] Command parsing and TinyMUSH integration
+
+---
+
+## ✅ COMPLETED: Shop System (Week 3 - Core Features)
+
+### Shop Data Structures ✅
+**Files:** `src/tmush/types.rs`, `src/tmush/shop.rs`
+
+- **ShopConfig**: max_unique_items (50), max_item_quantity (999), markup/markdown, restocking
+- **ShopItem**: object_id, quantity (None=infinite), markup/markdown overrides, restock thresholds
+- **ShopRecord**: shop inventory, currency reserves, location, owner, config
+- Dynamic pricing with configurable markup (default 1.2x) and markdown (default 0.7x)
+- Stock management: infinite or limited quantities with automatic restocking
+- Restock thresholds and intervals (default 24 hours)
+
+### Shop Operations ✅
+**File:** `src/tmush/shop.rs`
+
+- `calculate_buy_price()` - player buys from shop (applies markup)
+- `calculate_sell_price()` - player sells to shop (applies markdown)
+- `process_buy()` - complete buy transaction with stock/currency validation
+- `process_sell()` - complete sell transaction with affordability checks
+- `restock_all()` - automatic restocking based on thresholds and time
+- `format_shop_listing()` - compact shop display for Meshtastic
+- `format_shop_item_detail()` - detailed item examination
+
+### CurrencyAmount Integration ✅
+- Shops use CurrencyAmount (Decimal or MultiTier)
+- Pricing functions detect and preserve currency type
+- Shop reserves tracked with can_afford() checks
+- Transaction methods handle currency overflow gracefully
+
+### Testing ✅
+- 8 unit tests (stock management, pricing, buy/sell transactions, insufficient funds, restocking)
+- **Total: 255 tests passing** (247 previous + 8 new)
+
+### Week 3 Remaining: Commands & Storage (TODO)
+- [ ] Add shop storage methods (save/load ShopRecord)
+- [ ] Implement BUY command - purchase items from shop
+- [ ] Implement SELL command - sell items to shop
+- [ ] Implement LIST/WARES command - view shop inventory
+- [ ] Integrate shops into room system (shop NPCs/locations)
 
 ---
 
 ## 🚧 TODO: Remaining Phase 5 Work
 
-### Week 2: Inventory Commands (IN PROGRESS)
+### Week 3: Shop Commands & Integration (IN PROGRESS)
 
 **Tasks:**
 - [ ] Create `InventoryItem` struct with capacity/weight metadata
