@@ -34,6 +34,11 @@ pub enum TinyMushCommand {
     Use(String),            // U item - use/activate item
     Examine(String),        // X item - detailed examination
 
+    // Economy and shops (Phase 5)
+    Buy(String, Option<u32>),    // BUY item [quantity] - purchase from shop
+    Sell(String, Option<u32>),   // SELL item [quantity] - sell to shop
+    List,                        // LIST/WARES - view shop inventory
+
     // Social interactions
     Say(String),            // SAY text - speak to room
     Whisper(String, String), // W player text - private message
@@ -218,6 +223,9 @@ impl TinyMushProcessor {
             TinyMushCommand::Take(item) => self.handle_take(session, item, config).await,
             TinyMushCommand::Drop(item) => self.handle_drop(session, item, config).await,
             TinyMushCommand::Examine(target) => self.handle_examine(session, target, config).await,
+            TinyMushCommand::Buy(item, quantity) => self.handle_buy(session, item, quantity, config).await,
+            TinyMushCommand::Sell(item, quantity) => self.handle_sell(session, item, quantity, config).await,
+            TinyMushCommand::List => self.handle_list(session, config).await,
             TinyMushCommand::Who => self.handle_who(session, config).await,
             TinyMushCommand::Score => self.handle_score(session, config).await,
             TinyMushCommand::Say(text) => self.handle_say(session, text, config).await,
@@ -350,6 +358,37 @@ impl TinyMushProcessor {
                     TinyMushCommand::Unknown(input)
                 }
             },
+
+            // Economy commands
+            "BUY" | "PURCHASE" => {
+                if parts.len() > 1 {
+                    // BUY item [quantity]
+                    let item_name = parts[1].to_string();
+                    let quantity = if parts.len() > 2 {
+                        parts[2].parse::<u32>().ok()
+                    } else {
+                        Some(1)  // Default to 1 if no quantity specified
+                    };
+                    TinyMushCommand::Buy(item_name, quantity)
+                } else {
+                    TinyMushCommand::Unknown("Usage: BUY <item> [quantity]".to_string())
+                }
+            },
+            "SELL" => {
+                if parts.len() > 1 {
+                    // SELL item [quantity]
+                    let item_name = parts[1].to_string();
+                    let quantity = if parts.len() > 2 {
+                        parts[2].parse::<u32>().ok()
+                    } else {
+                        Some(1)  // Default to 1 if no quantity specified
+                    };
+                    TinyMushCommand::Sell(item_name, quantity)
+                } else {
+                    TinyMushCommand::Unknown("Usage: SELL <item> [quantity]".to_string())
+                }
+            },
+            "LIST" | "WARES" | "SHOP" => TinyMushCommand::List,
 
             // System commands
             "HELP" | "H" => {
@@ -767,6 +806,281 @@ impl TinyMushProcessor {
              This command will display detailed information about objects in your inventory or the current room.",
             target
         ))
+    }
+
+    /// Handle BUY command - purchase items from shops in current room
+    async fn handle_buy(
+        &mut self,
+        session: &Session,
+        item_name: String,
+        quantity: Option<u32>,
+        _config: &Config
+    ) -> Result<String> {
+        // Get player
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get shops in current location
+        let location = player.current_room.clone();
+        let shops = match self.store().get_shops_in_location(&location) {
+            Ok(s) => s,
+            Err(e) => return Ok(format!("Error finding shops: {}", e)),
+        };
+
+        if shops.is_empty() {
+            return Ok("There are no shops here.".to_string());
+        }
+
+        // Find shop that has the item (search by name, case-insensitive)
+        let item_name_upper = item_name.to_uppercase();
+        let mut found_shop = None;
+        let mut found_object = None;
+        
+        for shop in shops {
+            // Look through shop inventory for matching item name
+            for object_id in shop.inventory.keys() {
+                if let Ok(obj) = self.store().get_object(object_id) {
+                    if obj.name.to_uppercase() == item_name_upper {
+                        found_shop = Some(shop);
+                        found_object = Some(obj);
+                        break;
+                    }
+                }
+            }
+            if found_shop.is_some() {
+                break;
+            }
+        }
+
+        let (mut shop, object) = match (found_shop, found_object) {
+            (Some(s), Some(obj)) => (s, obj),
+            _ => return Ok(format!("No shop here sells '{}'.", item_name)),
+        };
+
+        let qty = quantity.unwrap_or(1);
+        
+        // Get the shop item to calculate price
+        let shop_item = match shop.get_item(&object.id) {
+            Some(item) => item,
+            None => return Ok(format!("Shop doesn't sell '{}'.", object.name)),
+        };
+        
+        // Calculate total price using shop's pricing logic (includes quantity)
+        let total_price = shop.calculate_buy_price(&object, qty, shop_item);
+
+        // Check if player can afford it
+        if !player.currency.can_afford(&total_price) {
+            return Ok(format!(
+                "You cannot afford {} x {} (need {:?}, have {:?}).",
+                qty, object.name, total_price, player.currency
+            ));
+        }
+
+        // Process the purchase (updates shop inventory and currency)
+        match shop.process_buy(&object.id, qty, &object) {
+            Ok((price, actual_qty)) => {
+                // Deduct currency from player
+                player.currency = match player.currency.subtract(&price) {
+                    Ok(new_balance) => new_balance,
+                    Err(e) => return Ok(format!("Payment failed: {}", e)),
+                };
+                
+                // Add items to player inventory using inventory system
+                use crate::tmush::inventory::add_item_to_inventory;
+                use crate::tmush::types::InventoryConfig;
+                let config = InventoryConfig::default();
+                for _ in 0..actual_qty {
+                    add_item_to_inventory(&mut player, &object, 1, &config);
+                }
+
+                // Capture balance before moving player
+                let final_balance = format!("{:?}", player.currency);
+                
+                // Save shop and player (consume values)
+                if let Err(e) = self.store().put_shop(shop) {
+                    return Ok(format!("Failed to save shop: {}", e));
+                }
+                if let Err(e) = self.store().put_player(player) {
+                    return Ok(format!("Failed to save player: {}", e));
+                }
+
+                Ok(format!(
+                    "You buy {} x {} for {:?}. Balance: {}",
+                    actual_qty, object.name, price, final_balance
+                ))
+            },
+            Err(e) => Ok(format!("Purchase failed: {}", e)),
+        }
+    }
+
+    /// Handle SELL command - sell items from inventory to shops
+    async fn handle_sell(
+        &mut self,
+        session: &Session,
+        item_name: String,
+        quantity: Option<u32>,
+        _config: &Config
+    ) -> Result<String> {
+        // Get player
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Find item in player's inventory by name
+        let item_name_upper = item_name.to_uppercase();
+        let mut found_object_id = None;
+        let mut found_object = None;
+
+        for stack in &player.inventory_stacks {
+            if let Ok(obj) = self.store().get_object(&stack.object_id) {
+                if obj.name.to_uppercase() == item_name_upper {
+                    found_object_id = Some(stack.object_id.clone());
+                    found_object = Some(obj);
+                    break;
+                }
+            }
+        }
+
+        let (object_id, object) = match (found_object_id, found_object) {
+            (Some(id), Some(obj)) => (id, obj),
+            _ => return Ok(format!("You don't have any '{}'.", item_name)),
+        };
+
+        let qty = quantity.unwrap_or(1);
+
+        // Check if player has enough quantity
+        let player_qty = player.inventory_stacks
+            .iter()
+            .find(|s| s.object_id == object_id)
+            .map(|s| s.quantity)
+            .unwrap_or(0);
+        if player_qty < qty {
+            return Ok(format!("You only have {} x {}.", player_qty, object.name));
+        }
+
+        // Get shops in current location
+        let location = player.current_room.clone();
+        let shops = match self.store().get_shops_in_location(&location) {
+            Ok(s) => s,
+            Err(e) => return Ok(format!("Error finding shops: {}", e)),
+        };
+
+        if shops.is_empty() {
+            return Ok("There are no shops here to sell to.".to_string());
+        }
+
+        // Find a shop willing to buy this item (shop must have item in inventory to accept it)
+        let mut found_shop = None;
+        for shop in shops {
+            if shop.get_item(&object_id).is_some() {
+                found_shop = Some(shop);
+                break;
+            }
+        }
+
+        let mut shop = match found_shop {
+            Some(s) => s,
+            None => return Ok(format!("No shop here buys '{}'.", object.name)),
+        };
+
+        // Get shop item to calculate price
+        let shop_item = shop.get_item(&object_id).unwrap(); // safe: we just checked
+        
+        // Calculate sell price using shop's pricing logic (includes quantity)
+        let total_price = shop.calculate_sell_price(&object, qty, shop_item);
+
+        // Check if shop can afford it
+        if !shop.currency.can_afford(&total_price) {
+            return Ok(format!(
+                "The shop cannot afford to buy {} x {} (need {:?}, have {:?}).",
+                qty, object.name, total_price, shop.currency
+            ));
+        }
+
+        // Process the sale (updates shop inventory and currency)
+        match shop.process_sell(&object_id, qty, &object) {
+            Ok(price) => {
+                // Add currency to player
+                player.currency = match player.currency.add(&price) {
+                    Ok(new_balance) => new_balance,
+                    Err(e) => return Ok(format!("Payment failed: {}", e)),
+                };
+                
+                // Remove items from player inventory using inventory system
+                use crate::tmush::inventory::remove_item_from_inventory;
+                remove_item_from_inventory(&mut player, &object_id, qty);
+
+                // Capture balance before moving player
+                let final_balance = format!("{:?}", player.currency);
+                
+                // Save shop and player (consume values)
+                if let Err(e) = self.store().put_shop(shop) {
+                    return Ok(format!("Failed to save shop: {}", e));
+                }
+                if let Err(e) = self.store().put_player(player) {
+                    return Ok(format!("Failed to save player: {}", e));
+                }
+
+                Ok(format!(
+                    "You sell {} x {} for {:?}. Balance: {}",
+                    qty, object.name, price, final_balance
+                ))
+            },
+            Err(e) => Ok(format!("Sale failed: {}", e)),
+        }
+    }
+
+    /// Handle LIST/WARES command - display shop inventory with prices
+    async fn handle_list(&mut self, session: &Session, _config: &Config) -> Result<String> {
+        use crate::tmush::shop::format_shop_listing;
+        
+        // Get player to determine current location
+        let player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get shops in current location
+        let location = player.current_room.clone();
+        let shops = match self.store().get_shops_in_location(&location) {
+            Ok(s) => s,
+            Err(e) => return Ok(format!("Error finding shops: {}", e)),
+        };
+
+        if shops.is_empty() {
+            return Ok("There are no shops here.".to_string());
+        }
+
+        // Build listing for each shop
+        let mut response = String::new();
+        
+        for (idx, shop) in shops.iter().enumerate() {
+            if idx > 0 {
+                response.push_str("\n---\n");
+            }
+            
+            response.push_str(&format!("=== {} ===\n", shop.name));
+            if !shop.description.is_empty() {
+                response.push_str(&format!("{}\n\n", shop.description));
+            }
+
+            // Get object resolver closure
+            let store = self.store();
+            let get_object = |object_id: &str| store.get_object(object_id).ok();
+
+            // Use shop formatting function
+            let lines = format_shop_listing(shop, get_object);
+            response.push_str(&lines.join("\n"));
+        }
+
+        if response.is_empty() {
+            Ok("No shops available.".to_string())
+        } else {
+            Ok(response)
+        }
     }
 
     /// Handle WHO command - list online players
