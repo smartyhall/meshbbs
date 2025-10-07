@@ -16,6 +16,7 @@ use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord, REQUIRED_START_LO
 use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection};
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
+use crate::tmush::inventory::format_inventory_compact;
 
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,6 +215,9 @@ impl TinyMushProcessor {
             TinyMushCommand::Where => self.handle_where(session, config).await,
             TinyMushCommand::Map => self.handle_map(session, config).await,
             TinyMushCommand::Inventory => self.handle_inventory(session, config).await,
+            TinyMushCommand::Take(item) => self.handle_take(session, item, config).await,
+            TinyMushCommand::Drop(item) => self.handle_drop(session, item, config).await,
+            TinyMushCommand::Examine(target) => self.handle_examine(session, target, config).await,
             TinyMushCommand::Who => self.handle_who(session, config).await,
             TinyMushCommand::Score => self.handle_score(session, config).await,
             TinyMushCommand::Say(text) => self.handle_say(session, text, config).await,
@@ -663,19 +667,106 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        if player.inventory.is_empty() {
-            return Ok("You are carrying nothing.".to_string());
-        }
+        // Use new inventory system if available
+        if !player.inventory_stacks.is_empty() {
+            let store = self.store();
+            let get_item = |object_id: &str| store.get_object(object_id).ok();
+            let inventory_lines = format_inventory_compact(&player, get_item);
+            Ok(inventory_lines.join("\n"))
+        } else if player.inventory.is_empty() {
+            Ok("You are carrying nothing.".to_string())
+        } else {
+            // Fallback to legacy inventory display
+            let mut response = "=== INVENTORY ===\n".to_string();
+            response.push_str(&format!("Gold: {}\n", player.credits));
+            response.push_str(&format!("Items: {}\n", player.inventory.len()));
+            
+            for (i, item_id) in player.inventory.iter().enumerate() {
+                response.push_str(&format!("{}. {}\n", i + 1, item_id));
+            }
 
-        let mut response = "=== INVENTORY ===\n".to_string();
-        response.push_str(&format!("Gold: {}\n", player.credits));
-        response.push_str(&format!("Items: {}\n", player.inventory.len()));
+            Ok(response)
+        }
+    }
+
+    /// Handle TAKE/GET command - pick up items from room
+    async fn handle_take(&mut self, session: &Session, item_name: String, _config: &Config) -> Result<String> {
+        let _player_node_id = &session.node_id;
         
-        for (i, item_id) in player.inventory.iter().enumerate() {
-            response.push_str(&format!("{}. {}\n", i + 1, item_id));
-        }
+        // Parse item name - support "get 5 coins" or "get coins"
+        let (quantity, item_name) = if let Some(first_space) = item_name.find(' ') {
+            let (first, rest) = item_name.split_at(first_space);
+            if let Ok(qty) = first.trim().parse::<u32>() {
+                (qty, rest.trim().to_uppercase())
+            } else {
+                (1, item_name.to_uppercase())
+            }
+        } else {
+            (1, item_name.to_uppercase())
+        };
 
-        Ok(response)
+        // Find object by name in the current room (future: scan room contents)
+        // For now, we'll return a helpful message
+        // TODO: Implement room.contents and object lookup by name
+        
+        Ok(format!(
+            "You try to pick up '{}' (qty: {}) but room object scanning isn't implemented yet.\n\
+             This command will search the current room's contents and transfer items to your inventory.",
+            item_name, quantity
+        ))
+    }
+
+    /// Handle DROP command - drop items into current room
+    async fn handle_drop(&mut self, session: &Session, item_name: String, _config: &Config) -> Result<String> {
+        let _player_node_id = &session.node_id;
+        
+        // Parse item name - support "drop 5 coins" or "drop coins"
+        let (quantity, item_name) = if let Some(first_space) = item_name.find(' ') {
+            let (first, rest) = item_name.split_at(first_space);
+            if let Ok(qty) = first.trim().parse::<u32>() {
+                (qty, rest.trim().to_uppercase())
+            } else {
+                (1, item_name.to_uppercase())
+            }
+        } else {
+            (1, item_name.to_uppercase())
+        };
+
+        // Get player's inventory
+        let _player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Find matching item in inventory (by object name lookup)
+        // For now, return helpful message
+        // TODO: Implement object name -> ID lookup and room transfer
+        
+        Ok(format!(
+            "You try to drop '{}' (qty: {}) but inventory -> room transfer isn't implemented yet.\n\
+             This command will search your inventory by item name and move items to the current room.",
+            item_name, quantity
+        ))
+    }
+
+    /// Handle EXAMINE command - show detailed item information
+    async fn handle_examine(&mut self, session: &Session, target: String, _config: &Config) -> Result<String> {
+        let target = target.to_uppercase();
+        
+        // Try to find the object in player's inventory first
+        let _player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Search inventory by object name
+        // TODO: Implement object name -> ID lookup, then use format_item_examination
+        
+        Ok(format!(
+            "You try to examine '{}' but object lookup by name isn't implemented yet.\n\
+             This command will display detailed information about objects in your inventory or the current room.",
+            target
+        ))
     }
 
     /// Handle WHO command - list online players
