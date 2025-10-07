@@ -198,12 +198,17 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [ ] Vendor NPC dialog integration (future Phase 6)
 - [ ] Vendor scripting for specific merchants (Bakery, General Store, etc.) (future)
 
-### Banking System — Week 4 TODO
+### Banking System — Week 4 (IN PROGRESS)
 - [x] Bank deposit/withdraw methods (storage.rs) — commit afe6ebe
 - [x] Account balance tracking: pocket + banked_currency fields
-- [ ] Bank command handlers (DEPOSIT, WITHDRAW, BALANCE)
+- [x] Bank command handlers (BALANCE, DEPOSIT, WITHDRAW) — commit e8f2199
+- [x] Bank transfer between players (BTRANSFER command) — commit e8f2199
+- [x] BALANCE/BAL - shows pocket and bank currency balances
+- [x] DEPOSIT/DEP <amount> - deposits currency from pocket to bank
+- [x] WITHDRAW/WITH <amount> - withdraws currency from bank to pocket
+- [x] BTRANSFER/BTRANS <player> <amount> - bank-to-bank transfers
+- [ ] Bank integration tests (tests/banking_system.rs) — IN PROGRESS
 - [ ] Vault storage for items (limited slots)
-- [ ] Bank transfer between players (BTRANSFER command)
 - [ ] Interest/fees configuration (optional, world-level)
 - [ ] Bank NPC integration at specific locations
 
@@ -231,12 +236,13 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [ ] Economy stress test (10k simulated transactions) — Week 4 TODO
 - [ ] Performance profiling for high-volume transactions — Week 5 TODO
 
-### 📊 Phase 5 Status: **Week 1-3 COMPLETE** (260 tests passing)
+### 📊 Phase 5 Status: **Week 1-3 COMPLETE, Week 4 IN PROGRESS** (263 tests passing)
 - ✅ **Week 1**: Currency foundation (12 tests) — COMPLETE (commits afe6ebe, 33543d9)
 - ✅ **Week 2**: Inventory core (19 tests) — COMPLETE (commits ff19fc6, 716041e, c7d8b5f)
 - ✅ **Week 3**: Shop system (13 tests) — COMPLETE (commits a22e66a, 8868d8d, c2695d4, 2cbd47d)
-- **Total: 260 tests passing** (89 unit + 171 integration)
-- **Next**: Week 4 - Player trading and bank commands
+- 🔄 **Week 4**: Banking commands (4 commands) — IN PROGRESS (commit e8f2199)
+- **Total: 263 tests passing** (89 unit + 174 integration)
+- **Next**: Complete Week 4 - Player trading system and banking tests
 
 ---
 
