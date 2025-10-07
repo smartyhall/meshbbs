@@ -11,12 +11,14 @@ use crate::tmush::types::{
     TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION,
     PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
+use crate::tmush::shop::ShopRecord;
 
 const TREE_PRIMARY: &str = "tinymush";
 const TREE_OBJECTS: &str = "tinymush_objects";
 const TREE_MAIL: &str = "tinymush_mail";
 const TREE_LOGS: &str = "tinymush_logs";
 const TREE_BULLETINS: &str = "tinymush_bulletins";
+const TREE_SHOPS: &str = "tinymush_shops";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -57,6 +59,7 @@ pub struct TinyMushStore {
     mail: sled::Tree,
     logs: sled::Tree,
     bulletins: sled::Tree,
+    shops: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -75,6 +78,7 @@ impl TinyMushStore {
         let mail = db.open_tree(TREE_MAIL)?;
         let logs = db.open_tree(TREE_LOGS)?;
         let bulletins = db.open_tree(TREE_BULLETINS)?;
+        let shops = db.open_tree(TREE_SHOPS)?;
         let store = Self {
             _db: db,
             primary,
@@ -82,6 +86,7 @@ impl TinyMushStore {
             mail,
             logs,
             bulletins,
+            shops,
         };
 
         if seed_world {
@@ -245,6 +250,59 @@ impl TinyMushStore {
         }
 
         Err(TinyMushError::NotFound(format!("object {}", id)))
+    }
+
+    /// Insert or update a shop record
+    pub fn put_shop(&self, shop: ShopRecord) -> Result<(), TinyMushError> {
+        let key = format!("shops:{}", shop.id).into_bytes();
+        let bytes = Self::serialize(&shop)?;
+        self.shops.insert(key, bytes)?;
+        self.shops.flush()?;
+        Ok(())
+    }
+
+    /// Get a shop by ID
+    pub fn get_shop(&self, shop_id: &str) -> Result<ShopRecord, TinyMushError> {
+        let key = format!("shops:{}", shop_id).into_bytes();
+        let Some(bytes) = self.shops.get(&key)? else {
+            return Err(TinyMushError::NotFound(format!("shop: {}", shop_id)));
+        };
+        let shop: ShopRecord = Self::deserialize(bytes)?;
+        Ok(shop)
+    }
+
+    /// List all shop IDs
+    pub fn list_shop_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        for entry in self.shops.scan_prefix(b"shops:") {
+            let (key, _) = entry?;
+            let text = String::from_utf8_lossy(&key);
+            if let Some(shop_id) = text.strip_prefix("shops:") {
+                ids.push(shop_id.to_string());
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Get all shops in a specific location (room)
+    pub fn get_shops_in_location(&self, location: &str) -> Result<Vec<ShopRecord>, TinyMushError> {
+        let mut shops = Vec::new();
+        for entry in self.shops.scan_prefix(b"shops:") {
+            let (_, value) = entry?;
+            let shop: ShopRecord = Self::deserialize(value)?;
+            if shop.location == location {
+                shops.push(shop);
+            }
+        }
+        Ok(shops)
+    }
+
+    /// Delete a shop by ID
+    pub fn delete_shop(&self, shop_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("shops:{}", shop_id).into_bytes();
+        self.shops.remove(key)?;
+        self.shops.flush()?;
+        Ok(())
     }
 
     pub fn seed_world_if_needed(&self) -> Result<usize, TinyMushError> {
