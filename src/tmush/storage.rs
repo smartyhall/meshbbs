@@ -8,7 +8,7 @@ use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
     BulletinBoard, BulletinMessage, CurrencyAmount, CurrencyTransaction, MailMessage,
     MailStatus, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord,
-    TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION,
+    TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION,
     PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 use crate::tmush::shop::ShopRecord;
@@ -19,6 +19,7 @@ const TREE_MAIL: &str = "tinymush_mail";
 const TREE_LOGS: &str = "tinymush_logs";
 const TREE_BULLETINS: &str = "tinymush_bulletins";
 const TREE_SHOPS: &str = "tinymush_shops";
+const TREE_TRADES: &str = "tinymush_trades";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -60,6 +61,7 @@ pub struct TinyMushStore {
     logs: sled::Tree,
     bulletins: sled::Tree,
     shops: sled::Tree,
+    trades: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -79,6 +81,7 @@ impl TinyMushStore {
         let logs = db.open_tree(TREE_LOGS)?;
         let bulletins = db.open_tree(TREE_BULLETINS)?;
         let shops = db.open_tree(TREE_SHOPS)?;
+        let trades = db.open_tree(TREE_TRADES)?;
         let store = Self {
             _db: db,
             primary,
@@ -87,6 +90,7 @@ impl TinyMushStore {
             logs,
             bulletins,
             shops,
+            trades,
         };
 
         if seed_world {
@@ -1136,6 +1140,69 @@ impl TinyMushStore {
         self.put_player(to_player)?;
 
         Ok(())
+    }
+
+    // ============================================================================
+    // Trade Session Management
+    // ============================================================================
+
+    /// Create or update a trade session
+    pub fn put_trade_session(&self, session: &TradeSession) -> Result<(), TinyMushError> {
+        let key = format!("trade:{}", session.id);
+        let value = bincode::serialize(session)?;
+        self.trades.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// Get an active trade session by ID
+    pub fn get_trade_session(&self, session_id: &str) -> Result<Option<TradeSession>, TinyMushError> {
+        let key = format!("trade:{}", session_id);
+        if let Some(bytes) = self.trades.get(key.as_bytes())? {
+            let session: TradeSession = bincode::deserialize(&bytes)?;
+            Ok(Some(session))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get active trade session for a player (either as initiator or recipient)
+    pub fn get_player_active_trade(&self, username: &str) -> Result<Option<TradeSession>, TinyMushError> {
+        let username_lower = username.to_ascii_lowercase();
+        for result in self.trades.iter() {
+            let (_key, value) = result?;
+            let session: TradeSession = bincode::deserialize(&value)?;
+            if !session.is_expired() && session.completed_at.is_none() {
+                if session.player1.to_ascii_lowercase() == username_lower 
+                    || session.player2.to_ascii_lowercase() == username_lower {
+                    return Ok(Some(session));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Delete a trade session (after completion or cancellation)
+    pub fn delete_trade_session(&self, session_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("trade:{}", session_id);
+        self.trades.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    /// Clean up expired trade sessions
+    pub fn cleanup_expired_trades(&self) -> Result<usize, TinyMushError> {
+        let mut expired_keys = Vec::new();
+        for result in self.trades.iter() {
+            let (key, value) = result?;
+            let session: TradeSession = bincode::deserialize(&value)?;
+            if session.is_expired() || session.completed_at.is_some() {
+                expired_keys.push(key);
+            }
+        }
+        let count = expired_keys.len();
+        for key in expired_keys {
+            self.trades.remove(key)?;
+        }
+        Ok(count)
     }
 }
 

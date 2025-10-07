@@ -735,3 +735,122 @@ pub enum TransactionReason {
     /// Other reason
     Other { description: String },
 }
+
+// ============================================================================
+// Player-to-Player Trading
+// ============================================================================
+
+/// Active P2P trade session between two players
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TradeSession {
+    /// Trade session ID
+    pub id: String,
+    /// First player (initiator)
+    pub player1: String,
+    /// Second player (recipient)
+    pub player2: String,
+    /// Items offered by player1
+    pub player1_items: Vec<String>,
+    /// Currency offered by player1
+    pub player1_currency: CurrencyAmount,
+    /// Items offered by player2
+    pub player2_items: Vec<String>,
+    /// Currency offered by player2
+    pub player2_currency: CurrencyAmount,
+    /// Player1 has accepted
+    pub player1_accepted: bool,
+    /// Player2 has accepted
+    pub player2_accepted: bool,
+    /// Trade creation timestamp
+    pub created_at: DateTime<Utc>,
+    /// Trade expiration timestamp (5 minutes default)
+    pub expires_at: DateTime<Utc>,
+    /// Trade completed timestamp
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+impl TradeSession {
+    /// Create new trade session between two players
+    pub fn new(player1: &str, player2: &str) -> Self {
+        let now = Utc::now();
+        let id = format!("trade_{}_{}", player1, player2);
+        Self {
+            id,
+            player1: player1.to_string(),
+            player2: player2.to_string(),
+            player1_items: Vec::new(),
+            player1_currency: CurrencyAmount::default(),
+            player2_items: Vec::new(),
+            player2_currency: CurrencyAmount::default(),
+            player1_accepted: false,
+            player2_accepted: false,
+            created_at: now,
+            expires_at: now + chrono::Duration::minutes(5),
+            completed_at: None,
+        }
+    }
+
+    /// Check if trade has expired
+    pub fn is_expired(&self) -> bool {
+        Utc::now() > self.expires_at
+    }
+
+    /// Check if both players have accepted
+    pub fn is_ready(&self) -> bool {
+        self.player1_accepted && self.player2_accepted
+    }
+
+    /// Add currency offer from a player
+    pub fn add_currency_offer(&mut self, player: &str, amount: CurrencyAmount) {
+        if player == self.player1 {
+            self.player1_currency = amount;
+            self.player1_accepted = false;
+        } else if player == self.player2 {
+            self.player2_currency = amount;
+            self.player2_accepted = false;
+        }
+    }
+
+    /// Add item offer from a player
+    pub fn add_item_offer(&mut self, player: &str, item_id: String) {
+        if player == self.player1 {
+            self.player1_items.push(item_id);
+            self.player1_accepted = false;
+        } else if player == self.player2 {
+            self.player2_items.push(item_id);
+            self.player2_accepted = false;
+        }
+    }
+
+    /// Mark player as accepted
+    pub fn accept(&mut self, player: &str) {
+        if player == self.player1 {
+            self.player1_accepted = true;
+        } else if player == self.player2 {
+            self.player2_accepted = true;
+        }
+    }
+
+    /// Get summary of offered items and currency
+    pub fn get_summary(&self) -> String {
+        let p1_items_str = if self.player1_items.is_empty() {
+            "nothing".to_string()
+        } else {
+            format!("{} item(s)", self.player1_items.len())
+        };
+        let p1_currency_str = format!("{:?}", self.player1_currency);
+
+        let p2_items_str = if self.player2_items.is_empty() {
+            "nothing".to_string()
+        } else {
+            format!("{} item(s)", self.player2_items.len())
+        };
+        let p2_currency_str = format!("{:?}", self.player2_currency);
+
+        format!(
+            "{}: {} + {}\n{}: {} + {}",
+            self.player1, p1_items_str, p1_currency_str,
+            self.player2, p2_items_str, p2_currency_str
+        )
+    }
+}

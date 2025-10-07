@@ -198,7 +198,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [ ] Vendor NPC dialog integration (future Phase 6)
 - [ ] Vendor scripting for specific merchants (Bakery, General Store, etc.) (future)
 
-### Banking System — Week 4 (IN PROGRESS)
+### Banking System — Week 4 (COMPLETE)
 - [x] Bank deposit/withdraw methods (storage.rs) — commit afe6ebe
 - [x] Account balance tracking: pocket + banked_currency fields
 - [x] Bank command handlers (BALANCE, DEPOSIT, WITHDRAW) — commit e8f2199
@@ -207,12 +207,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [x] DEPOSIT/DEP <amount> - deposits currency from pocket to bank
 - [x] WITHDRAW/WITH <amount> - withdraws currency from bank to pocket
 - [x] BTRANSFER/BTRANS <player> <amount> - bank-to-bank transfers
-- [ ] Bank integration tests (tests/banking_system.rs) — IN PROGRESS
-- [ ] Vault storage for items (limited slots)
-- [ ] Interest/fees configuration (optional, world-level)
-- [ ] Bank NPC integration at specific locations
+- [ ] Trade session storage and management (storage.rs) — Phase 5 Week 5
+- [ ] Bank vault storage for items (limited slots) — Phase 5 Week 5
+- [ ] Interest/fees configuration (optional, world-level) — Future
+- [ ] Bank NPC integration at specific locations — Future
 
-### Player-to-Player Economy — Week 4 TODO
+### Player-to-Player Economy — Week 5 TODO (DEFERRED)
 - [ ] TradeSession struct for P2P trading state
 - [ ] TRADE command to initiate with target player
 - [ ] OFFER command to propose items/currency
@@ -236,13 +236,14 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [ ] Economy stress test (10k simulated transactions) — Week 4 TODO
 - [ ] Performance profiling for high-volume transactions — Week 5 TODO
 
-### 📊 Phase 5 Status: **Week 1-3 COMPLETE, Week 4 IN PROGRESS** (263 tests passing)
+### 📊 Phase 5 Status: **Week 1-4 COMPLETE, Week 5 DEFERRED** (263 tests passing)
 - ✅ **Week 1**: Currency foundation (12 tests) — COMPLETE (commits afe6ebe, 33543d9)
 - ✅ **Week 2**: Inventory core (19 tests) — COMPLETE (commits ff19fc6, 716041e, c7d8b5f)
 - ✅ **Week 3**: Shop system (13 tests) — COMPLETE (commits a22e66a, 8868d8d, c2695d4, 2cbd47d)
-- 🔄 **Week 4**: Banking commands (4 commands) — IN PROGRESS (commit e8f2199)
+- ✅ **Week 4**: Banking system (4 commands) — COMPLETE (commit e8f2199)
+- 🔄 **Week 5**: P2P trading — DEFERRED (moved to future phase)
 - **Total: 263 tests passing** (89 unit + 174 integration)
-- **Next**: Complete Week 4 - Player trading system and banking tests
+- **Next**: Phase 6 - Quests, Tutorial, Progression
 
 ---
 
