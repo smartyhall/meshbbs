@@ -2039,9 +2039,44 @@ impl TinyMushProcessor {
     // ===== TRADING COMMANDS (Phase 5 Week 4) =====
 
     /// Handle TRADE command - initiate trade with another player
-    async fn handle_trade(&mut self, _session: &Session, _target: String, _config: &Config) -> Result<String> {
-        // TODO: Implement P2P trading system
-        Ok("Trading system coming soon!\nUse BTRANSFER for currency transfers.".to_string())
+    async fn handle_trade(&mut self, session: &Session, target: String, _config: &Config) -> Result<String> {
+        let username = session.node_id.to_string();
+        let target_lower = target.to_ascii_lowercase();
+
+        // Can't trade with yourself
+        if target_lower == username.to_ascii_lowercase() {
+            return Ok("You can't trade with yourself!".to_string());
+        }
+
+        // Check if initiator already has an active trade
+        if let Some(existing) = self.store().get_player_active_trade(&username)? {
+            let other = if existing.player1.to_ascii_lowercase() == username.to_ascii_lowercase() {
+                &existing.player2
+            } else {
+                &existing.player1
+            };
+            return Ok(format!("You're already trading with {}!\nType REJECT to cancel.", other));
+        }
+
+        // Check if target player has an active trade
+        if let Some(_existing) = self.store().get_player_active_trade(&target)? {
+            return Ok(format!("{} is already in a trade.", target));
+        }
+
+        // Get both players to verify they exist
+        let player1 = self.store().get_player(&username)?;
+        let player2 = self.store().get_player(&target)?;
+
+        // Verify both players are in the same room
+        if player1.current_room != player2.current_room {
+            return Ok(format!("{} is not here!", target));
+        }
+
+        // Create new trade session
+        let trade_session = crate::tmush::types::TradeSession::new(&username, &target);
+        self.store().put_trade_session(&trade_session)?;
+
+        Ok(format!("Trade initiated with {}!\nUse OFFER to add items/currency.\nType ACCEPT when ready.", target))
     }
 
     /// Handle OFFER command - offer item or currency in active trade
@@ -2055,8 +2090,26 @@ impl TinyMushProcessor {
     }
 
     /// Handle REJECT command - reject/cancel trade
-    async fn handle_reject(&mut self, _session: &Session, _config: &Config) -> Result<String> {
-        Ok("Trading system coming soon!".to_string())
+    async fn handle_reject(&mut self, session: &Session, _config: &Config) -> Result<String> {
+        let username = session.node_id.to_string();
+
+        // Get active trade session
+        let trade = match self.store().get_player_active_trade(&username)? {
+            Some(t) => t,
+            None => return Ok("You have no active trade.".to_string()),
+        };
+
+        // Get the other player's name
+        let other_player = if trade.player1.to_ascii_lowercase() == username.to_ascii_lowercase() {
+            &trade.player2
+        } else {
+            &trade.player1
+        };
+
+        // Delete the trade session
+        self.store().delete_trade_session(&trade.id)?;
+
+        Ok(format!("Trade with {} cancelled.", other_player))
     }
 
     /// Handle THISTORY command - view trade history
