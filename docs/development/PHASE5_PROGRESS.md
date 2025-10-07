@@ -105,9 +105,44 @@
 
 ---
 
+## ✅ COMPLETED: Inventory System (Week 2 - Core Features)
+
+### Data Structures & Core Logic ✅
+**Files:** `src/tmush/types.rs`, `src/tmush/inventory.rs`
+
+- **InventoryConfig**: max_stacks (100), max_weight (1000), allow_stacking
+- **ItemStack**: object_id, quantity, added_at
+- **InventoryResult enum**: Added/Removed/Failed with details
+- Stack-based inventory with weight/capacity limits
+- Automatic item stacking for identical objects
+- Full validation (takeable, weight, capacity)
+- Display formatting under 200 bytes (format_inventory_compact, format_item_examination)
+
+### Storage Integration ✅
+**File:** `src/tmush/storage.rs`
+
+- player_add_item, player_remove_item, player_has_item
+- player_inventory_list, player_inventory_weight, player_item_quantity
+- transfer_item (atomic P2P transfers with rollback)
+- get_object (retrieve ObjectRecord by ID - world or player-owned)
+
+### Testing ✅
+- 10 unit tests (stacking, capacity, removal, queries, validation)
+- 9 integration tests (storage layer, transfers, limits, persistence)
+- **Total: 247 tests passing** (228 previous + 19 new)
+
+### Week 2 Remaining: Commands (IN PROGRESS)
+- [ ] GET command - pick up items from room
+- [ ] DROP command - drop items into room  
+- [ ] INVENTORY (I) command - list carried items
+- [ ] EXAMINE (EX) command - detailed item inspection
+- [ ] Command parsing and TinyMUSH integration
+
+---
+
 ## 🚧 TODO: Remaining Phase 5 Work
 
-### Week 2: Inventory System (NOT STARTED)
+### Week 2: Inventory Commands (IN PROGRESS)
 
 **Tasks:**
 - [ ] Create `InventoryItem` struct with capacity/weight metadata
