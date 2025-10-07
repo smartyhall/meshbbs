@@ -1567,82 +1567,55 @@ impl TinyMushProcessor {
     }
 
     /// Main help text
-    fn help_main(&self) -> String {
-        "=== TINYMUSH HELP ===\n".to_string() +
-        "Movement: N S E W U D NE NW SE SW\n" +
-        "Look: L (room) L <thing>\n" +
-        "Info: I (inventory) WHO SCORE WHERE\n" +
-        "Talk: SAY <text> EMOTE <action>\n" +
-        "Board: BOARD POST <subj> <msg> READ <id>\n" +
-        "Mail: MAIL SEND <plyr> <subj> <msg>\n" +
-        "System: HELP <topic> SAVE QUIT\n\n" +
+    pub fn help_main(&self) -> String {
+        "=TINYMUSH HELP=\n".to_string() +
+        "Move: N/S/E/W/U/D + diagonals\n" +
+        "Look: L | I (inv) | WHO | SCORE\n" +
+        "Talk: SAY/EMOTE\n" +
+        "Board: BOARD/POST/READ\n" +
+        "Mail: MAIL/SEND\n" +
+        "More: HELP <topic>\n" +
         "Topics: COMMANDS MOVEMENT SOCIAL BOARD MAIL"
     }
 
     /// Commands help
-    fn help_commands(&self) -> String {
-        "=== COMMANDS ===\n".to_string() +
-        "L/LOOK - examine room/object\n" +
-        "I/INV - show inventory\n" +   
-        "WHO - list online players\n" +
-        "WHERE - show current location\n" +
-        "SCORE - show your stats\n" +
-        "SAY <text> - speak to room\n" +
-        "BOARD - view bulletin board\n" +
-        "POST <subject> <message> - post to board\n" +
-        "READ <id> - read bulletin message\n" +
-        "MAIL [folder] - view mail inbox/sent\n" +
-        "SEND <player> <subj> <msg> - send mail\n" +
-        "RMAIL <id> - read mail message\n" +
-        "DMAIL <id> - delete mail message\n" +
-        "HELP <topic> - get help\n" +
-        "SAVE - save your progress\n" +
-        "QUIT - return to main menu"
+    pub fn help_commands(&self) -> String {
+        "=COMMANDS=\n".to_string() +
+        "L - look | I - inventory\n" +
+        "WHO - players | SCORE - stats\n" +
+        "SAY/EMOTE - talk\n" +
+        "BOARD/POST/READ - bulletin\n" +
+        "MAIL/SEND/RMAIL - messages\n" +
+        "SAVE | QUIT"
     }    /// Movement help
-    fn help_movement(&self) -> String {
-        "=== MOVEMENT ===\n".to_string() +
-        "N/NORTH - go north\n" +
-        "S/SOUTH - go south\n" +
-        "E/EAST - go east\n" +
-        "W/WEST - go west\n" +
-        "U/UP - go up\n" +
-        "D/DOWN - go down\n" +
-        "NE/NW/SE/SW - diagonals\n\n" +
-        "(Movement active in Phase 3)"
+    pub fn help_movement(&self) -> String {
+        "=MOVEMENT=\n".to_string() +
+        "N/S/E/W - cardinal\n" +
+        "U/D - up/down\n" +
+        "NE/NW/SE/SW - diagonals\n" +
+        "L - look around"
     }
 
     /// Social commands help  
-    fn help_social(&self) -> String {
-        "=== SOCIAL ===\n".to_string() +
-        "SAY <text> (') - speak aloud to room\n" +
-        "WHISPER <player> <text> - private message\n" +
-        "EMOTE <action> (:) - perform action\n" +
-        "POSE <pose> (;) - strike a pose\n" +
-        "OOC <text> - out of character chat\n" +
-        "WHO - see other players\n\n" +
-        "Examples:\n" +
-        "SAY Hello everyone!\n" +
-        "WHISPER alice How are you?\n" +
-        "EMOTE waves cheerfully\n" +
-        "POSE is leaning against the wall\n" +
-        "OOC This is really cool!"
+    pub fn help_social(&self) -> String {
+        "=SOCIAL=\n".to_string() +
+        "SAY <txt> - speak aloud\n" +
+        "WHISPER <plr> <txt> - private\n" +
+        "EMOTE/: <act> - action\n" +
+        "POSE/; <pose> - describe\n" +
+        "OOC <txt> - out of char\n" +
+        "WHO - list players"
     }
 
     /// Bulletin board help
-    fn help_bulletin(&self) -> String {
-        "=== BULLETIN BOARD ===\n".to_string() +
-        "The Town Stump bulletin board lets you\n" +
-        "leave messages for other players.\n\n" +
-        "BOARD - view recent messages\n" +
-        "POST <subject> <message> - post a message\n" +
-        "READ <id> - read specific message\n\n" +
-        "Examples:\n" +
-        "POST \"Looking for party\" Anyone want to explore?\n" +
-        "READ 123\n\n" +
-        "Notes:\n" +
-        "- Must be at Town Square to use\n" +
-        "- Subject max 50 chars, message max 300\n" +
-        "- Old messages are automatically cleaned up"
+    pub fn help_bulletin(&self) -> String {
+        "=BULLETIN BOARD=\n".to_string() +
+        "Town Stump message board\n" +
+        "BOARD - view messages\n" +
+        "POST <subj> <msg> - post\n" +
+        "READ <id> - read\n" +
+        "Use at Town Square\n" +
+        "Max: 50 char subj, 300 msg"
     }
 
     /// Handle MAIL command - view mail folders
@@ -1832,22 +1805,14 @@ impl TinyMushProcessor {
     }
 
     /// Mail system help
-    fn help_mail(&self) -> String {
-        "=== MAIL SYSTEM ===\n".to_string() +
-        "Send private messages to other players.\n\n" +
-        "MAIL [folder] - view mail (inbox/sent)\n" +
-        "SEND <player> <subject> <message> - send mail\n" +
-        "RMAIL <id> - read specific mail message\n" +
-        "DMAIL <id> - delete mail message\n\n" +
-        "Examples:\n" +
-        "MAIL inbox\n" +
-        "SEND alice \"Quest Help\" Need tips for the forest\n" +
-        "RMAIL 456\n" +
-        "DMAIL 456\n\n" +
-        "Notes:\n" +
-        "- Subject max 50 chars, message max 200\n" +
-        "- * indicates unread messages\n" +
-        "- Old read mail auto-cleaned up"
+    pub fn help_mail(&self) -> String {
+        "=MAIL SYSTEM=\n".to_string() +
+        "MAIL [folder] - inbox/sent\n" +
+        "SEND <plr> <subj> <msg>\n" +
+        "RMAIL <id> - read\n" +
+        "DMAIL <id> - delete\n" +
+        "* = unread\n" +
+        "Max: 50 subj, 200 msg"
     }
 }
 

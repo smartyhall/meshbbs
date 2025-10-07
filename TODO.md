@@ -100,8 +100,16 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Quota enforcement (auto-cleanup of old read messages)
   - [x] Unread message tracking and status management
   - [x] Comprehensive test coverage (5 tests) - mail_system_basic.rs
-- [ ] Help/tutorial command integration (contextual responses)
-- [ ] Tests guaranteeing all outbound messages < 200 bytes
+- [x] Help/tutorial command integration (contextual responses) — commit a06bafe
+  - [x] HELP command with main menu and topic-specific help
+  - [x] Help topics: COMMANDS, MOVEMENT, SOCIAL, BOARD, MAIL
+  - [x] Contextual help integrated into all command handlers
+  - [x] Help methods: help_main, help_commands, help_movement, help_social, help_bulletin, help_mail
+- [x] Tests guaranteeing all outbound messages < 200 bytes — NEW: tests/tinymush_message_size.rs
+  - [x] Manual truncation in bulletin and mail handlers
+  - [x] Fortune command validated (≤ 200 bytes)
+  - [x] Comprehensive test suite for all TinyMUSH command outputs (help text, currency, errors)
+  - [x] All 6 help methods condensed and validated (≤ 200 bytes each)
 
 ## Phase 5 — Economy, Inventory, Shops
 (Ref: Plan §Phase 5, Design §§Enhanced Economy, Dual Currency Systems, Inventory Management)
