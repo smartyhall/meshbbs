@@ -75,6 +75,10 @@ pub enum TinyMushCommand {
     Reject,                // REJECT - reject/cancel trade
     TradeHistory,          // THISTORY - view trade history
     
+    // Tutorial & NPC commands (Phase 6 Week 1)
+    Tutorial(Option<String>), // TUTORIAL, TUTORIAL SKIP, TUTORIAL RESTART - manage tutorial
+    Talk(String),          // TALK npc - interact with NPC
+    
     // Companion commands (Phase 6 feature)
     Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
     Feed(String),           // FEED horse - feed companion
@@ -262,6 +266,8 @@ impl TinyMushProcessor {
             TinyMushCommand::Accept => self.handle_accept(session, config).await,
             TinyMushCommand::Reject => self.handle_reject(session, config).await,
             TinyMushCommand::TradeHistory => self.handle_trade_history(session, config).await,
+            TinyMushCommand::Tutorial(subcommand) => self.handle_tutorial(session, subcommand, config).await,
+            TinyMushCommand::Talk(npc) => self.handle_talk(session, npc, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -537,6 +543,22 @@ impl TinyMushProcessor {
             "ACCEPT" | "ACC" => TinyMushCommand::Accept,
             "REJECT" | "REJ" | "CANCEL" => TinyMushCommand::Reject,
             "THISTORY" | "THIST" => TinyMushCommand::TradeHistory,
+
+            // Tutorial & NPC commands (Phase 6 Week 1)
+            "TUTORIAL" | "TUT" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Tutorial(Some(parts[1].to_uppercase()))
+                } else {
+                    TinyMushCommand::Tutorial(None)
+                }
+            },
+            "TALK" | "GREET" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Talk(parts[1].to_uppercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: TALK <npc>".to_string())
+                }
+            },
 
             // Admin/debug
             "DEBUG" => {
@@ -1359,6 +1381,147 @@ impl TinyMushProcessor {
         }
 
         Ok(response)
+    }
+
+    /// Handle TUTORIAL command - manage tutorial progress
+    async fn handle_tutorial(
+        &mut self,
+        session: &Session,
+        subcommand: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::tutorial::{
+            format_tutorial_status, skip_tutorial, restart_tutorial, start_tutorial,
+        };
+
+        let username = session.node_id.to_string();
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        match subcommand.as_deref() {
+            None => {
+                // Show current tutorial status
+                Ok(format_tutorial_status(&player.tutorial_state))
+            }
+            Some("SKIP") => {
+                // Skip tutorial
+                match skip_tutorial(self.store(), &username) {
+                    Ok(_) => Ok("Tutorial skipped. You can restart anytime with TUTORIAL RESTART.".to_string()),
+                    Err(e) => Ok(format!("Error skipping tutorial: {}", e)),
+                }
+            }
+            Some("RESTART") => {
+                // Restart tutorial from beginning
+                match restart_tutorial(self.store(), &username) {
+                    Ok(_) => Ok("Tutorial restarted. Head to the Gazebo to begin!".to_string()),
+                    Err(e) => Ok(format!("Error restarting tutorial: {}", e)),
+                }
+            }
+            Some("START") => {
+                // Manually start tutorial
+                match start_tutorial(self.store(), &username) {
+                    Ok(_) => Ok("Tutorial started! Look around and follow the hints.".to_string()),
+                    Err(e) => Ok(format!("Error starting tutorial: {}", e)),
+                }
+            }
+            Some(unknown) => {
+                Ok(format!(
+                    "Unknown subcommand: {}\nUsage: TUTORIAL [SKIP|RESTART|START]",
+                    unknown
+                ))
+            }
+        }
+    }
+
+    /// Handle TALK command - interact with NPCs
+    async fn handle_talk(
+        &mut self,
+        session: &Session,
+        npc_name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::tutorial::{
+            advance_tutorial_step, distribute_tutorial_rewards,
+        };
+        use crate::tmush::types::{TutorialState, TutorialStep};
+
+        let username = session.node_id.to_string();
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get NPCs in current room
+        let npcs = self.store().get_npcs_in_room(&player.current_room)?;
+        
+        if npcs.is_empty() {
+            return Ok("There's nobody here to talk to.".to_string());
+        }
+
+        // Find matching NPC (case-insensitive partial match)
+        let npc = npcs.iter().find(|n| {
+            n.name.to_uppercase().contains(&npc_name)
+                || n.id.to_uppercase().contains(&npc_name)
+        });
+
+        let Some(npc) = npc else {
+            let available: Vec<_> = npcs.iter().map(|n| n.name.as_str()).collect();
+            return Ok(format!(
+                "I don't see '{}' here.\nAvailable: {}",
+                npc_name,
+                available.join(", ")
+            ));
+        };
+
+        // Tutorial-specific NPC dialogs
+        if npc.id == "mayor_thompson" {
+            // Check if player is at MeetTheMayor step
+            match &player.tutorial_state {
+                TutorialState::InProgress { step } if matches!(step, TutorialStep::MeetTheMayor) => {
+                    // Complete tutorial and give rewards
+                    if let Err(e) = advance_tutorial_step(
+                        self.store(),
+                        &username,
+                        TutorialStep::MeetTheMayor,
+                    ) {
+                        return Ok(format!("Tutorial error: {}", e));
+                    }
+
+                    // Get world currency system from config or player
+                    let currency_system = player.currency.clone();
+                    
+                    if let Err(e) = distribute_tutorial_rewards(
+                        self.store(),
+                        &username,
+                        &currency_system,
+                    ) {
+                        return Ok(format!("Reward error: {}", e));
+                    }
+
+                    return Ok(format!(
+                        "Mayor Thompson:\n'Welcome, citizen! Here's a starter purse and town map. \
+                        Good luck in Old Towne Mesh!'\n\n\
+                        [Tutorial Complete! Rewards granted.]"
+                    ));
+                }
+                TutorialState::Completed { .. } => {
+                    return Ok("Mayor Thompson: 'You've already completed the tutorial. Welcome back!'".to_string());
+                }
+                _ => {
+                    return Ok("Mayor Thompson: 'Come back when you're ready for the tutorial.'".to_string());
+                }
+            }
+        }
+
+        // Generic NPC dialog
+        let dialog = npc.dialog.get("default")
+            .or_else(|| npc.dialog.get("greeting"))
+            .map(|s| s.as_str())
+            .unwrap_or("...");
+
+        Ok(format!("{}: '{}'", npc.name, dialog))
     }
 
     /// Handle HELP command
