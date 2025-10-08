@@ -87,6 +87,49 @@ pub enum ObjectOwner {
     Player { username: String },
 }
 
+/// Tutorial progression state for new player onboarding
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialState {
+    /// Player has not started tutorial
+    NotStarted,
+    /// Player is in progress at a specific step
+    InProgress { step: TutorialStep },
+    /// Player has completed tutorial
+    Completed { completed_at: DateTime<Utc> },
+    /// Player manually skipped tutorial
+    Skipped { skipped_at: DateTime<Utc> },
+}
+
+impl Default for TutorialState {
+    fn default() -> Self {
+        Self::NotStarted
+    }
+}
+
+/// Tutorial steps for Gazebo → Mayor → City Hall flow
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TutorialStep {
+    /// Step 1: Learn basics at gazebo
+    WelcomeAtGazebo,
+    /// Step 2: Navigate to City Hall
+    NavigateToCityHall,
+    /// Step 3: Meet the Mayor
+    MeetTheMayor,
+}
+
+/// NPC flags for behavior and classification
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum NpcFlag {
+    TutorialNpc,
+    QuestGiver,
+    Vendor,
+    Guard,
+    Immortal,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ObjectRecord {
     pub id: String,
@@ -127,6 +170,49 @@ impl ObjectRecord {
             flags: Vec::new(),
             schema_version: OBJECT_SCHEMA_VERSION,
         }
+    }
+}
+
+/// NPC (Non-Player Character) record for tutorial guides, quest givers, and vendors
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NpcRecord {
+    pub id: String,
+    pub name: String,
+    pub title: String,
+    pub description: String,
+    pub room_id: String,
+    pub dialog: HashMap<String, String>, // key -> response text
+    #[serde(default)]
+    pub flags: Vec<NpcFlag>,
+    pub created_at: DateTime<Utc>,
+    pub schema_version: u8,
+}
+
+impl NpcRecord {
+    pub fn new(id: &str, name: &str, title: &str, description: &str, room_id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+            room_id: room_id.to_string(),
+            dialog: HashMap::new(),
+            flags: Vec::new(),
+            created_at: Utc::now(),
+            schema_version: 1,
+        }
+    }
+
+    pub fn with_dialog(mut self, key: &str, response: &str) -> Self {
+        self.dialog.insert(key.to_string(), response.to_string());
+        self
+    }
+
+    pub fn with_flag(mut self, flag: NpcFlag) -> Self {
+        if !self.flags.contains(&flag) {
+            self.flags.push(flag);
+        }
+        self
     }
 }
 
@@ -261,6 +347,9 @@ pub struct PlayerRecord {
     /// Legacy credits field for backward compatibility (deprecated)
     #[serde(default)]
     pub credits: u32,
+    /// Tutorial progression state
+    #[serde(default)]
+    pub tutorial_state: TutorialState,
     pub schema_version: u8,
 }
 
@@ -280,6 +369,7 @@ impl PlayerRecord {
             currency: CurrencyAmount::default(),
             banked_currency: CurrencyAmount::default(),
             credits: 0,
+            tutorial_state: TutorialState::default(),
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
