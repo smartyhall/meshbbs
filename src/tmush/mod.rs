@@ -11,6 +11,7 @@ pub mod room_manager;
 pub mod shop;
 pub mod state;
 pub mod storage;
+pub mod tutorial;
 pub mod types;
 
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};
@@ -29,4 +30,9 @@ pub use state::{
     REQUIRED_START_LOCATION_ID,
 };
 pub use storage::{TinyMushStore, TinyMushStoreBuilder};
+pub use tutorial::{
+    advance_tutorial_step, can_advance_from_location, distribute_tutorial_rewards,
+    format_tutorial_status, get_tutorial_hint, restart_tutorial, should_auto_start_tutorial,
+    skip_tutorial, start_tutorial,
+};
 pub use types::*;
