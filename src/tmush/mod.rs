@@ -7,6 +7,7 @@ pub mod commands;
 pub mod currency;
 pub mod errors;
 pub mod inventory;
+pub mod quest;
 pub mod room_manager;
 pub mod shop;
 pub mod state;
@@ -23,6 +24,11 @@ pub use errors::TinyMushError;
 pub use inventory::{
     add_item_to_inventory, calculate_total_weight, can_add_item, format_inventory_compact,
     format_item_examination, get_item_quantity, has_item, remove_item_from_inventory,
+};
+pub use quest::{
+    abandon_quest, accept_quest, can_accept_quest, complete_quest, format_quest_list,
+    format_quest_status, get_active_quests, get_available_quests, get_completed_quests,
+    update_quest_objective,
 };
 pub use shop::{format_shop_listing, format_shop_item_detail, ShopConfig, ShopItem, ShopRecord};
 pub use state::{
