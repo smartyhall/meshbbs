@@ -17,6 +17,7 @@ pub const OLD_TOWNE_WORLD_ROOM_IDS: &[&str] = &[
     REQUIRED_LANDING_LOCATION_ID,
     REQUIRED_START_LOCATION_ID,
     "city_hall_lobby",
+    "mayor_office",
     "mesh_museum",
     "north_gate",
     "south_market",
@@ -69,10 +70,26 @@ register new callsigns. A portrait of the mayor watches over the proceedings.",
     )
     .with_created_at(now)
     .with_exit(Direction::South, REQUIRED_START_LOCATION_ID)
+    .with_exit(Direction::North, "mayor_office")
     .with_exit(Direction::East, "mesh_museum")
     .with_flag(RoomFlag::Indoor)
     .with_flag(RoomFlag::Moderated);
     rooms.push(city_hall);
+
+    let mayor_office = RoomRecord::world(
+        "mayor_office",
+        "Mayor's Office",
+        "A well-appointed office with oak desk and mesh maps on walls.",
+        "Mayor Thompson sits behind a sturdy oak desk, reviewing network topology
+maps. Framed certificates line the walls alongside charts tracking mesh
+uptime metrics. A window overlooks the town square.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::South, "city_hall_lobby")
+    .with_flag(RoomFlag::Safe)
+    .with_flag(RoomFlag::Indoor)
+    .with_flag(RoomFlag::QuestLocation);
+    rooms.push(mayor_office);
 
     let museum = RoomRecord::world(
         "mesh_museum",
