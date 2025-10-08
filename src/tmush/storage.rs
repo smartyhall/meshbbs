@@ -7,7 +7,7 @@ use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
     BulletinBoard, BulletinMessage, CurrencyAmount, CurrencyTransaction, MailMessage,
-    MailStatus, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord,
+    MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord,
     TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION,
     PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
@@ -20,6 +20,7 @@ const TREE_LOGS: &str = "tinymush_logs";
 const TREE_BULLETINS: &str = "tinymush_bulletins";
 const TREE_SHOPS: &str = "tinymush_shops";
 const TREE_TRADES: &str = "tinymush_trades";
+const TREE_NPCS: &str = "tinymush_npcs";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -62,6 +63,7 @@ pub struct TinyMushStore {
     bulletins: sled::Tree,
     shops: sled::Tree,
     trades: sled::Tree,
+    npcs: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -82,6 +84,7 @@ impl TinyMushStore {
         let bulletins = db.open_tree(TREE_BULLETINS)?;
         let shops = db.open_tree(TREE_SHOPS)?;
         let trades = db.open_tree(TREE_TRADES)?;
+        let npcs = db.open_tree(TREE_NPCS)?;
         let store = Self {
             _db: db,
             primary,
@@ -91,6 +94,7 @@ impl TinyMushStore {
             bulletins,
             shops,
             trades,
+            npcs,
         };
 
         if seed_world {
@@ -306,6 +310,65 @@ impl TinyMushStore {
         let key = format!("shops:{}", shop_id).into_bytes();
         self.shops.remove(key)?;
         self.shops.flush()?;
+        Ok(())
+    }
+
+    // ============================================================================
+    // NPC Storage
+    // ============================================================================
+
+    /// Store or update an NPC record
+    pub fn put_npc(&self, npc: NpcRecord) -> Result<(), TinyMushError> {
+        let key = format!("npcs:{}", npc.id).into_bytes();
+        let value = Self::serialize(&npc)?;
+        self.npcs.insert(key, value)?;
+        self.npcs.flush()?;
+        Ok(())
+    }
+
+    /// Retrieve an NPC by ID
+    pub fn get_npc(&self, npc_id: &str) -> Result<NpcRecord, TinyMushError> {
+        let key = format!("npcs:{}", npc_id).into_bytes();
+        let data = self
+            .npcs
+            .get(key)?
+            .ok_or_else(|| TinyMushError::NotFound(format!("NPC not found: {}", npc_id)))?;
+        let npc: NpcRecord = Self::deserialize(data)?;
+        Ok(npc)
+    }
+
+    /// List all NPC IDs
+    pub fn list_npc_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        for item in self.npcs.scan_prefix(b"npcs:") {
+            let (key, _) = item?;
+            if let Ok(s) = std::str::from_utf8(&key) {
+                if let Some(id) = s.strip_prefix("npcs:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Get all NPCs in a specific room
+    pub fn get_npcs_in_room(&self, room_id: &str) -> Result<Vec<NpcRecord>, TinyMushError> {
+        let mut npcs = Vec::new();
+        for item in self.npcs.scan_prefix(b"npcs:") {
+            let (_, value) = item?;
+            let npc: NpcRecord = Self::deserialize(value)?;
+            if npc.room_id == room_id {
+                npcs.push(npc);
+            }
+        }
+        Ok(npcs)
+    }
+
+    /// Delete an NPC by ID
+    pub fn delete_npc(&self, npc_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("npcs:{}", npc_id).into_bytes();
+        self.npcs.remove(key)?;
+        self.npcs.flush()?;
         Ok(())
     }
 
