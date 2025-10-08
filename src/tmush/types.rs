@@ -323,6 +323,209 @@ impl Default for PlayerStats {
     }
 }
 
+/// Quest system data structures for Phase 6 Week 2
+
+/// Quest state tracking for player quest progress
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum QuestState {
+    /// Quest is available but not yet accepted
+    Available,
+    /// Quest is active and in progress
+    Active { started_at: DateTime<Utc> },
+    /// Quest has been completed
+    Completed { completed_at: DateTime<Utc> },
+    /// Quest was failed or abandoned
+    Failed { failed_at: DateTime<Utc> },
+}
+
+impl Default for QuestState {
+    fn default() -> Self {
+        Self::Available
+    }
+}
+
+/// Types of quest objectives that can be tracked
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObjectiveType {
+    /// Kill a specific number of enemies
+    KillEnemy { enemy_type: String, count: u32 },
+    /// Collect a specific number of items
+    CollectItem { item_id: String, count: u32 },
+    /// Visit a specific location
+    VisitLocation { room_id: String },
+    /// Talk to a specific NPC
+    TalkToNpc { npc_id: String },
+    /// Use an item on a target
+    UseItem { item_id: String, target: String },
+}
+
+/// Individual quest objective with progress tracking
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct QuestObjective {
+    pub description: String,
+    pub objective_type: ObjectiveType,
+    pub progress: u32,
+    pub required: u32,
+}
+
+impl QuestObjective {
+    pub fn new(description: &str, objective_type: ObjectiveType, required: u32) -> Self {
+        Self {
+            description: description.to_string(),
+            objective_type,
+            progress: 0,
+            required,
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.progress >= self.required
+    }
+
+    pub fn increment_progress(&mut self, amount: u32) {
+        self.progress = self.progress.saturating_add(amount).min(self.required);
+    }
+}
+
+/// Quest rewards that can be granted upon completion
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QuestRewards {
+    #[serde(default)]
+    pub currency: Option<CurrencyAmount>,
+    #[serde(default)]
+    pub experience: u32,
+    #[serde(default)]
+    pub items: Vec<String>, // Item IDs to grant
+    #[serde(default)]
+    pub reputation: HashMap<String, i32>, // Faction -> reputation change
+}
+
+impl Default for QuestRewards {
+    fn default() -> Self {
+        Self {
+            currency: None,
+            experience: 0,
+            items: Vec::new(),
+            reputation: HashMap::new(),
+        }
+    }
+}
+
+/// Quest record defining a quest template and player-specific progress
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QuestRecord {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub quest_giver_npc: String, // NPC ID who gives the quest
+    pub difficulty: u8,           // 1-5 difficulty rating
+    pub objectives: Vec<QuestObjective>,
+    pub rewards: QuestRewards,
+    #[serde(default)]
+    pub prerequisites: Vec<String>, // Quest IDs that must be complete
+    pub created_at: DateTime<Utc>,
+    pub schema_version: u8,
+}
+
+impl QuestRecord {
+    pub fn new(
+        id: &str,
+        name: &str,
+        description: &str,
+        quest_giver_npc: &str,
+        difficulty: u8,
+    ) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            quest_giver_npc: quest_giver_npc.to_string(),
+            difficulty: difficulty.min(5),
+            objectives: Vec::new(),
+            rewards: QuestRewards::default(),
+            prerequisites: Vec::new(),
+            created_at: Utc::now(),
+            schema_version: 1,
+        }
+    }
+
+    pub fn with_objective(mut self, objective: QuestObjective) -> Self {
+        self.objectives.push(objective);
+        self
+    }
+
+    pub fn with_reward_currency(mut self, currency: CurrencyAmount) -> Self {
+        self.rewards.currency = Some(currency);
+        self
+    }
+
+    pub fn with_reward_experience(mut self, experience: u32) -> Self {
+        self.rewards.experience = experience;
+        self
+    }
+
+    pub fn with_reward_item(mut self, item_id: &str) -> Self {
+        self.rewards.items.push(item_id.to_string());
+        self
+    }
+
+    pub fn with_prerequisite(mut self, quest_id: &str) -> Self {
+        self.prerequisites.push(quest_id.to_string());
+        self
+    }
+
+    pub fn all_objectives_complete(&self) -> bool {
+        !self.objectives.is_empty() && self.objectives.iter().all(|obj| obj.is_complete())
+    }
+}
+
+/// Player's quest progress tracking
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PlayerQuest {
+    pub quest_id: String,
+    pub state: QuestState,
+    /// Snapshot of objectives at accept time (allows tracking progress)
+    pub objectives: Vec<QuestObjective>,
+}
+
+impl PlayerQuest {
+    pub fn new(quest_id: &str, objectives: Vec<QuestObjective>) -> Self {
+        Self {
+            quest_id: quest_id.to_string(),
+            state: QuestState::Active {
+                started_at: Utc::now(),
+            },
+            objectives,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        matches!(self.state, QuestState::Active { .. })
+    }
+
+    pub fn is_complete(&self) -> bool {
+        matches!(self.state, QuestState::Completed { .. })
+    }
+
+    pub fn all_objectives_complete(&self) -> bool {
+        !self.objectives.is_empty() && self.objectives.iter().all(|obj| obj.is_complete())
+    }
+
+    pub fn mark_complete(&mut self) {
+        self.state = QuestState::Completed {
+            completed_at: Utc::now(),
+        };
+    }
+
+    pub fn mark_failed(&mut self) {
+        self.state = QuestState::Failed {
+            failed_at: Utc::now(),
+        };
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlayerRecord {
     pub username: String,
@@ -350,6 +553,9 @@ pub struct PlayerRecord {
     /// Tutorial progression state
     #[serde(default)]
     pub tutorial_state: TutorialState,
+    /// Active and completed quests
+    #[serde(default)]
+    pub quests: Vec<PlayerQuest>,
     pub schema_version: u8,
 }
 
@@ -370,6 +576,7 @@ impl PlayerRecord {
             banked_currency: CurrencyAmount::default(),
             credits: 0,
             tutorial_state: TutorialState::default(),
+            quests: Vec::new(),
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
