@@ -1,6 +1,6 @@
 # TinyMUSH Implementation Plan
 
-_Last updated: 2025-10-06 (Phase 5 Week 3 Complete - commit 2cbd47d)_
+_Last updated: 2025-10-08 (Phase 6 Week 1 Complete - commit faa40e4)_
 
 This document converts the design captured in `MUD_MUSH_DESIGN.md` into a disciplined implementation roadmap for the MeshBBS TinyMUSH feature set. It lays out phased milestones, guardrails, and verification steps to keep development focused, measurable, and tightly coupled to the specification.
 
@@ -141,17 +141,17 @@ This document converts the design captured in `MUD_MUSH_DESIGN.md` into a discip
 - Help/tutorial flows accessible from City Hall tutorial rooms.
 - Logging and moderation capture communication events.
 
-## Phase 5 – Economy, Inventory, Shops (Weeks 6-8) 🔄 WEEK 3 COMPLETE
+## Phase 5 – Economy, Inventory, Shops (Weeks 6-8) ✅ COMPLETE
 
 **Spec References**: _Enhanced Economy_, _Dual Currency Systems_, _Inventory Management_, _Shops & Vendors_.
 
-**Status**: 
+**Status**: ✅ Complete (commits afe6ebe through 59414e6)
 - ✅ Week 1 Complete: Currency foundation (12 tests) - commits afe6ebe, 33543d9
 - ✅ Week 2 Complete: Inventory system (19 tests) - commits ff19fc6, 716041e, c7d8b5f
 - ✅ Week 3 Complete: Shop system (13 tests) - commits a22e66a, 8868d8d, c2695d4, 2cbd47d
-- **Total: 260 tests passing (89 unit + 171 integration)**
-- ⏳ Week 4 TODO: Player trading, banking commands
-- ⏳ Week 5-6 TODO: Stress testing, polish
+- ✅ Week 4 Complete: Banking system (4 commands) - commit e8f2199
+- ✅ Week 5 Complete: P2P trading (5 commands) - commits 8a240f6, 59414e6
+- **Total: 263 tests passing (89 unit + 174 integration)**
 
 **Objectives**
 - Implement **flexible dual currency system** supporting both decimal and multi-tier currencies
@@ -248,28 +248,78 @@ The economy must support **two distinct currency systems** to accommodate differ
 - ✅ All currency displays fit 200-byte message constraint
 - ⏳ Admin currency migration command tested and documented (Phase 8)
 
-**Phase 5 Summary**: Weeks 1-3 complete with 260 tests passing. Currency, inventory, and shop systems fully functional. Banking commands and player trading remain for Week 4.
+**Phase 5 Summary**: All 5 weeks complete with 263 tests passing. Dual currency system, inventory management, shop operations, banking, and P2P trading fully functional.
 
-## Phase 6 – Quest, Tutorial, Progression (Weeks 8-9)
+**Exit Criteria (All Met)**:
+- ✅ Both currency systems functional with world-level configuration
+- ✅ Currency conversion working bidirectionally with precision preserved
+- ✅ Buying/selling validated via automated scenario tests in both systems
+- ✅ Transaction logs persisted and viewable/rollbackable by admins
+- ✅ Inventory limits enforced, item transfers atomic
+- ✅ Zero floating-point arithmetic in currency calculations
+- ✅ All currency displays fit 200-byte message constraint
+- ✅ Banking system with deposits, withdrawals, and transfers
+- ✅ P2P trading with two-phase commit and timeout handling
+
+## Phase 6 – Quest, Tutorial, Progression (Weeks 8-10) 🔄 WEEK 1 COMPLETE
 
 **Spec References**: _Tutorial_, _Quests_, _Achievements_, _New Player Experience_.
 
+**Status**:
+- ✅ Week 1 Complete: Tutorial System - commits 5a4e920 through faa40e4
+- ⏳ Week 2 TODO: Quest Engine
+- ⏳ Week 3 TODO: Achievement & Title System
+- **Total: 281 tests passing (89 unit + 192 integration)**
+
+**Week 1 - Tutorial System (Complete)**
+
+Created comprehensive tutorial system with location-based progression, NPC interactions, and reward distribution.
+
+**Completed Tasks:**
+1. ✅ Tutorial data structures (TutorialState, TutorialStep, NpcRecord) - commit 5a4e920
+2. ✅ NPC storage layer with location queries - commit bad31e9
+3. ✅ Mayor's Office room and Mayor Thompson NPC - commit 839e311
+4. ✅ Tutorial progression logic module (9 functions, 10 unit tests) - commit 9d7d07f
+5. ✅ TUTORIAL and TALK command handlers - commit 1ae937a
+6. ✅ Integration tests (8 comprehensive tests) - commit faa40e4
+
+**Week 2 - Quest Engine (TODO)**
+
 **Objectives**
-- Script interactive tutorial (Gazebo → Mayor → City Hall circuit).
 - Implement quest engine (objectives, rewards, progress tracking).
-- Integrate achievement/titles subsystem.
+- Quest definition format (JSON/YAML) with branching support.
 
 **Tasks**
 1. Quest definition format (JSON/YAML) with branching support.
 2. Command handlers for `QUEST`, `ACCEPT`, `COMPLETE`.
-3. Achievement tracker (badge awarding, notifications).
-4. Tutorial autopilot (guiding messages, gating progression).
-5. Automated scenario: new player completes tutorial end-to-end.
+3. Quest state machine (available, active, complete, failed).
+4. Quest objective tracking (kill counts, item collection, location visits).
+5. Quest persistence across reconnects.
+6. Automated scenario: player completes multi-step quest.
 
-**Exit Criteria**
-- Tutorial flows produce transcripts exactly matching spec.
-- Quest journal persists across reconnects; achievements saved.
-- Analytics instrumentation (completion rates) reporting.
+**Week 3 - Achievement & Title System (TODO)**
+
+**Objectives**
+- Integrate achievement/titles subsystem.
+- Achievement tracker (badge awarding, notifications).
+
+**Tasks**
+1. Achievement data structures (triggers, rewards, titles).
+2. Achievement progress tracking.
+3. Title system (earned, equipped, displayed).
+4. Achievement announcement messaging (< 200 bytes).
+5. ACHIEVEMENTS command (list earned/available).
+6. TITLE command (list, equip titles).
+
+**Exit Criteria (Week 1 Met, Weeks 2-3 Pending)**
+- ✅ Tutorial flows produce transcripts exactly matching spec.
+- ✅ Tutorial progression logic with location validation.
+- ✅ NPC dialog system functional.
+- ✅ Tutorial rewards distributed correctly (currency + items).
+- ✅ Tutorial state persists across sessions.
+- ✅ Integration tests validate complete tutorial flow.
+- ⏳ Quest journal persists across reconnects; achievements saved.
+- ⏳ Analytics instrumentation (completion rates) reporting.
 
 ## Phase 7 – Housing, Building, Triggers (Weeks 9-11)
 

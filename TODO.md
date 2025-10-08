@@ -1,6 +1,6 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-07 (Phase 5 COMPLETE - All Weeks)
+**Last Updated**: 2025-10-08 (Phase 6 Week 1 COMPLETE - Tutorial System)
 
 ## Development Standards
 
@@ -220,30 +220,43 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [x] Anti-duplication: atomic transfers prevent currency/item duplication
 - [x] Debug formatting for 200-byte message compliance (uses {:?})
 - [x] Transaction audit log verified in tests
-- [ ] Economy stress test (10k simulated transactions) — Week 4 TODO
-- [ ] Performance profiling for high-volume transactions — Week 5 TODO
+- [ ] Economy stress test (10k simulated transactions) — Future enhancement
+- [ ] Performance profiling for high-volume transactions — Future enhancement
 
 ### 📊 Phase 5 Status: **COMPLETE** (263 tests passing)
 - ✅ **Week 1**: Currency foundation (12 tests) — COMPLETE (commits afe6ebe, 33543d9)
 - ✅ **Week 2**: Inventory core (19 tests) — COMPLETE (commits ff19fc6, 716041e, c7d8b5f)
 - ✅ **Week 3**: Shop system (13 tests) — COMPLETE (commits a22e66a, 8868d8d, c2695d4, 2cbd47d)
 - ✅ **Week 4**: Banking system (4 commands) — COMPLETE (commit e8f2199)
-- ✅ **Week 5**: P2P trading (5 commands) — COMPLETE (commits 8a240f6, TBD)
+- ✅ **Week 5**: P2P trading (5 commands) — COMPLETE (commits 8a240f6, 59414e6)
 - **Total: 263 tests passing** (89 unit + 174 integration)
-- **Next**: Phase 6 - Quests, Tutorial, Progression
 
 ---
 
 ## Phase 6 — Quest, Tutorial, Progression & Content Systems
 (Ref: Plan §Phase 6, Design §§Tutorial, Quests, Achievements, New Player Experience, Companion NPCs)
 
-### Tutorial System (Week 1)
-- [ ] Script Gazebo → Mayor → City Hall tutorial flow
-- [ ] Tutorial state tracking (progress, completion)
-- [ ] Tutorial NPC dialog system
-- [ ] Tutorial reward distribution
-- [ ] New player onboarding experience
-- [ ] Tutorial completion tests
+### ✅ Tutorial System (Week 1) — COMPLETE
+- [x] Tutorial data structures (TutorialState, TutorialStep enums) — commit 5a4e920
+- [x] NPC storage methods (put_npc, get_npc, get_npcs_in_location) — commit bad31e9
+- [x] Mayor's Office room with Mayor Thompson NPC — commit 839e311
+- [x] Tutorial progression logic (9 functions, 10 unit tests) — commit 9d7d07f
+  - [x] start_tutorial, advance_tutorial_step, skip_tutorial, restart_tutorial
+  - [x] distribute_tutorial_rewards, get_tutorial_hint, format_tutorial_status
+  - [x] should_auto_start_tutorial, can_advance_from_location
+- [x] TUTORIAL command (show/SKIP/RESTART/START with aliases) — commit 1ae937a
+- [x] TALK <npc> command with Mayor Thompson dialog — commit 1ae937a
+- [x] Tutorial reward distribution (100cp/$10 + Town Map item) — commit 9d7d07f
+- [x] Script Gazebo → Town Square → City Hall Lobby → Mayor's Office flow
+- [x] Tutorial state tracking (progress, completion) with Sled persistence
+- [x] Location-based progression validation (can_advance_from_location)
+- [x] Comprehensive integration tests (8 tests) — commit faa40e4
+  - [x] test_complete_tutorial_flow (full walkthrough)
+  - [x] test_tutorial_skip_flow, test_tutorial_restart_flow
+  - [x] test_npc_persistence_and_queries, test_tutorial_status_messages
+  - [x] test_tutorial_rewards_decimal_currency, test_tutorial_cannot_double_reward
+  - [x] test_location_based_progression_validation
+- **Total: 281 tests passing** (89 unit + 192 integration)
 
 ### Quest Engine (Week 2)
 - [ ] Quest data structures (objectives, progress, rewards)
