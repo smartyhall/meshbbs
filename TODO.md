@@ -5,17 +5,7 @@
 ## Development Standards
 
 **⚠️ CRITICAL: Zero Tolerance for Compiler Warnings**
-- All warnings emitted by the Rust compiler mu- [x] Anti-duplication: atomic transfers prevent currency/item duplication
-- [x] Debug formatting for 200-byte message compliance (uses {:?})
-- [x] Transaction audit log verified in tests
-
-### 📊 Phase 5 Status: **✅ COMPLETE** (263 tests passing)
-- ✅ **Week 1**: Currency foundation (12 tests) — COMPLETE (commits afe6ebe, 33543d9)
-- ✅ **Week 2**: Inventory core (19 tests) — COMPLETE (commits ff19fc6, 716041e, c7d8b5f)
-- ✅ **Week 3**: Shop system (13 tests) — COMPLETE (commits a22e66a, 8868d8d, c2695d4, 2cbd47d)
-- ✅ **Week 4**: Banking system (4 commands) — COMPLETE (commit e8f2199)
-- ✅ **Week 5**: P2P trading (5 commands) — COMPLETE (commits 8a240f6, 59414e6)
-- **Total: 263 tests passing** (89 unit + 174 integration)fore committing
+- All warnings emitted by the Rust compiler must be fixed before committing
 - All warnings in unit tests must be resolved
 - Use `cargo check` and `cargo test` to verify clean builds
 - This policy applies to all phases and contributions
