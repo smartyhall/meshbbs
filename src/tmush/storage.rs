@@ -7,9 +7,9 @@ use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
     BulletinBoard, BulletinMessage, CurrencyAmount, CurrencyTransaction, MailMessage,
-    MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, RoomOwner, RoomRecord,
-    TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION,
-    PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
+    MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, QuestRecord, RoomOwner,
+    RoomRecord, TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION,
+    OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 use crate::tmush::shop::ShopRecord;
 
@@ -21,6 +21,7 @@ const TREE_BULLETINS: &str = "tinymush_bulletins";
 const TREE_SHOPS: &str = "tinymush_shops";
 const TREE_TRADES: &str = "tinymush_trades";
 const TREE_NPCS: &str = "tinymush_npcs";
+const TREE_QUESTS: &str = "tinymush_quests";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -64,6 +65,7 @@ pub struct TinyMushStore {
     shops: sled::Tree,
     trades: sled::Tree,
     npcs: sled::Tree,
+    quests: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -85,6 +87,7 @@ impl TinyMushStore {
         let shops = db.open_tree(TREE_SHOPS)?;
         let trades = db.open_tree(TREE_TRADES)?;
         let npcs = db.open_tree(TREE_NPCS)?;
+        let quests = db.open_tree(TREE_QUESTS)?;
         let store = Self {
             _db: db,
             primary,
@@ -95,6 +98,7 @@ impl TinyMushStore {
             shops,
             trades,
             npcs,
+            quests,
         };
 
         if seed_world {
@@ -1266,6 +1270,62 @@ impl TinyMushStore {
             self.trades.remove(key)?;
         }
         Ok(count)
+    }
+
+    // ====== Quest Storage Methods ======
+
+    /// Store or update a quest template
+    pub fn put_quest(&self, quest: QuestRecord) -> Result<(), TinyMushError> {
+        let key = format!("quest:{}", quest.id);
+        let bytes = bincode::serialize(&quest)?;
+        self.quests.insert(key.as_bytes(), bytes)?;
+        Ok(())
+    }
+
+    /// Retrieve a quest template by ID
+    pub fn get_quest(&self, quest_id: &str) -> Result<QuestRecord, TinyMushError> {
+        let key = format!("quest:{}", quest_id);
+        let bytes = self
+            .quests
+            .get(key.as_bytes())?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Quest not found: {}", quest_id)))?;
+        let quest: QuestRecord = bincode::deserialize(&bytes)?;
+        Ok(quest)
+    }
+
+    /// List all quest IDs
+    pub fn list_quest_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let prefix = b"quest:";
+        let mut ids = Vec::new();
+        for item in self.quests.scan_prefix(prefix) {
+            let (key, _) = item?;
+            let key_str = String::from_utf8_lossy(&key);
+            if let Some(id) = key_str.strip_prefix("quest:") {
+                ids.push(id.to_string());
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Get quests offered by a specific NPC
+    pub fn get_quests_by_npc(&self, npc_id: &str) -> Result<Vec<QuestRecord>, TinyMushError> {
+        let all_ids = self.list_quest_ids()?;
+        let mut quests = Vec::new();
+        for id in all_ids {
+            if let Ok(quest) = self.get_quest(&id) {
+                if quest.quest_giver_npc == npc_id {
+                    quests.push(quest);
+                }
+            }
+        }
+        Ok(quests)
+    }
+
+    /// Delete a quest template (admin function)
+    pub fn delete_quest(&self, quest_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("quest:{}", quest_id);
+        self.quests.remove(key.as_bytes())?;
+        Ok(())
     }
 }
 
