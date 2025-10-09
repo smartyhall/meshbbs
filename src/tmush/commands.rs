@@ -87,12 +87,13 @@ pub enum TinyMushCommand {
     Achievements(Option<String>), // ACHIEVEMENTS, ACHIEVEMENTS LIST, ACHIEVEMENTS EARNED - manage achievements
     Title(Option<String>), // TITLE, TITLE LIST, TITLE EQUIP name - manage titles
     
-    // Companion commands (Phase 6 feature)
-    Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
+    // Companion commands (Phase 6 Week 4)
+    Companion(Option<String>), // COMPANION, COMPANION TAME/STAY/COME/INVENTORY/RELEASE - manage companions
     Feed(String),           // FEED horse - feed companion
     Pet(String),            // PET dog - interact with companion
     Mount(String),          // MOUNT horse - mount companion
     Dismount,              // DISMOUNT - dismount from companion
+    Train(String, String), // TRAIN horse speed - train companion skill
     
     // System
     Help(Option<String>),   // HELP, HELP topic
@@ -285,6 +286,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Pet(name) => self.handle_pet(session, name, config).await,
             TinyMushCommand::Mount(name) => self.handle_mount(session, name, config).await,
             TinyMushCommand::Dismount => self.handle_dismount(session, config).await,
+            TinyMushCommand::Train(companion, skill) => self.handle_train(session, companion, skill, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -639,6 +641,15 @@ impl TinyMushProcessor {
                 }
             },
             "DISMOUNT" => TinyMushCommand::Dismount,
+            "TRAIN" => {
+                if parts.len() > 2 {
+                    let companion = parts[1].to_string();
+                    let skill = parts[2..].join(" ");
+                    TinyMushCommand::Train(companion, skill)
+                } else {
+                    TinyMushCommand::Unknown("Usage: TRAIN <companion> <skill>".to_string())
+                }
+            },
 
             // Admin/debug
             "DEBUG" => {
@@ -1990,6 +2001,82 @@ impl TinyMushProcessor {
                     None => Ok(format!("There's no companion named '{}' here.", name)),
                 }
             }
+            Some(cmd) if cmd.starts_with("RELEASE ") => {
+                // Release a companion back to wild
+                use crate::tmush::companion::release_companion;
+                let name = cmd.strip_prefix("RELEASE ").unwrap().trim();
+                
+                let companions = get_player_companions(self.store(), username)?;
+                if let Some(comp) = companions.iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+                    release_companion(self.store(), username, &comp.id)?;
+                    Ok(format!("You've released {} back to the wild.", comp.name))
+                } else {
+                    Ok(format!("You don't have a companion named '{}'.", name))
+                }
+            }
+            Some("STAY") => {
+                // Leave all companions in current room (toggle auto-follow off)
+                let companions = get_player_companions(self.store(), username)?;
+                if companions.is_empty() {
+                    return Ok("You don't have any companions.".to_string());
+                }
+                
+                let mut count = 0;
+                for comp in companions.iter().filter(|c| c.room_id == *room_id && c.has_auto_follow()) {
+                    // Remove AutoFollow behavior
+                    let mut updated = comp.clone();
+                    updated.behaviors.retain(|b| !matches!(b, crate::tmush::types::CompanionBehavior::AutoFollow));
+                    self.store().put_companion(updated)?;
+                    count += 1;
+                }
+                
+                if count > 0 {
+                    Ok(format!("{} companion(s) will stay here.", count))
+                } else {
+                    Ok("No companions with auto-follow are here.".to_string())
+                }
+            }
+            Some("COME") => {
+                // Summon all companions to player's room
+                use crate::tmush::companion::move_companion_to_room;
+                let companions = get_player_companions(self.store(), username)?;
+                if companions.is_empty() {
+                    return Ok("You don't have any companions.".to_string());
+                }
+                
+                let mut count = 0;
+                for comp in companions.iter().filter(|c| c.room_id != *room_id) {
+                    move_companion_to_room(self.store(), &comp.id, room_id)?;
+                    count += 1;
+                }
+                
+                if count > 0 {
+                    Ok(format!("{} companion(s) arrive at your side.", count))
+                } else {
+                    Ok("All your companions are already here.".to_string())
+                }
+            }
+            Some("INVENTORY") | Some("INV") => {
+                // Show all companions and their inventory
+                let companions = get_player_companions(self.store(), username)?;
+                if companions.is_empty() {
+                    return Ok("You don't have any companions.".to_string());
+                }
+                
+                let mut output = String::from("=== COMPANION INVENTORY ===\n");
+                for comp in companions.iter() {
+                    output.push_str(&format!("{}: ", comp.name));
+                    if comp.inventory.is_empty() {
+                        output.push_str("(empty)\n");
+                    } else {
+                        output.push_str(&format!("{} items\n", comp.inventory.len()));
+                        for item in &comp.inventory {
+                            output.push_str(&format!("  - {}\n", item));
+                        }
+                    }
+                }
+                Ok(output)
+            }
             Some(name) => {
                 // Show companion status
                 let companions = get_player_companions(self.store(), username)?;
@@ -2085,6 +2172,49 @@ impl TinyMushProcessor {
         match dismount_companion(self.store(), username) {
             Ok(companion_name) => Ok(format!("You dismount from {}.", companion_name)),
             Err(_) => Ok("You're not currently mounted.".to_string()),
+        }
+    }
+
+    async fn handle_train(
+        &mut self,
+        session: &Session,
+        companion_name: String,
+        skill: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::companion::get_player_companions;
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        let companions = get_player_companions(self.store(), username)?;
+        
+        if let Some(comp) = companions.iter().find(|c| c.name.eq_ignore_ascii_case(&companion_name)) {
+            // For now, simple training system - could be expanded with skill trees
+            let valid_skills = match comp.companion_type {
+                crate::tmush::types::CompanionType::Horse => vec!["speed", "endurance", "carrying"],
+                crate::tmush::types::CompanionType::Dog => vec!["tracking", "guarding", "hunting"],
+                crate::tmush::types::CompanionType::Cat => vec!["stealth", "agility", "hunting"],
+                crate::tmush::types::CompanionType::Familiar => vec!["magic", "wisdom", "perception"],
+                crate::tmush::types::CompanionType::Mercenary => vec!["combat", "tactics", "defense"],
+                crate::tmush::types::CompanionType::Construct => vec!["strength", "durability", "efficiency"],
+            };
+            
+            let skill_lower = skill.to_lowercase();
+            if !valid_skills.contains(&skill_lower.as_str()) {
+                return Ok(format!("{} cannot learn '{}'. Valid skills: {}", 
+                    comp.name, skill, valid_skills.join(", ")));
+            }
+            
+            // Check loyalty requirement
+            if comp.loyalty < 50 {
+                return Ok(format!("{} needs loyalty 50+ to train. Current: {}/100", 
+                    comp.name, comp.loyalty));
+            }
+            
+            // Training successful (skill progression would be tracked in companion record)
+            Ok(format!("You train {} in {}. They show promise!", 
+                comp.name, skill))
+        } else {
+            Ok(format!("You don't have a companion named '{}'.", companion_name))
         }
     }
 

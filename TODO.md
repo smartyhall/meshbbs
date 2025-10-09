@@ -347,24 +347,36 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] gentle_mare (Horse) at south_market
   - [x] loyal_hound (Dog) at town_square
   - [x] shadow_cat (Cat) at mesh_museum
-- [ ] Companion behavior logic module (Step 3)
-  - [ ] Taming/bonding mechanics (claim wild companions)
-  - [ ] Auto-follow on room movement
-  - [ ] Feed companion (happiness increase)
-  - [ ] Pet companion (loyalty increase)
-  - [ ] Mount/dismount horse mechanics
-  - [ ] Companion inventory management
-- [ ] COMPANION command implementation (Step 4)
-  - [ ] COMPANION (list player's companions)
-  - [ ] COMPANION <name> (view companion status)
-  - [ ] COMPANION TAME <name> (claim wild companion)
-- [ ] Additional companion commands (Step 5)
-  - [ ] FEED <companion> - maintain happiness
-  - [ ] PET <companion> - increase loyalty
-  - [ ] MOUNT <companion> - mount horse
-  - [ ] DISMOUNT - dismount from horse
+- [x] Companion behavior logic module (Step 3) — commit b05f007
+  - [x] Taming/bonding mechanics (tame_companion, release_companion)
+  - [x] Auto-follow on room movement (auto_follow_companions, move_companion_to_room)
+  - [x] Feed companion (feed_companion - happiness increase)
+  - [x] Pet companion (pet_companion - loyalty increase)
+  - [x] Mount/dismount horse mechanics (mount_companion, dismount_companion)
+  - [x] Utility functions (find_companion_in_room, get_player_companions, format_companion_status, format_companion_list)
+  - [x] 10 unit tests covering all interaction mechanics
+- [x] COMPANION command implementation (Step 4) — commit 6b023dc
+  - [x] COMPANION/COMP (list player's companions with loyalty/happiness bars)
+  - [x] COMPANION <name> (view detailed companion status)
+  - [x] COMPANION TAME <name> (claim wild companion in current room)
+- [x] Additional companion commands (Step 5) — commit 6b023dc
+  - [x] FEED <companion> - maintain happiness (shows gain +X)
+  - [x] PET <companion> - increase loyalty (shows gain +X)
+  - [x] MOUNT <companion> - mount horse (type checking)
+  - [x] DISMOUNT - dismount from horse (returns name)
+- [ ] Extended companion commands (Step 5 continued)
+  - [ ] TRAIN <companion> <skill> - skill development system
+  - [ ] COMPANION STAY - leave companion in current room
+  - [ ] COMPANION COME - summon companion to player
+  - [ ] COMPANION INVENTORY - view companion's carried items
+  - [ ] COMPANION RELEASE <name> - release companion back to wild
 - [ ] Integration tests (Step 6)
-- **Current: 318 tests passing** (98 unit + 220 integration)
+  - [ ] Test taming wild companions
+  - [ ] Test feeding/petting mechanics and stat gains
+  - [ ] Test mounting/dismounting horses
+  - [ ] Test auto-follow behavior on room movement
+  - [ ] Test command output stays under 200 bytes
+- **Current: 328 tests passing** (98 unit + 220 integration + 10 companion)
 
 ---
 
