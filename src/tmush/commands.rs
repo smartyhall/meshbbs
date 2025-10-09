@@ -83,6 +83,10 @@ pub enum TinyMushCommand {
     Quest(Option<String>), // QUEST, QUEST LIST, QUEST ACCEPT id - manage quests
     Abandon(String),       // ABANDON quest_id - abandon active quest
     
+    // Achievement & Title commands (Phase 6 Week 3)
+    Achievements(Option<String>), // ACHIEVEMENTS, ACHIEVEMENTS LIST, ACHIEVEMENTS EARNED - manage achievements
+    Title(Option<String>), // TITLE, TITLE LIST, TITLE EQUIP name - manage titles
+    
     // Companion commands (Phase 6 feature)
     Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
     Feed(String),           // FEED horse - feed companion
@@ -274,6 +278,8 @@ impl TinyMushProcessor {
             TinyMushCommand::Talk(npc) => self.handle_talk(session, npc, config).await,
             TinyMushCommand::Quest(subcommand) => self.handle_quest(session, subcommand, config).await,
             TinyMushCommand::Abandon(quest_id) => self.handle_abandon(session, quest_id, config).await,
+            TinyMushCommand::Achievements(subcommand) => self.handle_achievements(session, subcommand, config).await,
+            TinyMushCommand::Title(subcommand) => self.handle_title(session, subcommand, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -579,6 +585,22 @@ impl TinyMushProcessor {
                     TinyMushCommand::Abandon(parts[1].to_lowercase())
                 } else {
                     TinyMushCommand::Unknown("Usage: ABANDON <quest_id>".to_string())
+                }
+            },
+
+            // Achievement & Title commands (Phase 6 Week 3)
+            "ACHIEVEMENTS" | "ACHIEVE" | "ACHIEV" | "ACH" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Achievements(Some(parts[1..].join(" ").to_uppercase()))
+                } else {
+                    TinyMushCommand::Achievements(None)
+                }
+            },
+            "TITLE" | "TITLES" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Title(Some(parts[1..].join(" ")))
+                } else {
+                    TinyMushCommand::Title(None)
                 }
             },
 
@@ -1661,6 +1683,249 @@ impl TinyMushProcessor {
                 Ok(format!("You have abandoned the quest: {}", quest.name))
             }
             Err(e) => Ok(format!("Failed to abandon quest: {}", e)),
+        }
+    }
+
+    /// Handle ACHIEVEMENTS command - view and manage achievements
+    async fn handle_achievements(
+        &mut self,
+        session: &Session,
+        subcommand: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::achievement::{get_achievements_by_category, get_available_achievements, get_earned_achievements};
+        use crate::tmush::types::AchievementCategory;
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        
+        match subcommand.as_deref() {
+            None | Some("LIST") => {
+                // Show all achievements with progress
+                let achievements = get_available_achievements(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get achievements: {}", e))?;
+                
+                if achievements.is_empty() {
+                    return Ok("No achievements available.".to_string());
+                }
+
+                let mut output = String::from("=== ACHIEVEMENTS ===\n");
+                let mut by_category: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+                
+                for (achievement, player_progress) in achievements {
+                    let category = format!("{:?}", achievement.category);
+                    by_category.entry(category).or_default().push((achievement, player_progress));
+                }
+
+                let categories = vec!["Combat", "Exploration", "Social", "Economic", "Crafting", "Quest", "Special"];
+                for cat_name in categories {
+                    if let Some(achievements) = by_category.get(cat_name) {
+                        output.push_str(&format!("\n--- {} ---\n", cat_name));
+                        for (achievement, player_progress) in achievements {
+                            let earned_marker = if let Some(pa) = player_progress {
+                                if pa.earned {
+                                    "[✓]"
+                                } else {
+                                    &format!("[{}%]", (pa.progress * 100) / self.get_achievement_required(&achievement.trigger))
+                                }
+                            } else {
+                                "[ ]"
+                            };
+                            
+                            let title_info = if let Some(ref title) = achievement.title {
+                                format!(" - Title: {}", title)
+                            } else {
+                                String::new()
+                            };
+                            
+                            output.push_str(&format!(
+                                "{} {}{}\n",
+                                earned_marker,
+                                achievement.name,
+                                title_info
+                            ));
+                        }
+                    }
+                }
+                
+                output.push_str("\nUse ACHIEVEMENTS EARNED for earned only\nUse ACHIEVEMENTS COMBAT|EXPLORATION|etc for category");
+                Ok(output)
+            }
+            Some("EARNED") => {
+                // Show only earned achievements
+                let earned = get_earned_achievements(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get earned achievements: {}", e))?;
+                
+                if earned.is_empty() {
+                    return Ok("You haven't earned any achievements yet.\nKeep exploring and trying new things!".to_string());
+                }
+
+                let mut output = String::from("=== EARNED ACHIEVEMENTS ===\n");
+                for achievement in earned {
+                    let title_info = if let Some(ref title) = achievement.title {
+                        format!(" - {}", title)
+                    } else {
+                        String::new()
+                    };
+                    output.push_str(&format!("✓ {}{}\n  {}\n", achievement.name, title_info, achievement.description));
+                }
+                Ok(output)
+            }
+            Some(cat) => {
+                // Filter by category
+                let category = match cat {
+                    "COMBAT" => AchievementCategory::Combat,
+                    "EXPLORATION" | "EXPLORE" => AchievementCategory::Exploration,
+                    "SOCIAL" => AchievementCategory::Social,
+                    "ECONOMIC" | "ECONOMY" => AchievementCategory::Economic,
+                    "CRAFTING" | "CRAFT" => AchievementCategory::Crafting,
+                    "QUEST" | "QUESTS" => AchievementCategory::Quest,
+                    "SPECIAL" => AchievementCategory::Special,
+                    _ => return Ok(format!("Unknown category: {}\nAvailable: COMBAT, EXPLORATION, SOCIAL, ECONOMIC, CRAFTING, QUEST, SPECIAL", cat)),
+                };
+                
+                let cat_name = format!("{:?}", category);
+                let achievements = get_achievements_by_category(self.store(), username, category)
+                    .map_err(|e| anyhow::anyhow!("Failed to get achievements: {}", e))?;
+                
+                if achievements.is_empty() {
+                    return Ok(format!("No achievements found in category: {}", cat_name));
+                }
+
+                let mut output = String::from(format!("=== {} ACHIEVEMENTS ===\n", cat));
+                for (achievement, player_progress) in achievements {
+                    let status = if let Some(pa) = player_progress {
+                        if pa.earned {
+                            format!("[✓] EARNED")
+                        } else {
+                            format!("[{}/{}]", pa.progress, self.get_achievement_required(&achievement.trigger))
+                        }
+                    } else {
+                        "[0]".to_string()
+                    };
+                    
+                    output.push_str(&format!(
+                        "{} - {}\n  {}\n",
+                        status,
+                        achievement.name,
+                        achievement.description
+                    ));
+                }
+                Ok(output)
+            }
+        }
+    }
+
+    /// Handle TITLE command - manage player titles
+    async fn handle_title(
+        &mut self,
+        session: &Session,
+        subcommand: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::achievement::get_earned_achievements;
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        
+        match subcommand.as_deref() {
+            None | Some("LIST") => {
+                // List all available titles from earned achievements
+                let earned = get_earned_achievements(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get earned achievements: {}", e))?;
+                
+                let titles: Vec<String> = earned.iter()
+                    .filter_map(|a| a.title.clone())
+                    .collect();
+                
+                if titles.is_empty() {
+                    return Ok("You haven't unlocked any titles yet.\nEarn achievements to unlock titles!".to_string());
+                }
+
+                let player = self.get_or_create_player(session).await?;
+                let equipped = player.equipped_title.as_deref().unwrap_or("None");
+                
+                let mut output = String::from(format!("=== YOUR TITLES ===\nCurrently equipped: {}\n\n", equipped));
+                for (idx, title) in titles.iter().enumerate() {
+                    let marker = if Some(title.as_str()) == player.equipped_title.as_deref() {
+                        "[*]"
+                    } else {
+                        "   "
+                    };
+                    output.push_str(&format!("{}  {}. {}\n", marker, idx + 1, title));
+                }
+                output.push_str("\nTITLE EQUIP <name> - Equip title\nTITLE UNEQUIP - Remove title");
+                Ok(output)
+            }
+            Some(cmd) if cmd.starts_with("EQUIP ") => {
+                // Equip a title
+                let title = cmd.strip_prefix("EQUIP ").unwrap().trim();
+                
+                // Verify player has earned this title
+                let earned = get_earned_achievements(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get earned achievements: {}", e))?;
+                
+                let has_title = earned.iter()
+                    .any(|a| a.title.as_deref() == Some(title));
+                
+                if !has_title {
+                    return Ok(format!("You haven't unlocked the title: {}", title));
+                }
+
+                let mut player = self.get_or_create_player(session).await?;
+                player.equipped_title = Some(title.to_string());
+                player.touch();
+                self.store().put_player(player)?;
+                
+                Ok(format!("Title equipped: {}\nYou are now known as {} {}",
+                    title,
+                    username,
+                    title
+                ))
+            }
+            Some("UNEQUIP") => {
+                // Remove equipped title
+                let mut player = self.get_or_create_player(session).await?;
+                if player.equipped_title.is_none() {
+                    return Ok("You don't have any title equipped.".to_string());
+                }
+                
+                player.equipped_title = None;
+                player.touch();
+                self.store().put_player(player)?;
+                
+                Ok("Title removed. You are no longer using a title.".to_string())
+            }
+            Some(title) if !title.starts_with("EQUIP") => {
+                // Try to equip by name (shortcut)
+                let earned = get_earned_achievements(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get earned achievements: {}", e))?;
+                
+                let has_title = earned.iter()
+                    .any(|a| a.title.as_deref() == Some(title));
+                
+                if !has_title {
+                    return Ok(format!("You haven't unlocked the title: {}", title));
+                }
+
+                let mut player = self.get_or_create_player(session).await?;
+                player.equipped_title = Some(title.to_string());
+                player.touch();
+                self.store().put_player(player)?;
+                
+                Ok(format!("Title equipped: {}", title))
+            }
+            _ => Ok("Usage: TITLE [LIST|EQUIP <name>|UNEQUIP]".to_string()),
+        }
+    }
+
+    /// Helper to get required progress for achievement
+    fn get_achievement_required(&self, trigger: &crate::tmush::types::AchievementTrigger) -> u32 {
+        use crate::tmush::types::AchievementTrigger::*;
+        match trigger {
+            KillCount { required } | RoomVisits { required } | FriendCount { required } |
+            QuestCompletion { required } | CraftCount { required } |
+            TradeCount { required } | MessagesSent { required } => *required,
+            CurrencyEarned { amount } => (*amount).max(0) as u32,
+            VisitLocation { .. } | CompleteQuest { .. } => 1,
         }
     }
 
