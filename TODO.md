@@ -332,27 +332,39 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] test_achievement_persistence
 - **Total: 318 tests passing** (98 unit + 220 integration)
 
-### Companion NPC System (Week 4-5)
-- [ ] Companion types: horses, dogs, cats, familiars, mercenaries, constructs
-- [ ] CompanionBehavior enum (AutoFollow, IdleChatter, AlertDanger, etc.)
-- [ ] Player binding and loyalty mechanics
-- [ ] Companion state: owner, loyalty, happiness, last_fed
-- [ ] Auto-follow movement between rooms
-- [ ] Periodic behaviors (idle chatter, danger alerts, skill assists)
-- [ ] Combat assistance and healing capabilities
-- [ ] Companion inventory and equipment slots (saddle bags, collars)
-- [ ] Feed/care requirements and happiness system
-- [ ] Companion commands:
-  - [ ] COMPANION / COMP - view companion status
+### 🔄 Companion NPC System (Week 4-5) — IN PROGRESS
+- [x] Companion data structures (CompanionType, CompanionBehavior, CompanionRecord) — commit 0962f24
+  - [x] 6 companion types: Horse, Dog, Cat, Familiar, Mercenary, Construct
+  - [x] 7 behavior types: AutoFollow, IdleChatter, AlertDanger, CombatAssist, Healing, ExtraStorage, SkillBoost
+  - [x] State tracking: owner, room_id, loyalty (0-100), happiness (0-100), last_fed, behaviors, inventory, is_mounted
+  - [x] Helper methods: needs_feeding(), feed(), pet(), apply_happiness_decay(), has_auto_follow(), storage_capacity()
+  - [x] PlayerRecord integration: companions list, mounted_companion field
+- [x] Companion storage layer (8 methods) — commit 4161bcc
+  - [x] put_companion, get_companion, list_companion_ids
+  - [x] get_companions_in_room, get_player_companions, get_wild_companions_in_room
+  - [x] delete_companion, seed_companions_if_needed
+- [x] Starter companion content (3 companions) — commit 4161bcc
+  - [x] gentle_mare (Horse) at south_market
+  - [x] loyal_hound (Dog) at town_square
+  - [x] shadow_cat (Cat) at mesh_museum
+- [ ] Companion behavior logic module (Step 3)
+  - [ ] Taming/bonding mechanics (claim wild companions)
+  - [ ] Auto-follow on room movement
+  - [ ] Feed companion (happiness increase)
+  - [ ] Pet companion (loyalty increase)
+  - [ ] Mount/dismount horse mechanics
+  - [ ] Companion inventory management
+- [ ] COMPANION command implementation (Step 4)
+  - [ ] COMPANION (list player's companions)
+  - [ ] COMPANION <name> (view companion status)
+  - [ ] COMPANION TAME <name> (claim wild companion)
+- [ ] Additional companion commands (Step 5)
   - [ ] FEED <companion> - maintain happiness
   - [ ] PET <companion> - increase loyalty
-  - [ ] TRAIN <companion> <skill> - skill development
-  - [ ] COMPANION STAY - leave companion in room
-  - [ ] COMPANION COME - summon companion
-  - [ ] MOUNT / DISMOUNT <horse> - riding mechanics
-  - [ ] COMPANION INVENTORY - view companion storage
-- [ ] Companion persistence (owner_username, location, state)
-- [ ] Companion content templates (horse, dog, cat, familiar stats)
+  - [ ] MOUNT <companion> - mount horse
+  - [ ] DISMOUNT - dismount from horse
+- [ ] Integration tests (Step 6)
+- **Current: 318 tests passing** (98 unit + 220 integration)
 
 ---
 
