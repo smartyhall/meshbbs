@@ -175,3 +175,78 @@ fn test_companion_stay_and_come_control() {
     let returned = store.get_companion(&dog.id).unwrap();
     assert_eq!(returned.room_id, "town_square");
 }
+
+#[test]
+fn test_train_skill_requirements() {
+    let store = setup_store();
+    
+    // Setup: Tame horse
+    let horse = find_companion_in_room(&store, "south_market", "Gentle Mare")
+        .unwrap()
+        .unwrap();
+    tame_companion(&store, "testuser", &horse.id).unwrap();
+    
+    use meshbbs::tmush::companion::pet_companion;
+    use meshbbs::tmush::types::CompanionType;
+    
+    let initial = store.get_companion(&horse.id).unwrap();
+    assert_eq!(initial.companion_type, CompanionType::Horse);
+    assert_eq!(initial.loyalty, 30, "Starts at loyalty 30");
+    
+    // Training should require loyalty 50+ (tested in command handler)
+    // Here we test that we can increase loyalty to training threshold
+    for _ in 0..5 {
+        pet_companion(&store, "testuser", &horse.id).unwrap();
+    }
+    
+    let trained_up = store.get_companion(&horse.id).unwrap();
+    assert!(trained_up.loyalty >= 50, "Should reach training threshold");
+    
+    // Verify type-specific skills would be validated
+    // (Horse skills: speed, endurance, carrying)
+    // This would be tested at command level in integration
+}
+
+#[test]
+fn test_full_companion_lifecycle() {
+    let store = setup_store();
+    
+    // 1. Discover wild companion
+    let cat = find_companion_in_room(&store, "mesh_museum", "Shadow Cat")
+        .unwrap()
+        .expect("Shadow Cat should exist");
+    assert!(cat.owner.is_none());
+    
+    // 2. Tame companion
+    tame_companion(&store, "testuser", &cat.id).unwrap();
+    let tamed = store.get_companion(&cat.id).unwrap();
+    assert_eq!(tamed.owner, Some("testuser".to_string()));
+    assert_eq!(tamed.loyalty, 30);
+    
+    // 3. Build relationship through care
+    use meshbbs::tmush::companion::{feed_companion, pet_companion};
+    feed_companion(&store, "testuser", &cat.id).unwrap();
+    pet_companion(&store, "testuser", &cat.id).unwrap();
+    
+    let cared_for = store.get_companion(&cat.id).unwrap();
+    assert!(cared_for.loyalty > 30, "Loyalty should increase");
+    
+    // 4. Move companion around
+    use meshbbs::tmush::companion::move_companion_to_room;
+    move_companion_to_room(&store, &cat.id, "town_square").unwrap();
+    let moved = store.get_companion(&cat.id).unwrap();
+    assert_eq!(moved.room_id, "town_square");
+    
+    // 5. Release back to wild
+    use meshbbs::tmush::companion::release_companion;
+    release_companion(&store, "testuser", &cat.id).unwrap();
+    
+    let released = store.get_companion(&cat.id).unwrap();
+    assert!(released.owner.is_none(), "Should be wild again");
+    assert_eq!(released.loyalty, 50, "Loyalty resets to neutral");
+    assert!(!released.is_mounted);
+    
+    // 6. Verify player companion list cleared
+    let player = store.get_player("testuser").unwrap();
+    assert!(!player.companions.contains(&cat.id));
+}
