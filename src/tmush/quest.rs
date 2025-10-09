@@ -113,11 +113,8 @@ pub fn complete_quest(
     });
 
     if let Some(pos) = quest_pos {
-        // Mark as complete
-        player.quests[pos].mark_complete();
-        store.put_player(player)?;
-
-        // Distribute rewards
+        // Distribute rewards BEFORE marking complete and saving
+        // (grant_currency and player_add_item will load player fresh from DB)
         if let Some(ref currency) = quest.rewards.currency {
             store.grant_currency(username, currency, TransactionReason::QuestReward)?;
         }
@@ -125,8 +122,16 @@ pub fn complete_quest(
         // Grant reward items
         let config = InventoryConfig::default();
         for item_id in &quest.rewards.items {
+            // Note: player_add_item may fail if item doesn't exist in catalog,
+            // but we don't want to fail the entire quest completion.
+            // Items may be symbolic rewards or badges that don't need catalog entries.
             let _ = store.player_add_item(username, item_id, 1, &config);
         }
+
+        // Reload player after rewards, mark quest complete, and save
+        player = store.get_player(username)?;
+        player.quests[pos].mark_complete();
+        store.put_player(player)?;
 
         Ok(())
     } else {
