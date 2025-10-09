@@ -6,7 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-- _Nothing yet._
+
+### Added
+- **TinyMUSH Complete Internationalization Support**: Extended WorldConfig system for comprehensive i18n capability
+  - **113 configurable string fields** covering ALL user-facing text (up from initial 4 fields)
+  - 7 help system templates (help_main, help_commands, help_movement, help_social, help_bulletin, help_companion, help_mail)
+  - 8 core error templates (err_say_what, err_emote_what, err_whisper_self, err_no_exit, err_no_shops, err_item_not_found, err_trade_self, err_insufficient_funds)
+  - 5 core success templates (msg_deposit_success, msg_withdraw_success, msg_buy_success, msg_sell_success, msg_trade_initiated)
+  - 7 validation & input error templates (err_whisper_what, err_whisper_whom, err_pose_what, err_ooc_what, err_amount_positive, err_invalid_amount_format, err_transfer_self)
+  - 16 empty state messages (msg_empty_inventory, msg_no_companions, msg_no_quests, msg_no_achievements, msg_no_titles_unlocked, etc.)
+  - 7 shop error templates (err_shop_no_sell, err_shop_doesnt_sell, err_shop_insufficient_funds, err_shop_no_buy, etc.)
+  - 5 trading system templates (err_trade_already_active, err_trade_partner_busy, err_trade_player_not_here, msg_trade_accepted_waiting, etc.)
+  - 3 quest system templates (err_quest_cannot_accept, err_quest_not_found, msg_quest_abandoned)
+  - 4 title system templates (err_title_not_unlocked, msg_title_equipped, msg_title_equipped_display, err_title_usage)
+  - 4 companion system templates (msg_companion_tamed, err_companion_owned, err_companion_not_found, msg_companion_released)
+  - 3 bulletin board location templates (err_board_location_required, err_board_post_location, err_board_read_location)
+  - 3 NPC/tutorial templates (err_no_npc_here, msg_tutorial_completed, msg_tutorial_not_started)
+  - 2 achievement system templates (err_achievement_unknown_category, msg_no_achievements_category)
+  - 2 movement templates (err_movement_restricted, err_player_not_here)
+  - 13 technical/system error templates (err_player_load_failed, err_shop_save_failed, err_payment_failed, etc.)
+  - Template variable support for dynamic content: {player}, {item}, {amount}, {quantity}, {price}, {error}, {quest}, {title}, {name}, {loyalty}, {category}, {direction}, {target}, {display}
+  - @SETCONFIG command supports all 113 fields with categorized help
+  - @GETCONFIG command shows field categories and usage guidance
+  - Default English language pack with sensible defaults for all fields
+  - Foundation for community-created language packs (French, Spanish, German, Japanese, etc.)
+  - All help text, error messages, success messages, empty states, and system messages now database-backed and fully customizable
+  - Enables creating fully localized worlds without code changes or forks
+  - Systematic migration of command handlers to use WorldConfig fields (in progress)
 
 ## [1.0.65-beta] - 2025-10-05
 

@@ -309,7 +309,7 @@ pub fn format_companion_list(companions: &[CompanionRecord]) -> String {
 mod tests {
     use super::*;
     use crate::tmush::state::seed_starter_companions;
-    use crate::tmush::types::{CompanionType, PlayerRecord};
+    use crate::tmush::types::PlayerRecord;
     use tempfile::tempdir;
 
     fn setup_test_store() -> TinyMushStore {

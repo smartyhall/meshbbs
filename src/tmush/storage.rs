@@ -7,9 +7,10 @@ use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
     BulletinBoard, BulletinMessage, CompanionRecord, CurrencyAmount, CurrencyTransaction,
-    MailMessage, MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, QuestRecord,
-    RoomOwner, RoomRecord, TradeSession, TransactionReason, WorldConfig, BULLETIN_SCHEMA_VERSION,
-    MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
+    HousingInstance, HousingTemplate, MailMessage, MailStatus, NpcRecord, ObjectOwner,
+    ObjectRecord, PlayerRecord, QuestRecord, RoomOwner, RoomRecord, TradeSession,
+    TransactionReason, WorldConfig, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION,
+    OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 use crate::tmush::shop::ShopRecord;
 
@@ -25,6 +26,8 @@ const TREE_QUESTS: &str = "tinymush_quests";
 const TREE_ACHIEVEMENTS: &str = "tinymush_achievements";
 const TREE_COMPANIONS: &str = "tinymush_companions";
 const TREE_CONFIG: &str = "tinymush_config";
+const TREE_HOUSING_TEMPLATES: &str = "tinymush_housing_templates";
+const TREE_HOUSING_INSTANCES: &str = "tinymush_housing_instances";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -72,6 +75,8 @@ pub struct TinyMushStore {
     achievements: sled::Tree,
     companions: sled::Tree,
     config: sled::Tree,
+    housing_templates: sled::Tree,
+    housing_instances: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -97,6 +102,8 @@ impl TinyMushStore {
         let achievements = db.open_tree(TREE_ACHIEVEMENTS)?;
         let companions = db.open_tree(TREE_COMPANIONS)?;
         let config = db.open_tree(TREE_CONFIG)?;
+        let housing_templates = db.open_tree(TREE_HOUSING_TEMPLATES)?;
+        let housing_instances = db.open_tree(TREE_HOUSING_INSTANCES)?;
         let store = Self {
             _db: db,
             primary,
@@ -111,6 +118,8 @@ impl TinyMushStore {
             achievements,
             companions,
             config,
+            housing_templates,
+            housing_instances,
         };
 
         if seed_world {
@@ -118,6 +127,7 @@ impl TinyMushStore {
             store.seed_quests_if_needed()?;
             store.seed_achievements_if_needed()?;
             store.seed_companions_if_needed()?;
+            store.seed_housing_templates_if_needed()?;
         }
 
         Ok(store)
@@ -1564,6 +1574,451 @@ impl TinyMushStore {
         Ok(())
     }
 
+    // =========================================================================
+    // Housing System (Phase 7)
+    // =========================================================================
+
+    /// Seed default housing templates if none exist
+    pub fn seed_housing_templates_if_needed(&self) -> Result<usize, TinyMushError> {
+        let existing = self.list_housing_templates()?;
+        if !existing.is_empty() {
+            return Ok(0);
+        }
+
+        use crate::tmush::types::{HousingTemplate, HousingTemplateRoom, HousingPermissions, Direction, RoomFlag};
+        
+        let mut templates = Vec::new();
+        
+        // 1. Studio Apartment - Affordable single room
+        let mut studio = HousingTemplate::new(
+            "studio_apartment",
+            "Studio Apartment",
+            "A cozy single-room apartment perfect for solo living. Affordable and efficient.",
+            "world_builder",
+        )
+        .with_cost(100, 10); // 100 to rent, 10 recurring
+        
+        studio.permissions = HousingPermissions {
+            can_edit_description: true,
+            can_add_objects: true,
+            can_invite_guests: true,
+            can_build: false,
+            can_set_flags: false,
+            can_rename_exits: false,
+        };
+        
+        studio.rooms = vec![HousingTemplateRoom {
+            room_id: "main_room".to_string(),
+            name: "Studio Apartment".to_string(),
+            short_desc: "A compact studio apartment".to_string(),
+            long_desc: "This modest studio apartment combines living, sleeping, and cooking areas into a single efficient space. A small kitchenette occupies one corner, while a comfortable bed sits against the far wall. A window offers a view of the city street below.".to_string(),
+            exits: std::collections::HashMap::new(), // Entry from world, added during instantiation
+            flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+            max_capacity: 5,
+        }];
+        studio.entry_room = "main_room".to_string();
+        studio = studio
+            .with_tags(vec!["modern".to_string(), "urban".to_string(), "affordable".to_string()])
+            .with_category("apartment")
+            .with_max_instances(-1); // Unlimited
+        
+        templates.push(studio);
+        
+        // 2. Basic Apartment - 3 rooms for comfortable living
+        let mut basic = HousingTemplate::new(
+            "basic_apartment",
+            "Basic Apartment",
+            "A comfortable three-room apartment with separate living, sleeping, and cooking areas.",
+            "world_builder",
+        )
+        .with_cost(500, 50); // 500 to rent, 50 recurring
+        
+        basic.permissions = HousingPermissions {
+            can_edit_description: true,
+            can_add_objects: true,
+            can_invite_guests: true,
+            can_build: false,
+            can_set_flags: false,
+            can_rename_exits: false,
+        };
+        
+        let mut living_exits = std::collections::HashMap::new();
+        living_exits.insert(Direction::East, "bedroom".to_string());
+        living_exits.insert(Direction::West, "kitchen".to_string());
+        
+        let mut bedroom_exits = std::collections::HashMap::new();
+        bedroom_exits.insert(Direction::West, "living_room".to_string());
+        
+        let mut kitchen_exits = std::collections::HashMap::new();
+        kitchen_exits.insert(Direction::East, "living_room".to_string());
+        
+        basic.rooms = vec![
+            HousingTemplateRoom {
+                room_id: "living_room".to_string(),
+                name: "Living Room".to_string(),
+                short_desc: "A cozy living room".to_string(),
+                long_desc: "This comfortable living room serves as the heart of the apartment. A worn but serviceable sofa faces a small entertainment center. Sunlight streams through a large window. Doorways lead east to the bedroom and west to the kitchen.".to_string(),
+                exits: living_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 10,
+            },
+            HousingTemplateRoom {
+                room_id: "bedroom".to_string(),
+                name: "Bedroom".to_string(),
+                short_desc: "A quiet bedroom".to_string(),
+                long_desc: "A peaceful bedroom with a comfortable bed, nightstand, and small closet. Curtains can be drawn over the window for privacy. The living room lies to the west.".to_string(),
+                exits: bedroom_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe, RoomFlag::Dark],
+                max_capacity: 5,
+            },
+            HousingTemplateRoom {
+                room_id: "kitchen".to_string(),
+                name: "Kitchen".to_string(),
+                short_desc: "A functional kitchen".to_string(),
+                long_desc: "A compact but well-equipped kitchen with modern appliances. Counter space surrounds a small sink, and cabinets provide ample storage. The living room is to the east.".to_string(),
+                exits: kitchen_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 5,
+            },
+        ];
+        basic.entry_room = "living_room".to_string();
+        basic = basic
+            .with_tags(vec!["modern".to_string(), "urban".to_string(), "comfortable".to_string()])
+            .with_category("apartment")
+            .with_max_instances(20); // Limited availability
+        
+        templates.push(basic);
+        
+        // 3. Luxury Flat - 5 rooms with extended permissions
+        let mut luxury = HousingTemplate::new(
+            "luxury_flat",
+            "Luxury Flat",
+            "An upscale five-room flat with premium finishes and expanded customization options.",
+            "world_builder",
+        )
+        .with_cost(2000, 200); // 2000 to rent, 200 recurring
+        
+        luxury.permissions = HousingPermissions {
+            can_edit_description: true,
+            can_add_objects: true,
+            can_invite_guests: true,
+            can_build: true, // Can add rooms!
+            can_set_flags: true,
+            can_rename_exits: true,
+        };
+        
+        // Entry hall → branches to all rooms
+        let mut entry_exits = std::collections::HashMap::new();
+        entry_exits.insert(Direction::North, "living_room".to_string());
+        entry_exits.insert(Direction::East, "master_bedroom".to_string());
+        entry_exits.insert(Direction::West, "kitchen".to_string());
+        entry_exits.insert(Direction::South, "study".to_string());
+        
+        let mut lux_living_exits = std::collections::HashMap::new();
+        lux_living_exits.insert(Direction::South, "entry_hall".to_string());
+        lux_living_exits.insert(Direction::East, "dining_room".to_string());
+        
+        let mut master_exits = std::collections::HashMap::new();
+        master_exits.insert(Direction::West, "entry_hall".to_string());
+        
+        let mut lux_kitchen_exits = std::collections::HashMap::new();
+        lux_kitchen_exits.insert(Direction::East, "entry_hall".to_string());
+        lux_kitchen_exits.insert(Direction::North, "dining_room".to_string());
+        
+        let mut dining_exits = std::collections::HashMap::new();
+        dining_exits.insert(Direction::West, "living_room".to_string());
+        dining_exits.insert(Direction::South, "kitchen".to_string());
+        
+        let mut study_exits = std::collections::HashMap::new();
+        study_exits.insert(Direction::North, "entry_hall".to_string());
+        
+        luxury.rooms = vec![
+            HousingTemplateRoom {
+                room_id: "entry_hall".to_string(),
+                name: "Entry Hall".to_string(),
+                short_desc: "An elegant entry hall".to_string(),
+                long_desc: "A spacious entry hall with polished hardwood floors and tasteful artwork. Doorways branch to the north (living room), east (master bedroom), west (kitchen), and south (study).".to_string(),
+                exits: entry_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 10,
+            },
+            HousingTemplateRoom {
+                room_id: "living_room".to_string(),
+                name: "Living Room".to_string(),
+                short_desc: "A luxurious living room".to_string(),
+                long_desc: "This expansive living room features designer furniture, a modern entertainment system, and floor-to-ceiling windows offering stunning city views. The entry hall is to the south, and the dining room to the east.".to_string(),
+                exits: lux_living_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 20,
+            },
+            HousingTemplateRoom {
+                room_id: "master_bedroom".to_string(),
+                name: "Master Bedroom".to_string(),
+                short_desc: "A luxurious master bedroom".to_string(),
+                long_desc: "An opulent master bedroom with a king-sized bed, walk-in closet, and an ensuite bathroom visible through an archway. Plush carpeting and high-end furnishings complete the space. The entry hall is to the west.".to_string(),
+                exits: master_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 5,
+            },
+            HousingTemplateRoom {
+                room_id: "kitchen".to_string(),
+                name: "Gourmet Kitchen".to_string(),
+                short_desc: "A professional-grade kitchen".to_string(),
+                long_desc: "A chef's dream kitchen with stainless steel appliances, granite countertops, and a large center island. Ample cabinet space and a wine rack complete the setup. The entry hall is to the east, and the dining room to the north.".to_string(),
+                exits: lux_kitchen_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 10,
+            },
+            HousingTemplateRoom {
+                room_id: "dining_room".to_string(),
+                name: "Dining Room".to_string(),
+                short_desc: "A formal dining room".to_string(),
+                long_desc: "An elegant dining room with a large table that seats eight, a crystal chandelier overhead, and a sideboard for serving. The living room is to the west, and the kitchen to the south.".to_string(),
+                exits: dining_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe],
+                max_capacity: 15,
+            },
+            HousingTemplateRoom {
+                room_id: "study".to_string(),
+                name: "Private Study".to_string(),
+                short_desc: "A quiet study".to_string(),
+                long_desc: "A tranquil study lined with built-in bookshelves and featuring a large oak desk. A comfortable reading chair sits by the window. Perfect for work or contemplation. The entry hall is to the north.".to_string(),
+                exits: study_exits,
+                flags: vec![RoomFlag::Private, RoomFlag::Indoor, RoomFlag::Safe, RoomFlag::Dark],
+                max_capacity: 5,
+            },
+        ];
+        luxury.entry_room = "entry_hall".to_string();
+        luxury = luxury
+            .with_tags(vec!["modern".to_string(), "urban".to_string(), "luxury".to_string(), "premium".to_string()])
+            .with_category("flat")
+            .with_max_instances(5); // Very limited
+        
+        templates.push(luxury);
+        
+        // Save all templates
+        for template in &templates {
+            self.put_housing_template(template)?;
+        }
+        
+        Ok(templates.len())
+    }
+
+    /// Get a housing template by ID
+    pub fn get_housing_template(&self, template_id: &str) -> Result<HousingTemplate, TinyMushError> {
+        let key = format!("template:{}", template_id);
+        match self.housing_templates.get(key.as_bytes())? {
+            Some(data) => Ok(Self::deserialize(data)?),
+            None => Err(TinyMushError::NotFound(format!(
+                "Housing template not found: {}",
+                template_id
+            ))),
+        }
+    }
+
+    /// Save a housing template
+    pub fn put_housing_template(&self, template: &HousingTemplate) -> Result<(), TinyMushError> {
+        let key = format!("template:{}", template.id);
+        let value = Self::serialize(template)?;
+        self.housing_templates.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// List all housing template IDs
+    pub fn list_housing_templates(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut template_ids = Vec::new();
+        for item in self.housing_templates.scan_prefix(b"template:") {
+            let (key, _) = item?;
+            let key_str = std::str::from_utf8(&key)?;
+            if let Some(id) = key_str.strip_prefix("template:") {
+                template_ids.push(id.to_string());
+            }
+        }
+        Ok(template_ids)
+    }
+
+    /// Delete a housing template
+    pub fn delete_housing_template(&self, template_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("template:{}", template_id);
+        self.housing_templates.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    /// Get a housing instance by ID
+    pub fn get_housing_instance(&self, instance_id: &str) -> Result<HousingInstance, TinyMushError> {
+        let key = format!("instance:{}", instance_id);
+        match self.housing_instances.get(key.as_bytes())? {
+            Some(data) => Ok(Self::deserialize(data)?),
+            None => Err(TinyMushError::NotFound(format!(
+                "Housing instance not found: {}",
+                instance_id
+            ))),
+        }
+    }
+
+    /// Get all housing instances for a specific owner
+    pub fn get_player_housing_instances(&self, owner: &str) -> Result<Vec<HousingInstance>, TinyMushError> {
+        let prefix = format!("instance:{}", owner);
+        let mut instances = Vec::new();
+        for item in self.housing_instances.scan_prefix(prefix.as_bytes()) {
+            let (_, value) = item?;
+            let instance: HousingInstance = Self::deserialize(value)?;
+            instances.push(instance);
+        }
+        Ok(instances)
+    }
+
+    /// Save a housing instance
+    pub fn put_housing_instance(&self, instance: &HousingInstance) -> Result<(), TinyMushError> {
+        let key = format!("instance:{}", instance.id);
+        let value = Self::serialize(instance)?;
+        self.housing_instances.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// List all housing instance IDs
+    pub fn list_housing_instances(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut instance_ids = Vec::new();
+        for item in self.housing_instances.scan_prefix(b"instance:") {
+            let (key, _) = item?;
+            let key_str = std::str::from_utf8(&key)?;
+            if let Some(id) = key_str.strip_prefix("instance:") {
+                instance_ids.push(id.to_string());
+            }
+        }
+        Ok(instance_ids)
+    }
+
+    /// Delete a housing instance
+    pub fn delete_housing_instance(&self, instance_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("instance:{}", instance_id);
+        self.housing_instances.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    /// Count active instances of a template
+    pub fn count_template_instances(&self, template_id: &str) -> Result<usize, TinyMushError> {
+        let mut count = 0;
+        for item in self.housing_instances.scan_prefix(b"instance:") {
+            let (_, value) = item?;
+            let instance: HousingInstance = Self::deserialize(value)?;
+            if instance.template_id == template_id && instance.active {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
+    /// Clone a housing template to create a new instance for a player
+    /// This creates actual room records and preserves connectivity
+    pub fn clone_housing_template(
+        &self,
+        template_id: &str,
+        owner: &str,
+    ) -> Result<HousingInstance, TinyMushError> {
+        // Load the template
+        let template = self.get_housing_template(template_id)?;
+        
+        // Check max instances limit (-1 means unlimited)
+        if template.max_instances >= 0 {
+            let current_count = self.count_template_instances(template_id)?;
+            if current_count >= template.max_instances as usize {
+                return Err(TinyMushError::InvalidCurrency(format!(
+                    "Template {} has reached its maximum instance limit ({})",
+                    template_id, template.max_instances
+                )));
+            }
+        }
+        
+        // Generate a unique instance ID
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let instance_id = format!("{}_{}", owner, timestamp);
+        
+        // Create room ID mappings
+        let mut room_mappings = std::collections::HashMap::new();
+        
+        // First pass: Create all rooms and build the mapping
+        for template_room in &template.rooms {
+            let instance_room_id = format!(
+                "rooms:instance:{}:{}:{}",
+                owner, template_id, template_room.room_id
+            );
+            room_mappings.insert(template_room.room_id.clone(), instance_room_id.clone());
+            
+            // Create the actual room record
+            use crate::tmush::types::{RoomRecord, RoomOwner};
+            use chrono::Utc;
+            let room = RoomRecord {
+                id: instance_room_id.clone(),
+                name: template_room.name.clone(),
+                short_desc: template_room.short_desc.clone(),
+                long_desc: template_room.long_desc.clone(),
+                exits: std::collections::HashMap::new(), // Will update in second pass
+                flags: template_room.flags.clone(),
+                owner: RoomOwner::Player {
+                    username: owner.to_string(),
+                },
+                created_at: Utc::now(),
+                max_capacity: template_room.max_capacity,
+                visibility: crate::tmush::types::RoomVisibility::Private,
+                items: vec![],
+                housing_filter_tags: vec![], // Instance rooms don't filter housing
+                schema_version: crate::tmush::types::ROOM_SCHEMA_VERSION,
+            };
+            self.put_room(room)?;
+        }
+        
+        // Second pass: Update exit mappings
+        for template_room in &template.rooms {
+            let instance_room_id = room_mappings.get(&template_room.room_id).unwrap();
+            let mut room = self.get_room(instance_room_id)?;
+            
+            // Remap exits to instance room IDs
+            for (direction, target) in &template_room.exits {
+                // If the target is another room in the template, use mapped ID
+                // Otherwise, keep the original (world room)
+                let new_target = room_mappings
+                    .get(target)
+                    .cloned()
+                    .unwrap_or_else(|| target.clone());
+                room.exits.insert(*direction, new_target);
+            }
+            
+            self.put_room(room)?;
+        }
+        
+        // Create the housing instance record
+        let entry_room_id = room_mappings
+            .get(&template.entry_room)
+            .cloned()
+            .ok_or_else(|| TinyMushError::NotFound(format!(
+                "Entry room {} not found in template",
+                template.entry_room
+            )))?;
+        
+        use chrono::Utc;
+        let instance = HousingInstance {
+            id: instance_id.clone(),
+            template_id: template_id.to_string(),
+            owner: owner.to_string(),
+            created_at: Utc::now(),
+            last_payment: Utc::now(),
+            room_mappings,
+            entry_room_id,
+            guests: vec![],
+            active: true,
+            schema_version: 1,
+        };
+        
+        self.put_housing_instance(&instance)?;
+        
+        Ok(instance)
+    }
+
     /// Update a specific configuration field
     pub fn update_world_config_field(
         &self,
@@ -1576,10 +2031,140 @@ impl TinyMushStore {
         config.updated_by = updated_by.to_string();
 
         match field {
+            // Branding
             "welcome_message" => config.welcome_message = value.to_string(),
             "motd" => config.motd = value.to_string(),
             "world_name" => config.world_name = value.to_string(),
             "world_description" => config.world_description = value.to_string(),
+            
+            // Help system
+            "help_main" => config.help_main = value.to_string(),
+            "help_commands" => config.help_commands = value.to_string(),
+            "help_movement" => config.help_movement = value.to_string(),
+            "help_social" => config.help_social = value.to_string(),
+            "help_bulletin" => config.help_bulletin = value.to_string(),
+            "help_companion" => config.help_companion = value.to_string(),
+            "help_mail" => config.help_mail = value.to_string(),
+            
+            // Error messages
+            "err_no_exit" => config.err_no_exit = value.to_string(),
+            "err_whisper_self" => config.err_whisper_self = value.to_string(),
+            "err_no_shops" => config.err_no_shops = value.to_string(),
+            "err_item_not_found" => config.err_item_not_found = value.to_string(),
+            "err_trade_self" => config.err_trade_self = value.to_string(),
+            "err_say_what" => config.err_say_what = value.to_string(),
+            "err_emote_what" => config.err_emote_what = value.to_string(),
+            "err_insufficient_funds" => config.err_insufficient_funds = value.to_string(),
+            
+            // Success messages
+            "msg_deposit_success" => config.msg_deposit_success = value.to_string(),
+            "msg_withdraw_success" => config.msg_withdraw_success = value.to_string(),
+            "msg_buy_success" => config.msg_buy_success = value.to_string(),
+            "msg_sell_success" => config.msg_sell_success = value.to_string(),
+            "msg_trade_initiated" => config.msg_trade_initiated = value.to_string(),
+            
+            // Validation & input errors
+            "err_whisper_what" => config.err_whisper_what = value.to_string(),
+            "err_whisper_whom" => config.err_whisper_whom = value.to_string(),
+            "err_pose_what" => config.err_pose_what = value.to_string(),
+            "err_ooc_what" => config.err_ooc_what = value.to_string(),
+            "err_amount_positive" => config.err_amount_positive = value.to_string(),
+            "err_invalid_amount_format" => config.err_invalid_amount_format = value.to_string(),
+            "err_transfer_self" => config.err_transfer_self = value.to_string(),
+            
+            // Empty state messages
+            "msg_empty_inventory" => config.msg_empty_inventory = value.to_string(),
+            "msg_no_item_quantity" => config.msg_no_item_quantity = value.to_string(),
+            "msg_no_shops_available" => config.msg_no_shops_available = value.to_string(),
+            "msg_no_shops_sell_to" => config.msg_no_shops_sell_to = value.to_string(),
+            "msg_no_companions" => config.msg_no_companions = value.to_string(),
+            "msg_no_companions_tame_hint" => config.msg_no_companions_tame_hint = value.to_string(),
+            "msg_no_companions_follow" => config.msg_no_companions_follow = value.to_string(),
+            "msg_no_active_quests" => config.msg_no_active_quests = value.to_string(),
+            "msg_no_achievements" => config.msg_no_achievements = value.to_string(),
+            "msg_no_achievements_earned" => config.msg_no_achievements_earned = value.to_string(),
+            "msg_no_titles_unlocked" => config.msg_no_titles_unlocked = value.to_string(),
+            "msg_no_title_equipped" => config.msg_no_title_equipped = value.to_string(),
+            "msg_no_active_trade" => config.msg_no_active_trade = value.to_string(),
+            "msg_no_active_trade_hint" => config.msg_no_active_trade_hint = value.to_string(),
+            "msg_no_trade_history" => config.msg_no_trade_history = value.to_string(),
+            "msg_no_players_found" => config.msg_no_players_found = value.to_string(),
+            
+            // Shop error messages
+            "err_shop_no_sell" => config.err_shop_no_sell = value.to_string(),
+            "err_shop_doesnt_sell" => config.err_shop_doesnt_sell = value.to_string(),
+            "err_shop_insufficient_funds" => config.err_shop_insufficient_funds = value.to_string(),
+            "err_shop_no_buy" => config.err_shop_no_buy = value.to_string(),
+            "err_shop_wont_buy_price" => config.err_shop_wont_buy_price = value.to_string(),
+            "err_item_not_owned" => config.err_item_not_owned = value.to_string(),
+            "err_only_have_quantity" => config.err_only_have_quantity = value.to_string(),
+            
+            // Trading system messages
+            "err_trade_already_active" => config.err_trade_already_active = value.to_string(),
+            "err_trade_partner_busy" => config.err_trade_partner_busy = value.to_string(),
+            "err_trade_player_not_here" => config.err_trade_player_not_here = value.to_string(),
+            "err_trade_insufficient_amount" => config.err_trade_insufficient_amount = value.to_string(),
+            "msg_trade_accepted_waiting" => config.msg_trade_accepted_waiting = value.to_string(),
+            
+            // Movement & navigation messages
+            "err_movement_restricted" => config.err_movement_restricted = value.to_string(),
+            "err_player_not_here" => config.err_player_not_here = value.to_string(),
+            
+            // Quest system messages
+            "err_quest_cannot_accept" => config.err_quest_cannot_accept = value.to_string(),
+            "err_quest_not_found" => config.err_quest_not_found = value.to_string(),
+            "msg_quest_abandoned" => config.msg_quest_abandoned = value.to_string(),
+            
+            // Achievement system messages
+            "err_achievement_unknown_category" => config.err_achievement_unknown_category = value.to_string(),
+            "msg_no_achievements_category" => config.msg_no_achievements_category = value.to_string(),
+            
+            // Title system messages
+            "err_title_not_unlocked" => config.err_title_not_unlocked = value.to_string(),
+            "msg_title_equipped" => config.msg_title_equipped = value.to_string(),
+            "msg_title_equipped_display" => config.msg_title_equipped_display = value.to_string(),
+            "err_title_usage" => config.err_title_usage = value.to_string(),
+            
+            // Companion system messages
+            "msg_companion_tamed" => config.msg_companion_tamed = value.to_string(),
+            "err_companion_owned" => config.err_companion_owned = value.to_string(),
+            "err_companion_not_found" => config.err_companion_not_found = value.to_string(),
+            "msg_companion_released" => config.msg_companion_released = value.to_string(),
+            
+            // Bulletin board messages
+            "err_board_location_required" => config.err_board_location_required = value.to_string(),
+            "err_board_post_location" => config.err_board_post_location = value.to_string(),
+            "err_board_read_location" => config.err_board_read_location = value.to_string(),
+            
+            // NPC & tutorial messages
+            "err_no_npc_here" => config.err_no_npc_here = value.to_string(),
+            "msg_tutorial_completed" => config.msg_tutorial_completed = value.to_string(),
+            "msg_tutorial_not_started" => config.msg_tutorial_not_started = value.to_string(),
+            
+            // Housing system messages
+            "err_housing_not_at_office" => config.err_housing_not_at_office = value.to_string(),
+            "err_housing_no_templates" => config.err_housing_no_templates = value.to_string(),
+            "err_housing_insufficient_funds" => config.err_housing_insufficient_funds = value.to_string(),
+            "err_housing_already_owns" => config.err_housing_already_owns = value.to_string(),
+            "err_housing_template_not_found" => config.err_housing_template_not_found = value.to_string(),
+            "msg_housing_rented" => config.msg_housing_rented = value.to_string(),
+            "msg_housing_list_header" => config.msg_housing_list_header = value.to_string(),
+            
+            // Technical/system messages
+            "err_player_load_failed" => config.err_player_load_failed = value.to_string(),
+            "err_shop_save_failed" => config.err_shop_save_failed = value.to_string(),
+            "err_player_save_failed" => config.err_player_save_failed = value.to_string(),
+            "err_payment_failed" => config.err_payment_failed = value.to_string(),
+            "err_purchase_failed" => config.err_purchase_failed = value.to_string(),
+            "err_sale_failed" => config.err_sale_failed = value.to_string(),
+            "err_tutorial_error" => config.err_tutorial_error = value.to_string(),
+            "err_reward_error" => config.err_reward_error = value.to_string(),
+            "err_quest_failed" => config.err_quest_failed = value.to_string(),
+            "err_shop_find_failed" => config.err_shop_find_failed = value.to_string(),
+            "err_player_list_failed" => config.err_player_list_failed = value.to_string(),
+            "err_movement_failed" => config.err_movement_failed = value.to_string(),
+            "err_movement_save_failed" => config.err_movement_save_failed = value.to_string(),
+            
             _ => return Err(TinyMushError::NotFound(format!("Unknown config field: {}", field))),
         }
 

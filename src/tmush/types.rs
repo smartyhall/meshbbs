@@ -49,6 +49,7 @@ pub enum RoomFlag {
     Moderated,
     Instanced,
     Crowded,
+    HousingOffice,  // Room provides housing rental/purchase services
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -431,6 +432,9 @@ pub struct RoomRecord {
     #[serde(default)]
     pub flags: Vec<RoomFlag>,
     pub max_capacity: u16,
+    /// If this is a housing office, filter templates by these tags (empty = show all)
+    #[serde(default)]
+    pub housing_filter_tags: Vec<String>,
     pub schema_version: u8,
 }
 
@@ -448,6 +452,7 @@ impl RoomRecord {
             items: Vec::new(),
             flags: Vec::new(),
             max_capacity: 15,
+            housing_filter_tags: Vec::new(),
             schema_version: ROOM_SCHEMA_VERSION,
         }
     }
@@ -472,6 +477,240 @@ impl RoomRecord {
     pub fn with_created_at(mut self, created_at: DateTime<Utc>) -> Self {
         self.created_at = created_at;
         self
+    }
+}
+
+// ============================================================================
+// Housing System (Phase 7 Week 1-2)
+// ============================================================================
+
+/// Permissions that control what housing instance owners can customize
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HousingPermissions {
+    /// Can owner customize room descriptions
+    pub can_edit_description: bool,
+    /// Can owner place furniture and decorations
+    pub can_add_objects: bool,
+    /// Can owner invite guests to their housing
+    pub can_invite_guests: bool,
+    /// Can owner modify room structure (rare, premium feature)
+    pub can_build: bool,
+    /// Can owner set room flags (private, dark, etc.)
+    pub can_set_flags: bool,
+    /// Can owner set custom exit names
+    pub can_rename_exits: bool,
+}
+
+impl Default for HousingPermissions {
+    fn default() -> Self {
+        Self {
+            can_edit_description: true,
+            can_add_objects: true,
+            can_invite_guests: true,
+            can_build: false,
+            can_set_flags: false,
+            can_rename_exits: false,
+        }
+    }
+}
+
+/// Template room within a housing template
+/// Describes a single room that will be cloned when housing is instantiated
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HousingTemplateRoom {
+    /// Local room ID within template (e.g., "living_room", "bedroom")
+    pub room_id: String,
+    /// Room name
+    pub name: String,
+    /// Short description
+    pub short_desc: String,
+    /// Long description
+    pub long_desc: String,
+    /// Exits to other rooms in this template (local room IDs)
+    pub exits: HashMap<Direction, String>,
+    /// Room flags to apply
+    #[serde(default)]
+    pub flags: Vec<RoomFlag>,
+    /// Max capacity for this room
+    #[serde(default = "default_room_capacity")]
+    pub max_capacity: u16,
+}
+
+fn default_room_capacity() -> u16 {
+    15
+}
+
+/// Housing template - blueprint for creating player housing instances
+/// Created by world builders, cloned to create actual player housing
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HousingTemplate {
+    /// Unique template ID (e.g., "basic_apartment", "luxury_flat", "rural_farm")
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Description shown in housing catalog
+    pub description: String,
+    /// Rooms that make up this template
+    pub rooms: Vec<HousingTemplateRoom>,
+    /// Which room is the entry point (local room ID)
+    pub entry_room: String,
+    /// Cost to rent/purchase this housing (in base currency units)
+    pub cost: i64,
+    /// Recurring cost (0 for owned, >0 for rented per time period)
+    pub recurring_cost: i64,
+    /// What owners are allowed to customize
+    pub permissions: HousingPermissions,
+    /// Maximum number of instances allowed (-1 for unlimited)
+    #[serde(default = "unlimited_instances")]
+    pub max_instances: i32,
+    /// Tags for filtering by theme/type (e.g., ["modern", "urban"], ["fantasy", "burrow"])
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Category for grouping (e.g., "apartment", "house", "burrow", "treehouse")
+    #[serde(default)]
+    pub category: String,
+    /// When this template was created
+    pub created_at: DateTime<Utc>,
+    /// Who created this template
+    pub created_by: String,
+    /// Schema version
+    pub schema_version: u8,
+}
+
+fn unlimited_instances() -> i32 {
+    -1
+}
+
+impl HousingTemplate {
+    pub fn new(id: &str, name: &str, description: &str, created_by: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            rooms: Vec::new(),
+            entry_room: String::new(),
+            cost: 0,
+            recurring_cost: 0,
+            permissions: HousingPermissions::default(),
+            max_instances: -1,
+            tags: Vec::new(),
+            category: String::new(),
+            created_at: Utc::now(),
+            created_by: created_by.to_string(),
+            schema_version: 1,
+        }
+    }
+
+    pub fn with_cost(mut self, cost: i64, recurring: i64) -> Self {
+        self.cost = cost;
+        self.recurring_cost = recurring;
+        self
+    }
+
+    pub fn with_permissions(mut self, permissions: HousingPermissions) -> Self {
+        self.permissions = permissions;
+        self
+    }
+
+    pub fn with_room(mut self, room: HousingTemplateRoom) -> Self {
+        self.rooms.push(room);
+        self
+    }
+
+    pub fn with_entry_room(mut self, room_id: &str) -> Self {
+        self.entry_room = room_id.to_string();
+        self
+    }
+
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    pub fn with_category(mut self, category: &str) -> Self {
+        self.category = category.to_string();
+        self
+    }
+
+    pub fn with_max_instances(mut self, max: i32) -> Self {
+        self.max_instances = max;
+        self
+    }
+
+    /// Check if this template matches the given filter tags (empty filter = match all)
+    pub fn matches_filter(&self, filter_tags: &[String]) -> bool {
+        if filter_tags.is_empty() {
+            return true; // No filter = show all
+        }
+        // Template must have at least one matching tag
+        self.tags.iter().any(|tag| filter_tags.contains(tag))
+    }
+}
+
+/// Active housing instance - a cloned template owned by a player
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HousingInstance {
+    /// Unique instance ID
+    pub id: String,
+    /// Template this was cloned from
+    pub template_id: String,
+    /// Owner's username
+    pub owner: String,
+    /// When this instance was created/rented
+    pub created_at: DateTime<Utc>,
+    /// When rent was last paid (for recurring costs)
+    pub last_payment: DateTime<Utc>,
+    /// Mapping of template room IDs to actual room IDs
+    /// E.g., "living_room" -> "rooms:instance:alice:basic_apartment:living_room"
+    pub room_mappings: HashMap<String, String>,
+    /// Entry room ID (actual room ID, not template local ID)
+    pub entry_room_id: String,
+    /// Guest list (usernames allowed to enter)
+    #[serde(default)]
+    pub guests: Vec<String>,
+    /// Whether instance is currently active
+    pub active: bool,
+    /// Schema version
+    pub schema_version: u8,
+}
+
+impl HousingInstance {
+    pub fn new(
+        id: &str,
+        template_id: &str,
+        owner: &str,
+        entry_room_id: &str,
+    ) -> Self {
+        Self {
+            id: id.to_string(),
+            template_id: template_id.to_string(),
+            owner: owner.to_string(),
+            created_at: Utc::now(),
+            last_payment: Utc::now(),
+            room_mappings: HashMap::new(),
+            entry_room_id: entry_room_id.to_string(),
+            guests: Vec::new(),
+            active: true,
+            schema_version: 1,
+        }
+    }
+
+    pub fn add_guest(&mut self, username: &str) {
+        if !self.guests.contains(&username.to_string()) {
+            self.guests.push(username.to_string());
+        }
+    }
+
+    pub fn remove_guest(&mut self, username: &str) {
+        self.guests.retain(|g| g != username);
+    }
+
+    pub fn is_guest(&self, username: &str) -> bool {
+        self.guests.contains(&username.to_string())
+    }
+
+    pub fn is_owner(&self, username: &str) -> bool {
+        self.owner == username
     }
 }
 
@@ -1493,7 +1732,8 @@ impl TradeSession {
 }
 
 /// World configuration for customizable strings and settings
-/// This allows world creators to modify system messages without editing source code
+/// This allows world creators to modify system messages without editing source code.
+/// All user-facing text is configurable to support internationalization and custom theming.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldConfig {
     /// Version of the config schema
@@ -1502,6 +1742,8 @@ pub struct WorldConfig {
     pub updated_at: DateTime<Utc>,
     /// Updated by which admin
     pub updated_by: String,
+    
+    // === BRANDING ===
     /// Welcome message shown when tutorial auto-starts
     pub welcome_message: String,
     /// MOTD shown on login
@@ -1510,6 +1752,154 @@ pub struct WorldConfig {
     pub world_name: String,
     /// Short description of the world
     pub world_description: String,
+    
+    // === HELP SYSTEM TEMPLATES ===
+    /// Main help menu text
+    pub help_main: String,
+    /// Commands reference text
+    pub help_commands: String,
+    /// Movement guide text
+    pub help_movement: String,
+    /// Social commands help
+    pub help_social: String,
+    /// Bulletin board help
+    pub help_bulletin: String,
+    /// Companion system help
+    pub help_companion: String,
+    /// Mail system help
+    pub help_mail: String,
+    
+    // === ERROR MESSAGE TEMPLATES ===
+    /// Error when trying to move in blocked direction: "You can't go {direction} from here."
+    pub err_no_exit: String,
+    /// Error when whispering to self: "You can't whisper to yourself!"
+    pub err_whisper_self: String,
+    /// Error when no shops in room: "There are no shops here."
+    pub err_no_shops: String,
+    /// Error when item not in inventory: "You don't have any '{item}'."
+    pub err_item_not_found: String,
+    /// Error when trying to trade with self: "You can't trade with yourself!"
+    pub err_trade_self: String,
+    /// Prompt when SAY used with no text: "Say what?"
+    pub err_say_what: String,
+    /// Prompt when EMOTE used with no text: "Emote what?"
+    pub err_emote_what: String,
+    /// Error when insufficient funds: "Insufficient funds."
+    pub err_insufficient_funds: String,
+    
+    // === SUCCESS MESSAGE TEMPLATES ===
+    /// Success depositing to bank: "Deposited {amount} to bank.\nUse BALANCE to check your account."
+    pub msg_deposit_success: String,
+    /// Success withdrawing from bank: "Withdrew {amount} from bank.\nUse BALANCE to check your account."
+    pub msg_withdraw_success: String,
+    /// Success buying item: "You bought {quantity} x {item} for {price}."
+    pub msg_buy_success: String,
+    /// Success selling item: "You sold {quantity} x {item} for {price}."
+    pub msg_sell_success: String,
+    /// Trade initiated: "Trade initiated with {player}!\nUse OFFER to add items/currency.\nType ACCEPT when ready."
+    pub msg_trade_initiated: String,
+    
+    // === VALIDATION & INPUT ERROR MESSAGES ===
+    pub err_whisper_what: String,
+    pub err_whisper_whom: String,
+    pub err_pose_what: String,
+    pub err_ooc_what: String,
+    pub err_amount_positive: String,
+    pub err_invalid_amount_format: String,
+    pub err_transfer_self: String,
+    
+    // === EMPTY STATE MESSAGES ===
+    pub msg_empty_inventory: String,
+    pub msg_no_item_quantity: String,
+    pub msg_no_shops_available: String,
+    pub msg_no_shops_sell_to: String,
+    pub msg_no_companions: String,
+    pub msg_no_companions_tame_hint: String,
+    pub msg_no_companions_follow: String,
+    pub msg_no_active_quests: String,
+    pub msg_no_achievements: String,
+    pub msg_no_achievements_earned: String,
+    pub msg_no_titles_unlocked: String,
+    pub msg_no_title_equipped: String,
+    pub msg_no_active_trade: String,
+    pub msg_no_active_trade_hint: String,
+    pub msg_no_trade_history: String,
+    pub msg_no_players_found: String,
+    
+    // === SHOP ERROR MESSAGES ===
+    pub err_shop_no_sell: String,
+    pub err_shop_doesnt_sell: String,
+    pub err_shop_insufficient_funds: String,
+    pub err_shop_no_buy: String,
+    pub err_shop_wont_buy_price: String,
+    pub err_item_not_owned: String,
+    pub err_only_have_quantity: String,
+    
+    // === TRADING SYSTEM MESSAGES ===
+    pub err_trade_already_active: String,
+    pub err_trade_partner_busy: String,
+    pub err_trade_player_not_here: String,
+    pub err_trade_insufficient_amount: String,
+    pub msg_trade_accepted_waiting: String,
+    
+    // === MOVEMENT & NAVIGATION MESSAGES ===
+    pub err_movement_restricted: String,
+    pub err_player_not_here: String,
+    
+    // === QUEST SYSTEM MESSAGES ===
+    pub err_quest_cannot_accept: String,
+    pub err_quest_not_found: String,
+    pub msg_quest_abandoned: String,
+    
+    // === ACHIEVEMENT SYSTEM MESSAGES ===
+    pub err_achievement_unknown_category: String,
+    pub msg_no_achievements_category: String,
+    
+    // === TITLE SYSTEM MESSAGES ===
+    pub err_title_not_unlocked: String,
+    pub msg_title_equipped: String,
+    pub msg_title_equipped_display: String,
+    pub err_title_usage: String,
+    
+    // === COMPANION SYSTEM MESSAGES ===
+    pub msg_companion_tamed: String,
+    pub err_companion_owned: String,
+    pub err_companion_not_found: String,
+    pub msg_companion_released: String,
+    
+    // === BULLETIN BOARD MESSAGES ===
+    pub err_board_location_required: String,
+    pub err_board_post_location: String,
+    pub err_board_read_location: String,
+    
+    // === NPC & TUTORIAL MESSAGES ===
+    pub err_no_npc_here: String,
+    pub msg_tutorial_completed: String,
+    pub msg_tutorial_not_started: String,
+    
+    // === HOUSING SYSTEM MESSAGES ===
+    pub err_housing_not_at_office: String,
+    pub err_housing_no_templates: String,
+    pub err_housing_insufficient_funds: String,
+    pub err_housing_already_owns: String,
+    pub err_housing_template_not_found: String,
+    pub msg_housing_rented: String,
+    pub msg_housing_list_header: String,
+    
+    // === TECHNICAL/SYSTEM MESSAGES ===
+    pub err_player_load_failed: String,
+    pub err_shop_save_failed: String,
+    pub err_player_save_failed: String,
+    pub err_payment_failed: String,
+    pub err_purchase_failed: String,
+    pub err_sale_failed: String,
+    pub err_tutorial_error: String,
+    pub err_reward_error: String,
+    pub err_quest_failed: String,
+    pub err_shop_find_failed: String,
+    pub err_player_list_failed: String,
+    pub err_movement_failed: String,
+    pub err_movement_save_failed: String,
 }
 
 impl Default for WorldConfig {
@@ -1518,6 +1908,8 @@ impl Default for WorldConfig {
             version: 1,
             updated_at: Utc::now(),
             updated_by: "system".to_string(),
+            
+            // Branding
             welcome_message: "=== WELCOME TO OLD TOWNE MESH ===\n".to_string() +
                 "You find yourself at the Script Gazebo...\n\n" +
                 "This tutorial will guide you through\n" +
@@ -1528,6 +1920,177 @@ impl Default for WorldConfig {
             motd: "Welcome to Old Towne Mesh!\nType HELP for commands.".to_string(),
             world_name: "Old Towne Mesh".to_string(),
             world_description: "A mesh-networked MUD adventure".to_string(),
+            
+            // Help system templates
+            help_main: "=TINYMUSH HELP=\n".to_string() +
+                "Move: N/S/E/W/U/D + diagonals\n" +
+                "Look: L | I (inv) | WHO | SCORE\n" +
+                "Talk: SAY/EMOTE\n" +
+                "Board: BOARD/POST/READ\n" +
+                "Mail: MAIL/SEND\n" +
+                "More: HELP <topic>\n" +
+                "Topics: COMMANDS MOVEMENT SOCIAL BOARD MAIL COMPANION",
+            help_commands: "=COMMANDS=\n".to_string() +
+                "L - look | I - inventory\n" +
+                "WHO - players | SCORE - stats\n" +
+                "SAY/EMOTE - talk\n" +
+                "BOARD/POST/READ - bulletin\n" +
+                "MAIL/SEND/RMAIL - messages\n" +
+                "SAVE | QUIT",
+            help_movement: "=MOVEMENT=\n".to_string() +
+                "N/S/E/W - cardinal\n" +
+                "U/D - up/down\n" +
+                "NE/NW/SE/SW - diagonals\n" +
+                "L - look around",
+            help_social: "=SOCIAL=\n".to_string() +
+                "SAY <txt> - speak aloud\n" +
+                "WHISPER <plr> <txt> - private\n" +
+                "EMOTE/: <act> - action\n" +
+                "POSE/; <pose> - describe\n" +
+                "OOC <txt> - out of char\n" +
+                "WHO - list players",
+            help_bulletin: "=BULLETIN BOARD=\n".to_string() +
+                "Town Stump message board\n" +
+                "BOARD - view messages\n" +
+                "POST <subj> <msg> - post\n" +
+                "READ <id> - read\n" +
+                "Use at Town Square\n" +
+                "Max: 50 char subj, 300 msg",
+            help_companion: "=COMPANIONS=\n".to_string() +
+                "COMP [LIST] - your pets\n" +
+                "COMP TAME <name> - claim\n" +
+                "COMP <name> - status\n" +
+                "COMP RELEASE <name> - free\n" +
+                "COMP STAY/COME - control\n" +
+                "COMP INV - storage\n" +
+                "FEED/PET <name> - care\n" +
+                "MOUNT/DISMOUNT - riding\n" +
+                "TRAIN <name> <skill> - teach",
+            help_mail: "=MAIL=\n".to_string() +
+                "MAIL [folder] - list messages\n" +
+                "SEND <plr> <subj> <msg> - send\n" +
+                "RMAIL <id> - read message\n" +
+                "DMAIL <id> - delete message\n" +
+                "Folders: inbox, sent, trash",
+            
+            // Error messages
+            err_no_exit: "You can't go {} from here.".to_string(),
+            err_whisper_self: "You can't whisper to yourself!".to_string(),
+            err_no_shops: "There are no shops here.".to_string(),
+            err_item_not_found: "You don't have any '{}'.".to_string(),
+            err_trade_self: "You can't trade with yourself!".to_string(),
+            err_say_what: "Say what?".to_string(),
+            err_emote_what: "Emote what?".to_string(),
+            err_insufficient_funds: "Insufficient funds.".to_string(),
+            
+            // Success messages
+            msg_deposit_success: "Deposited {amount} to bank.\nUse BALANCE to check your account.".to_string(),
+            msg_withdraw_success: "Withdrew {amount} from bank.\nUse BALANCE to check your account.".to_string(),
+            msg_buy_success: "You bought {quantity} x {item} for {price}.".to_string(),
+            msg_sell_success: "You sold {quantity} x {item} for {price}.".to_string(),
+            msg_trade_initiated: "Trade initiated with {target}!\nUse OFFER to add items/currency.\nType ACCEPT when ready.".to_string(),
+            
+            // Validation & input errors
+            err_whisper_what: "Whisper what?".to_string(),
+            err_whisper_whom: "Whisper to whom?".to_string(),
+            err_pose_what: "Strike what pose?".to_string(),
+            err_ooc_what: "Say what out of character?".to_string(),
+            err_amount_positive: "Amount must be positive.".to_string(),
+            err_invalid_amount_format: "Invalid amount format.".to_string(),
+            err_transfer_self: "You can't transfer to yourself!".to_string(),
+            
+            // Empty state messages
+            msg_empty_inventory: "You are carrying nothing.".to_string(),
+            msg_no_item_quantity: "You only have {quantity} x {item}.".to_string(),
+            msg_no_shops_available: "No shops available.".to_string(),
+            msg_no_shops_sell_to: "There are no shops here to sell to.".to_string(),
+            msg_no_companions: "You don't have any companions.".to_string(),
+            msg_no_companions_tame_hint: "You don't have any companions.\nTAME a wild companion to add them to your party!".to_string(),
+            msg_no_companions_follow: "No companions with auto-follow are here.".to_string(),
+            msg_no_active_quests: "You have no active quests.\nUse QUEST LIST to see available quests.".to_string(),
+            msg_no_achievements: "No achievements available.".to_string(),
+            msg_no_achievements_earned: "You haven't earned any achievements yet.\nKeep exploring and trying new things!".to_string(),
+            msg_no_titles_unlocked: "You haven't unlocked any titles yet.\nEarn achievements to unlock titles!".to_string(),
+            msg_no_title_equipped: "You don't have any title equipped.".to_string(),
+            msg_no_active_trade: "You have no active trade.".to_string(),
+            msg_no_active_trade_hint: "You have no active trade.\nUse TRADE <player> to start one.".to_string(),
+            msg_no_trade_history: "No trade history.".to_string(),
+            msg_no_players_found: "No players found.".to_string(),
+            
+            // Shop error messages
+            err_shop_no_sell: "No shop here sells '{item}'.".to_string(),
+            err_shop_doesnt_sell: "Shop doesn't sell '{item}'.".to_string(),
+            err_shop_insufficient_funds: "You don't have enough! Need: {amount}".to_string(),
+            err_shop_no_buy: "No shop here buys '{item}'.".to_string(),
+            err_shop_wont_buy_price: "Shop doesn't want to buy {item} for more than {price}.".to_string(),
+            err_item_not_owned: "You don't have any '{item}'.".to_string(),
+            err_only_have_quantity: "You only have {quantity} x {item}.".to_string(),
+            
+            // Trading system messages
+            err_trade_already_active: "You're already trading with {player}!\nType REJECT to cancel.".to_string(),
+            err_trade_partner_busy: "{player} is already in a trade.".to_string(),
+            err_trade_player_not_here: "{player} is not here!".to_string(),
+            err_trade_insufficient_amount: "You don't have that much!".to_string(),
+            msg_trade_accepted_waiting: "You accepted the trade.\nWaiting for other player...".to_string(),
+            
+            // Movement & navigation messages
+            err_movement_restricted: "You can't go {direction} right now. The area might be full or restricted.".to_string(),
+            err_player_not_here: "Player '{player}' not found in this room.".to_string(),
+            
+            // Quest system messages
+            err_quest_cannot_accept: "Cannot accept that quest (already accepted/completed, or prerequisites not met).".to_string(),
+            err_quest_not_found: "Quest '{quest}' not found in your active quests.".to_string(),
+            msg_quest_abandoned: "You have abandoned the quest: {quest}".to_string(),
+            
+            // Achievement system messages
+            err_achievement_unknown_category: "Unknown category: {category}\nAvailable: COMBAT, EXPLORATION, SOCIAL, ECONOMIC, CRAFTING, QUEST, SPECIAL".to_string(),
+            msg_no_achievements_category: "No achievements found in category: {category}".to_string(),
+            
+            // Title system messages
+            err_title_not_unlocked: "You haven't unlocked the title: {title}".to_string(),
+            msg_title_equipped: "Title equipped: {title}".to_string(),
+            msg_title_equipped_display: "Title equipped: {title}\nYou are now known as {display}".to_string(),
+            err_title_usage: "Usage: TITLE [LIST|EQUIP <name>|UNEQUIP]".to_string(),
+            
+            // Companion system messages
+            msg_companion_tamed: "You've tamed {name}!\nLoyalty: {loyalty}/100".to_string(),
+            err_companion_owned: "{name} already has an owner.".to_string(),
+            err_companion_not_found: "There's no companion named '{name}' here.".to_string(),
+            msg_companion_released: "You've released {name} back to the wild.".to_string(),
+            
+            // Bulletin board messages
+            err_board_location_required: "You must be at the Town Square to access the Town Stump bulletin board.\nHead to the town square and try again.".to_string(),
+            err_board_post_location: "You must be at the Town Square to post to the bulletin board.".to_string(),
+            err_board_read_location: "You must be at the Town Square to read bulletin board messages.".to_string(),
+            
+            // NPC & tutorial messages
+            err_no_npc_here: "There's nobody here to talk to.".to_string(),
+            msg_tutorial_completed: "Mayor Thompson: 'You've already completed the tutorial. Welcome back!'".to_string(),
+            msg_tutorial_not_started: "Mayor Thompson: 'Come back when you're ready for the tutorial.'".to_string(),
+            
+            // Housing system messages
+            err_housing_not_at_office: "You need to visit a housing office to inquire about available housing.\nLook for locations with rental services or property management.".to_string(),
+            err_housing_no_templates: "No housing is available at this location right now.".to_string(),
+            err_housing_insufficient_funds: "You can't afford this housing. It costs {amount} credits (you have {player} credits).".to_string(),
+            err_housing_already_owns: "You already own housing! Type HOME to visit it, or HOUSING INFO to see details.".to_string(),
+            err_housing_template_not_found: "Housing template '{name}' not found. Type HOUSING LIST to see available options.".to_string(),
+            msg_housing_rented: "Congratulations! You've acquired {name}.\nType HOME to visit your new space!".to_string(),
+            msg_housing_list_header: "=== Available Housing ===\n\nType RENT <id> to acquire housing.\nType HOUSING INFO <id> for more details.".to_string(),
+            
+            // Technical/system messages
+            err_player_load_failed: "Error loading player: {error}".to_string(),
+            err_shop_save_failed: "Failed to save shop: {error}".to_string(),
+            err_player_save_failed: "Failed to save player: {error}".to_string(),
+            err_payment_failed: "Payment failed: {error}".to_string(),
+            err_purchase_failed: "Purchase failed: {error}".to_string(),
+            err_sale_failed: "Sale failed: {error}".to_string(),
+            err_tutorial_error: "Tutorial error: {error}".to_string(),
+            err_reward_error: "Reward error: {error}".to_string(),
+            err_quest_failed: "Failed to abandon quest: {error}".to_string(),
+            err_shop_find_failed: "Error finding shops: {error}".to_string(),
+            err_player_list_failed: "Error listing players: {error}".to_string(),
+            err_movement_failed: "Movement failed: {error}".to_string(),
+            err_movement_save_failed: "Movement failed to save: {error}".to_string(),
         }
     }
 }

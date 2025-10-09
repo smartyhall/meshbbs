@@ -265,6 +265,7 @@ mod tests {
             items: Vec::new(),
             flags: Vec::new(),
             max_capacity,
+            housing_filter_tags: Vec::new(),
             schema_version: 1,
         }
     }

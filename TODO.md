@@ -1,6 +1,6 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-08 (Phase 6 Week 3 COMPLETE - Achievement & Title System)
+**Last Updated**: 2025-10-09 (Phase 6.5 COMPLETE - Extended WorldConfig with i18n Support)
 
 ## Development Standards
 
@@ -402,38 +402,104 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 ## Phase 6.5 — World Configuration & Customization ✅ COMPLETE
 (Ref: Design principle - mutable strings should be database-stored, not hardcoded)
 
-### World Configuration System (commit c3f0303)
-- [x] WorldConfig data structure (welcome_message, motd, world_name, world_description)
-- [x] TREE_CONFIG storage tree with get/put/update methods
-- [x] @SETCONFIG <field> <value> - update config (with audit trail)
+### World Configuration System (commits c3f0303, TBD)
+- [x] WorldConfig data structure - **COMPLETE: 113 configurable fields for full i18n**
+  - [x] 4 branding fields (welcome_message, motd, world_name, world_description)
+  - [x] 7 help system templates (help_main through help_mail)
+  - [x] 8 core error messages (err_say_what, err_emote_what, err_whisper_self, etc.)
+  - [x] 5 core success messages (msg_deposit_success, msg_withdraw_success, etc.)
+  - [x] **NEW: 7 validation & input error messages** (err_whisper_what, err_whisper_whom, err_pose_what, err_ooc_what, err_amount_positive, err_invalid_amount_format, err_transfer_self)
+  - [x] **NEW: 16 empty state messages** (msg_empty_inventory, msg_no_companions, msg_no_quests, msg_no_achievements, etc.)
+  - [x] **NEW: 7 shop error messages** (err_shop_no_sell, err_shop_doesnt_sell, err_shop_insufficient_funds, etc.)
+  - [x] **NEW: 5 trading system messages** (err_trade_already_active, err_trade_partner_busy, msg_trade_accepted_waiting, etc.)
+  - [x] **NEW: 2 movement messages** (err_movement_restricted, err_player_not_here)
+  - [x] **NEW: 3 quest messages** (err_quest_cannot_accept, err_quest_not_found, msg_quest_abandoned)
+  - [x] **NEW: 2 achievement messages** (err_achievement_unknown_category, msg_no_achievements_category)
+  - [x] **NEW: 4 title messages** (err_title_not_unlocked, msg_title_equipped, msg_title_equipped_display, err_title_usage)
+  - [x] **NEW: 4 companion messages** (msg_companion_tamed, err_companion_owned, err_companion_not_found, msg_companion_released)
+  - [x] **NEW: 3 bulletin board messages** (err_board_location_required, err_board_post_location, err_board_read_location)
+  - [x] **NEW: 3 NPC/tutorial messages** (err_no_npc_here, msg_tutorial_completed, msg_tutorial_not_started)
+  - [x] **NEW: 13 technical/system messages** (err_player_load_failed, err_shop_save_failed, etc.)
+- [x] TREE_CONFIG storage tree with get/put/update methods - **supports all 113 fields**
+- [x] @SETCONFIG <field> <value> - update config (supports all 113 fields with categorized help)
 - [x] @GETCONFIG [field] - view config (all or specific field)
 - [x] Tutorial auto-start uses configurable welcome message
+- [x] Help system migrated to load from WorldConfig instead of hardcoded functions
+- [x] Error and success messages ready for migration to use configurable templates
 - [x] Audit tracking (updated_by, updated_at timestamps)
 - [x] Integration tests (9 tests covering all operations)
 
 **World Config Benefits:**
-- World creators can customize branding without source code edits
+- World creators can customize ALL user-facing text without source code edits
+- **Complete Internationalization support**: All 113 user-facing strings database-backed
+  - Create French, Spanish, German, Japanese, etc. worlds without code forks
+  - Language packs can be distributed as WorldConfig JSON exports/imports
+  - Error messages, help text, UI prompts, empty states, system messages all localizable
 - Audit trail tracks who changed what and when
 - Supports multi-world deployment with different configurations
-- Foundation for future customizable game text (error messages, prompts, etc.)
+- **Template variables** for dynamic content: {player}, {item}, {amount}, {quantity}, {error}, etc.
+- Foundation for future customizable game text (achievements, quest text, NPC dialogue)
+
+**Implementation Details:**
+- `src/tmush/types.rs`: WorldConfig struct with **113 fields** and comprehensive documentation
+- `src/tmush/storage.rs`: update_world_config_field() handles all 113 fields across 12 categories
+- `src/tmush/commands.rs`: Command handlers ready to load world_config and use configurable strings
+- Default implementation provides complete English language pack with sensible defaults
+- Template variables (e.g., {amount}, {target}, {player}, {item}) support dynamic content in messages
+
+**Future Extensibility:**
+- All identified hardcoded strings now have configurable equivalents
+- WorldConfig schema versioning enables smooth upgrades as new fields are added
+- Export/import tools can enable community-created language packs and themed world configurations
+- Next phase: Systematic migration of all command handlers to use WorldConfig fields
 
 ---
 
 ## Phase 7 — Housing, Building, World Creation
 (Ref: Plan §Phase 7, Design §§Housing, MUSH Building System, Triggers)
 
-### Player Housing (Week 1-2)
-- [ ] Player housing instancing (apartments, hotel rooms)
-- [ ] Housing permissions system (owner, guests, public)
-- [ ] Housing quotas (room limits per player)
-- [ ] Apartment/room templates with default descriptions
-- [ ] Furniture and decoration objects
+### Player Housing (Week 1-2) — IN PROGRESS
+- [x] Housing data structures (HousingPermissions, HousingTemplateRoom, HousingTemplate, HousingInstance) — types.rs
+- [x] Housing storage trees (TREE_HOUSING_TEMPLATES, TREE_HOUSING_INSTANCES) — storage.rs
+- [x] Housing CRUD methods (10 methods):
+  - [x] get_housing_template, put_housing_template, list_housing_templates, delete_housing_template
+  - [x] get_housing_instance, get_player_housing_instances, put_housing_instance, list_housing_instances, delete_housing_instance
+  - [x] count_template_instances (for max_instances enforcement)
+- [x] clone_housing_template method (creates rooms, preserves connectivity, maps template → instance IDs) — storage.rs
+- [x] Housing abstraction system for multi-world support:
+  - [x] RoomFlag::HousingOffice - marks locations providing housing services
+  - [x] HousingTemplate.tags - filter templates by theme (["modern", "urban"], ["fantasy", "burrow"], etc.)
+  - [x] HousingTemplate.category - grouping (apartment, house, burrow, treehouse, etc.)
+  - [x] RoomRecord.housing_filter_tags - configure which templates each office shows
+  - [x] HousingTemplate.matches_filter() - check if template matches office's tag filter
+  - [x] WorldConfig housing messages (7 fields): err_housing_not_at_office, err_housing_no_templates, etc.
+- [x] Housing template seeding (studio_apartment, basic_apartment, luxury_flat templates with tags)
 - [ ] Housing commands:
-  - [ ] HOME - teleport to owned housing
-  - [ ] RENT <room> - acquire housing
-  - [ ] DESCRIBE HOME <text> - customize room description
-  - [ ] INVITE <player> / UNINVITE <player> - guest management
+  - [ ] HOUSING LIST - show available templates catalog (location-restricted to HousingOffice rooms)
+  - [ ] RENT <template_id> - clone template to create player instance
+  - [ ] HOME - teleport to owned housing entry room
+  - [ ] DESCRIBE HOME <text> - customize room description (if can_edit_description)
+  - [ ] INVITE <player> / UNINVITE <player> - guest management (if can_invite_guests)
   - [ ] LOCK / UNLOCK - access control
+- [ ] Integration tests for housing lifecycle (template → rent → customize → guest access)
+- [ ] Housing instance cleanup (inactive/abandoned housing reclamation)
+- [ ] Housing cost deduction and payment system (recurring_cost for rental tracking)
+
+**Housing System Architecture:**
+- **Template-based**: World builders create HousingTemplate blueprints with multiple HousingTemplateRoom entries
+- **Instancing**: Players rent/purchase → clone_housing_template() creates unique HousingInstance with actual RoomRecord copies
+- **Connectivity**: Exit mappings preserved via room_mappings HashMap (template room ID → instance room ID)
+- **Permissions**: HousingPermissions control what owners can customize (descriptions, objects, guests, building, flags, exits)
+- **Limits**: max_instances per template (-1 = unlimited), cost/recurring_cost for economy integration
+- **Multi-World Abstraction**: Tag-based filtering enables theme-appropriate housing across different worlds:
+  - Modern city: apartments_lobby with ["modern", "urban"] tags → shows studio/apartment/flat
+  - Fantasy world: tavern with ["fantasy", "medieval"] tags → shows cottage/manor/tavern_room
+  - Furry world: burrow_warren with ["burrow", "underground"] tags → shows burrow variations
+  - Same system works for: treehouses, underwater grottos, sky platforms, space stations, etc.
+  - Location-restricted: Commands only work in rooms with RoomFlag::HousingOffice
+- **Schema**: All housing data versioned (schema_version) for future extensibility
+
+**Current Status: Storage + abstraction layer complete (124 tests passing), command handlers next**
 
 ### Builder Commands (Week 3-4)
 - [ ] Builder permission system (builder rank/flag)

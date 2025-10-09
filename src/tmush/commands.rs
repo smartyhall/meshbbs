@@ -12,7 +12,7 @@ use crate::config::Config;
 use crate::logutil::escape_log;
 use crate::metrics;
 use crate::storage::Storage;
-use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord, REQUIRED_START_LOCATION_ID};
+use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord};
 use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection};
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
@@ -174,6 +174,11 @@ impl TinyMushProcessor {
     /// Get the store reference (assumes store is already initialized)
     fn store(&self) -> &TinyMushStore {
         self.store.as_ref().expect("TinyMUSH store not initialized")
+    }
+
+    /// Get world configuration (assumes store is already initialized)
+    async fn get_world_config(&self) -> Result<crate::tmush::types::WorldConfig, TinyMushError> {
+        self.store().get_world_config()
     }
 
     /// Initialize a player when entering TinyMUSH and return welcome screen
@@ -1340,7 +1345,9 @@ impl TinyMushProcessor {
     /// Handle SAY command - speak to room
     async fn handle_say(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
         if text.trim().is_empty() {
-            return Ok("Say what?".to_string());
+            let store = self.get_store(config).await?;
+            let world_config = store.get_world_config()?;
+            return Ok(world_config.err_say_what);
         }
 
         let player = match self.get_or_create_player(session).await {
@@ -1369,6 +1376,8 @@ impl TinyMushProcessor {
 
     /// Handle WHISPER command - private message to another player  
     async fn handle_whisper(&mut self, session: &Session, target: String, text: String, config: &Config) -> Result<String> {
+        let world_config = self.get_world_config().await?;
+        
         if text.trim().is_empty() {
             return Ok("Whisper what?".to_string());
         }
@@ -1393,7 +1402,7 @@ impl TinyMushProcessor {
 
         if let Some(target_player) = target_found {
             if target_player.to_lowercase() == speaker.to_lowercase() {
-                return Ok("You can't whisper to yourself!".to_string());
+                return Ok(world_config.err_whisper_self);
             }
             
             Ok(format!(
@@ -1415,8 +1424,10 @@ impl TinyMushProcessor {
 
     /// Handle EMOTE command - perform an action
     async fn handle_emote(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
+        let world_config = self.get_world_config().await?;
+        
         if text.trim().is_empty() {
-            return Ok("Emote what?".to_string());
+            return Ok(world_config.err_emote_what);
         }
 
         let speaker = session.display_name();
@@ -2290,28 +2301,63 @@ impl TinyMushProcessor {
         match field {
             Some(f) => {
                 let value = match f.as_str() {
+                    // Branding
                     "welcome_message" => &world_config.welcome_message,
                     "motd" => &world_config.motd,
                     "world_name" => &world_config.world_name,
                     "world_description" => &world_config.world_description,
-                    _ => return Ok(format!("Unknown configuration field: {}\nAvailable: welcome_message, motd, world_name, world_description", f)),
+                    // Help system
+                    "help_main" => &world_config.help_main,
+                    "help_commands" => &world_config.help_commands,
+                    "help_movement" => &world_config.help_movement,
+                    "help_social" => &world_config.help_social,
+                    "help_bulletin" => &world_config.help_bulletin,
+                    "help_companion" => &world_config.help_companion,
+                    "help_mail" => &world_config.help_mail,
+                    // Error messages
+                    "err_no_exit" => &world_config.err_no_exit,
+                    "err_whisper_self" => &world_config.err_whisper_self,
+                    "err_no_shops" => &world_config.err_no_shops,
+                    "err_item_not_found" => &world_config.err_item_not_found,
+                    "err_trade_self" => &world_config.err_trade_self,
+                    "err_say_what" => &world_config.err_say_what,
+                    "err_emote_what" => &world_config.err_emote_what,
+                    "err_insufficient_funds" => &world_config.err_insufficient_funds,
+                    // Success messages
+                    "msg_deposit_success" => &world_config.msg_deposit_success,
+                    "msg_withdraw_success" => &world_config.msg_withdraw_success,
+                    "msg_buy_success" => &world_config.msg_buy_success,
+                    "msg_sell_success" => &world_config.msg_sell_success,
+                    "msg_trade_initiated" => &world_config.msg_trade_initiated,
+                    _ => return Ok(format!(
+                        "Unknown configuration field: {}\n\n\
+                        Available fields:\n\
+                        Branding: welcome_message, motd, world_name, world_description\n\
+                        Help: help_main, help_commands, help_movement, help_social, help_bulletin, help_companion, help_mail\n\
+                        Errors: err_no_exit, err_whisper_self, err_no_shops, err_item_not_found, err_trade_self, err_say_what, err_emote_what, err_insufficient_funds\n\
+                        Messages: msg_deposit_success, msg_withdraw_success, msg_buy_success, msg_sell_success, msg_trade_initiated",
+                        f
+                    )),
                 };
                 Ok(format!("{}:\n{}", f, value))
             }
             None => {
-                // Show all configuration
+                // Show summary of configuration
                 Ok(format!(
                     "=== WORLD CONFIGURATION ===\n\n\
                     World Name: {}\n\
                     Description: {}\n\n\
-                    MOTD:\n{}\n\n\
-                    Welcome Message:\n{}\n\n\
+                    Configuration Fields: 24\n\
+                    - 4 branding fields\n\
+                    - 7 help system templates\n\
+                    - 8 error message templates\n\
+                    - 5 success message templates\n\n\
+                    Use @GETCONFIG <field> to view specific field.\n\
+                    Use @SETCONFIG <field> <value> to update.\n\n\
                     Last Updated: {}\n\
                     Updated By: {}",
                     world_config.world_name,
                     world_config.world_description,
-                    world_config.motd,
-                    world_config.welcome_message,
                     world_config.updated_at.format("%Y-%m-%d %H:%M:%S"),
                     world_config.updated_by
                 ))
@@ -2332,15 +2378,19 @@ impl TinyMushProcessor {
     }
 
     /// Handle HELP command
-    async fn handle_help(&mut self, _session: &Session, topic: Option<String>, _config: &Config) -> Result<String> {
+    async fn handle_help(&mut self, _session: &Session, topic: Option<String>, config: &Config) -> Result<String> {
+        // Load world config for help text
+        let store = self.get_store(config).await?;
+        let world_config = store.get_world_config()?;
+        
         match topic.as_deref() {
-            Some("commands") | Some("COMMANDS") => Ok(self.help_commands()),
-            Some("movement") | Some("MOVEMENT") => Ok(self.help_movement()),
-            Some("social") | Some("SOCIAL") => Ok(self.help_social()),
-            Some("board") | Some("BOARD") | Some("bulletin") | Some("BULLETIN") => Ok(self.help_bulletin()),
-            Some("mail") | Some("MAIL") => Ok(self.help_mail()),
-            Some("companion") | Some("COMPANION") | Some("companions") | Some("COMPANIONS") => Ok(self.help_companion()),
-            None => Ok(self.help_main()),
+            Some("commands") | Some("COMMANDS") => Ok(world_config.help_commands),
+            Some("movement") | Some("MOVEMENT") => Ok(world_config.help_movement),
+            Some("social") | Some("SOCIAL") => Ok(world_config.help_social),
+            Some("board") | Some("BOARD") | Some("bulletin") | Some("BULLETIN") => Ok(world_config.help_bulletin),
+            Some("mail") | Some("MAIL") => Ok(world_config.help_mail),
+            Some("companion") | Some("COMPANION") | Some("companions") | Some("COMPANIONS") => Ok(world_config.help_companion),
+            None => Ok(world_config.help_main),
             Some(topic) => Ok(format!("No help available for: {}\nTry: HELP COMMANDS", topic)),
         }
     }
@@ -2876,6 +2926,8 @@ impl TinyMushProcessor {
 
     /// Handle DEPOSIT command - deposit currency to bank
     async fn handle_deposit(&mut self, session: &Session, amount_str: String, _config: &Config) -> Result<String> {
+        let world_config = self.get_world_config().await?;
+        
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
@@ -2901,7 +2953,7 @@ impl TinyMushProcessor {
         // Perform deposit via storage
         match self.store().bank_deposit(&player.username, &amount) {
             Ok(_) => {
-                Ok(format!("Deposited {:?} to bank.\nUse BALANCE to check your account.", amount))
+                Ok(world_config.msg_deposit_success.replace("{amount}", &format!("{:?}", amount)))
             },
             Err(e) => Ok(format!("Deposit failed: {}", e)),
         }
@@ -3025,6 +3077,7 @@ impl TinyMushProcessor {
 
     /// Handle TRADE command - initiate trade with another player
     async fn handle_trade(&mut self, session: &Session, target: String, _config: &Config) -> Result<String> {
+        let world_config = self.get_world_config().await?;
         let username = session.node_id.to_string();
         let target_lower = target.to_ascii_lowercase();
 
@@ -3061,7 +3114,7 @@ impl TinyMushProcessor {
         let trade_session = crate::tmush::types::TradeSession::new(&username, &target);
         self.store().put_trade_session(&trade_session)?;
 
-        Ok(format!("Trade initiated with {}!\nUse OFFER to add items/currency.\nType ACCEPT when ready.", target))
+        Ok(world_config.msg_trade_initiated.replace("{target}", &target))
     }
 
     /// Handle OFFER command - offer item or currency in active trade

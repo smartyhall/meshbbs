@@ -38,4 +38,8 @@ pub enum TinyMushError {
     /// Transaction not found
     #[error("transaction not found")]
     TransactionNotFound,
+
+    /// UTF-8 encoding error
+    #[error("utf-8 error: {0}")]
+    Utf8(#[from] std::str::Utf8Error),
 }
