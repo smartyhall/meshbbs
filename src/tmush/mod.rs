@@ -3,6 +3,7 @@
 //! canonical world seeding helpers so higher phases can focus on command
 //! routing and session plumbing.
 
+pub mod achievement;
 pub mod commands;
 pub mod currency;
 pub mod errors;
@@ -15,6 +16,10 @@ pub mod storage;
 pub mod tutorial;
 pub mod types;
 
+pub use achievement::{
+    award_achievement, check_trigger, get_achievements_by_category, get_available_achievements,
+    get_earned_achievements, update_achievement_progress,
+};
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};
 pub use currency::{
     convert_decimal_to_multi_tier, convert_multi_tier_to_decimal, format_currency,
