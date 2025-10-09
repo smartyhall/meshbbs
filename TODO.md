@@ -386,7 +386,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Test RELEASE companion flow and state cleanup
   - [x] Test full lifecycle: discover → tame → care → move → release
   - [x] 6 integration tests covering end-to-end flows
-- **Current: 334 tests passing** (98 unit + 226 integration + 10 companion unit)
+- **Current: 343 tests passing** (98 unit + 235 integration + 10 companion unit)
 
 **Companion System Summary:**
 - **10 commands**: COMPANION (7 subcommands), FEED, PET, MOUNT, DISMOUNT, TRAIN
@@ -396,6 +396,26 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - **Loyalty/happiness** mechanics with stat decay
 - **Inventory storage** with type-specific capacity
 - **Help integration**: HELP COMPANION topic
+
+---
+
+## Phase 6.5 — World Configuration & Customization ✅ COMPLETE
+(Ref: Design principle - mutable strings should be database-stored, not hardcoded)
+
+### World Configuration System (commit c3f0303)
+- [x] WorldConfig data structure (welcome_message, motd, world_name, world_description)
+- [x] TREE_CONFIG storage tree with get/put/update methods
+- [x] @SETCONFIG <field> <value> - update config (with audit trail)
+- [x] @GETCONFIG [field] - view config (all or specific field)
+- [x] Tutorial auto-start uses configurable welcome message
+- [x] Audit tracking (updated_by, updated_at timestamps)
+- [x] Integration tests (9 tests covering all operations)
+
+**World Config Benefits:**
+- World creators can customize branding without source code edits
+- Audit trail tracks who changed what and when
+- Supports multi-world deployment with different configurations
+- Foundation for future customizable game text (error messages, prompts, etc.)
 
 ---
 
