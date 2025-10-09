@@ -216,6 +216,206 @@ impl NpcRecord {
     }
 }
 
+// ============================================================================
+// Companion System (Phase 6 Week 4)
+// ============================================================================
+
+/// Companion types available in the game
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanionType {
+    Horse,
+    Dog,
+    Cat,
+    Familiar,
+    Mercenary,
+    Construct,
+}
+
+/// Companion behaviors that trigger automatically
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompanionBehavior {
+    /// Automatically follow owner between rooms
+    AutoFollow,
+    /// Occasionally say idle messages
+    IdleChatter { messages: Vec<String> },
+    /// Alert when danger is nearby
+    AlertDanger,
+    /// Assist in combat
+    CombatAssist { damage_bonus: u32 },
+    /// Provide healing over time
+    Healing { heal_amount: u32, cooldown_seconds: u64 },
+    /// Carry extra items (saddlebags, backpacks)
+    ExtraStorage { capacity: u32 },
+    /// Boost specific skill
+    SkillBoost { skill: String, bonus: u32 },
+}
+
+/// Companion state and stats
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CompanionRecord {
+    pub id: String,
+    pub name: String,
+    pub companion_type: CompanionType,
+    pub description: String,
+    /// Owner's username (None if unowned/wild)
+    pub owner: Option<String>,
+    /// Current room location
+    pub room_id: String,
+    /// Loyalty level (0-100)
+    pub loyalty: u32,
+    /// Happiness level (0-100)
+    pub happiness: u32,
+    /// Last time companion was fed
+    pub last_fed: Option<DateTime<Utc>>,
+    /// Active behaviors
+    #[serde(default)]
+    pub behaviors: Vec<CompanionBehavior>,
+    /// Companion's inventory (for storage behaviors)
+    #[serde(default)]
+    pub inventory: Vec<String>,
+    /// Whether player is currently mounted (for horses)
+    #[serde(default)]
+    pub is_mounted: bool,
+    pub created_at: DateTime<Utc>,
+    pub schema_version: u8,
+}
+
+impl CompanionRecord {
+    pub fn new(id: &str, name: &str, companion_type: CompanionType, room_id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            companion_type,
+            description: Self::default_description(companion_type),
+            owner: None,
+            room_id: room_id.to_string(),
+            loyalty: 50,
+            happiness: 100,
+            last_fed: None,
+            behaviors: Self::default_behaviors(companion_type),
+            inventory: Vec::new(),
+            is_mounted: false,
+            created_at: Utc::now(),
+            schema_version: 1,
+        }
+    }
+
+    fn default_description(companion_type: CompanionType) -> String {
+        match companion_type {
+            CompanionType::Horse => "A sturdy horse with a gentle temperament.".to_string(),
+            CompanionType::Dog => "A loyal dog with bright, intelligent eyes.".to_string(),
+            CompanionType::Cat => "An independent cat with soft fur.".to_string(),
+            CompanionType::Familiar => "A magical familiar crackling with arcane energy.".to_string(),
+            CompanionType::Mercenary => "A skilled warrior ready for combat.".to_string(),
+            CompanionType::Construct => "A mechanical construct powered by ancient magic.".to_string(),
+        }
+    }
+
+    fn default_behaviors(companion_type: CompanionType) -> Vec<CompanionBehavior> {
+        match companion_type {
+            CompanionType::Horse => vec![
+                CompanionBehavior::AutoFollow,
+                CompanionBehavior::ExtraStorage { capacity: 20 },
+            ],
+            CompanionType::Dog => vec![
+                CompanionBehavior::AutoFollow,
+                CompanionBehavior::AlertDanger,
+                CompanionBehavior::IdleChatter {
+                    messages: vec!["*wags tail*".to_string(), "*barks happily*".to_string()],
+                },
+            ],
+            CompanionType::Cat => vec![
+                CompanionBehavior::IdleChatter {
+                    messages: vec!["*purrs contentedly*".to_string(), "*meows softly*".to_string()],
+                },
+            ],
+            CompanionType::Familiar => vec![
+                CompanionBehavior::AutoFollow,
+                CompanionBehavior::SkillBoost {
+                    skill: "magic".to_string(),
+                    bonus: 10,
+                },
+            ],
+            CompanionType::Mercenary => vec![
+                CompanionBehavior::AutoFollow,
+                CompanionBehavior::CombatAssist { damage_bonus: 15 },
+            ],
+            CompanionType::Construct => vec![
+                CompanionBehavior::AutoFollow,
+                CompanionBehavior::ExtraStorage { capacity: 30 },
+                CompanionBehavior::CombatAssist { damage_bonus: 10 },
+            ],
+        }
+    }
+
+    pub fn with_owner(mut self, owner: &str) -> Self {
+        self.owner = Some(owner.to_string());
+        self
+    }
+
+    pub fn with_description(mut self, description: &str) -> Self {
+        self.description = description.to_string();
+        self
+    }
+
+    pub fn add_behavior(mut self, behavior: CompanionBehavior) -> Self {
+        self.behaviors.push(behavior);
+        self
+    }
+
+    /// Check if companion needs feeding (>24 hours since last_fed)
+    pub fn needs_feeding(&self) -> bool {
+        if let Some(last_fed) = self.last_fed {
+            let hours_since_fed = Utc::now().signed_duration_since(last_fed).num_hours();
+            hours_since_fed > 24
+        } else {
+            true // Never fed
+        }
+    }
+
+    /// Feed the companion, increasing happiness
+    pub fn feed(&mut self) -> u32 {
+        self.last_fed = Some(Utc::now());
+        let happiness_gain = if self.happiness < 50 { 20 } else { 10 };
+        self.happiness = (self.happiness + happiness_gain).min(100);
+        happiness_gain
+    }
+
+    /// Pet/interact with companion, increasing loyalty
+    pub fn pet(&mut self) -> u32 {
+        let loyalty_gain = if self.loyalty < 50 { 5 } else { 2 };
+        self.loyalty = (self.loyalty + loyalty_gain).min(100);
+        loyalty_gain
+    }
+
+    /// Get happiness decay rate (decreases over time if not fed)
+    pub fn apply_happiness_decay(&mut self) {
+        if self.needs_feeding() {
+            self.happiness = self.happiness.saturating_sub(10);
+        }
+    }
+
+    /// Check if companion has auto-follow behavior
+    pub fn has_auto_follow(&self) -> bool {
+        self.behaviors
+            .iter()
+            .any(|b| matches!(b, CompanionBehavior::AutoFollow))
+    }
+
+    /// Get extra storage capacity from behaviors
+    pub fn storage_capacity(&self) -> u32 {
+        self.behaviors
+            .iter()
+            .filter_map(|b| match b {
+                CompanionBehavior::ExtraStorage { capacity } => Some(*capacity),
+                _ => None,
+            })
+            .sum()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RoomRecord {
     pub id: String,
@@ -686,6 +886,12 @@ pub struct PlayerRecord {
     /// Currently equipped title (optional)
     #[serde(default)]
     pub equipped_title: Option<String>,
+    /// Active companions (companion IDs)
+    #[serde(default)]
+    pub companions: Vec<String>,
+    /// Currently mounted companion (if any)
+    #[serde(default)]
+    pub mounted_companion: Option<String>,
     pub schema_version: u8,
 }
 
@@ -709,6 +915,8 @@ impl PlayerRecord {
             quests: Vec::new(),
             achievements: Vec::new(),
             equipped_title: None,
+            companions: Vec::new(),
+            mounted_companion: None,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
