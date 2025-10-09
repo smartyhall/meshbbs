@@ -1,6 +1,6 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-08 (Phase 6 Week 2 COMPLETE - Quest Engine)
+**Last Updated**: 2025-10-08 (Phase 6 Week 3 COMPLETE - Achievement & Title System)
 
 ## Development Standards
 
@@ -285,15 +285,52 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [x] Bug fix: complete_quest now distributes rewards before marking complete
 - **Total: 298 tests passing** (90 unit + 208 integration)
 
-### Achievement & Title System (Week 3)
-- [ ] Achievement data structures (triggers, rewards, titles)
-- [ ] Achievement progress tracking
-- [ ] Title system (earned, equipped, displayed)
-- [ ] Achievement announcement messaging (< 200 bytes)
-- [ ] ACHIEVEMENTS command (list earned/available)
-- [ ] TITLE command (list, equip titles)
-- [ ] Achievement persistence
-- [ ] Leaderboard integration
+### ✅ Achievement & Title System (Week 3) — COMPLETE
+- [x] Achievement data structures (AchievementCategory, AchievementTrigger, AchievementRecord, PlayerAchievement) — commit e444654
+  - [x] 7 categories: Combat, Exploration, Social, Economic, Crafting, Quest, Special
+  - [x] 10 trigger types: KillCount, RoomVisits, FriendCount, QuestCompletion, CurrencyEarned, CraftCount, TradeCount, MessagesSent, VisitLocation, CompleteQuest
+  - [x] Optional title awards, hidden achievement support
+- [x] Achievement storage layer (put/get/list/filter/delete methods) — commit 9bb316a
+- [x] Starter achievement content (15 achievements across all categories) — commit 9bb316a
+  - [x] Combat: First Blood, Veteran, Legendary Warrior
+  - [x] Exploration: Wanderer, Explorer, Cartographer
+  - [x] Social: Friendly, Popular, Chatterbox
+  - [x] Economic: Merchant, Wealthy
+  - [x] Quest: Quest Beginner, Quest Veteran
+  - [x] Special: Town Founder, Network Pioneer
+- [x] Achievement tracking logic (6 functions, 8 unit tests) — commit 358e27f
+  - [x] check_trigger - automatic progress from game events
+  - [x] update_achievement_progress - manual progress updates
+  - [x] award_achievement - immediate grant (bypass progress)
+  - [x] get_earned_achievements - retrieval filtering
+  - [x] get_available_achievements - visibility rules
+  - [x] get_achievements_by_category - category filtering
+- [x] ACHIEVEMENTS command with subcommands — commit 2141149
+  - [x] ACHIEVEMENTS LIST (default) - all achievements with progress
+  - [x] ACHIEVEMENTS EARNED - completed only
+  - [x] ACHIEVEMENTS <CATEGORY> - filter by Combat/Exploration/etc
+- [x] TITLE command with subcommands — commit 2141149
+  - [x] TITLE LIST (default) - show unlocked titles
+  - [x] TITLE EQUIP <name> - equip title
+  - [x] TITLE UNEQUIP - remove title
+- [x] Title system integration with PlayerRecord.equipped_title
+- [x] Progress percentage display and completion markers
+- [x] Hidden achievement visibility (hidden until earned)
+- [x] Comprehensive integration tests (13 tests) — commit 2836066
+  - [x] test_achievement_earning_flow
+  - [x] test_incremental_progress
+  - [x] test_hidden_achievements
+  - [x] test_title_awarding
+  - [x] test_title_equipping
+  - [x] test_category_filtering
+  - [x] test_social_achievements
+  - [x] test_economic_achievements
+  - [x] test_quest_achievements
+  - [x] test_special_achievements
+  - [x] test_achievement_command_output_size
+  - [x] test_multiple_simultaneous_achievements
+  - [x] test_achievement_persistence
+- **Total: 318 tests passing** (98 unit + 220 integration)
 
 ### Companion NPC System (Week 4-5)
 - [ ] Companion types: horses, dogs, cats, familiars, mercenaries, constructs
