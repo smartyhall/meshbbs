@@ -280,6 +280,11 @@ impl TinyMushProcessor {
             TinyMushCommand::Abandon(quest_id) => self.handle_abandon(session, quest_id, config).await,
             TinyMushCommand::Achievements(subcommand) => self.handle_achievements(session, subcommand, config).await,
             TinyMushCommand::Title(subcommand) => self.handle_title(session, subcommand, config).await,
+            TinyMushCommand::Companion(subcommand) => self.handle_companion(session, subcommand, config).await,
+            TinyMushCommand::Feed(name) => self.handle_feed(session, name, config).await,
+            TinyMushCommand::Pet(name) => self.handle_pet(session, name, config).await,
+            TinyMushCommand::Mount(name) => self.handle_mount(session, name, config).await,
+            TinyMushCommand::Dismount => self.handle_dismount(session, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -603,6 +608,37 @@ impl TinyMushProcessor {
                     TinyMushCommand::Title(None)
                 }
             },
+
+            // Companion commands (Phase 6 Week 4)
+            "COMPANION" | "COMP" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Companion(Some(parts[1..].join(" ")))
+                } else {
+                    TinyMushCommand::Companion(None)
+                }
+            },
+            "FEED" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Feed(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: FEED <companion>".to_string())
+                }
+            },
+            "PET" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Pet(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: PET <companion>".to_string())
+                }
+            },
+            "MOUNT" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Mount(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: MOUNT <horse>".to_string())
+                }
+            },
+            "DISMOUNT" => TinyMushCommand::Dismount,
 
             // Admin/debug
             "DEBUG" => {
@@ -1914,6 +1950,141 @@ impl TinyMushProcessor {
                 Ok(format!("Title equipped: {}", title))
             }
             _ => Ok("Usage: TITLE [LIST|EQUIP <name>|UNEQUIP]".to_string()),
+        }
+    }
+
+    async fn handle_companion(
+        &mut self,
+        session: &Session,
+        subcommand: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::companion::{tame_companion, find_companion_in_room, format_companion_list, format_companion_status, get_player_companions};
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        let player = self.get_or_create_player(session).await?;
+        let room_id = &player.current_room;
+
+        match subcommand.as_deref() {
+            None | Some("LIST") => {
+                // List player's companions
+                let companions = get_player_companions(self.store(), username)?;
+                if companions.is_empty() {
+                    return Ok("You don't have any companions.\nTAME a wild companion to add them to your party!".to_string());
+                }
+                Ok(format_companion_list(&companions))
+            }
+            Some(cmd) if cmd.starts_with("TAME ") => {
+                // Tame a wild companion
+                let name = cmd.strip_prefix("TAME ").unwrap().trim();
+                
+                match find_companion_in_room(self.store(), room_id, name)? {
+                    Some(companion) if companion.owner.is_none() => {
+                        tame_companion(self.store(), username, &companion.id)?;
+                        // Fetch updated companion to show loyalty
+                        let updated = self.store().get_companion(&companion.id)?;
+                        Ok(format!("You've tamed {}!\nLoyalty: {}/100", 
+                            updated.name, updated.loyalty))
+                    }
+                    Some(_) => Ok(format!("{} already has an owner.", name)),
+                    None => Ok(format!("There's no companion named '{}' here.", name)),
+                }
+            }
+            Some(name) => {
+                // Show companion status
+                let companions = get_player_companions(self.store(), username)?;
+                if let Some(comp) = companions.iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+                    Ok(format_companion_status(comp))
+                } else {
+                    Ok(format!("You don't have a companion named '{}'.", name))
+                }
+            }
+        }
+    }
+
+    async fn handle_feed(
+        &mut self,
+        session: &Session,
+        name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::companion::{feed_companion, get_player_companions};
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        let companions = get_player_companions(self.store(), username)?;
+        
+        if let Some(comp) = companions.iter().find(|c| c.name.eq_ignore_ascii_case(&name)) {
+            let gain = feed_companion(self.store(), username, &comp.id)?;
+            // Fetch updated companion to show current happiness
+            let updated = self.store().get_companion(&comp.id)?;
+            Ok(format!("You feed {}. Happiness +{} ({}/100)", 
+                updated.name, gain, updated.happiness))
+        } else {
+            Ok(format!("You don't have a companion named '{}'.", name))
+        }
+    }
+
+    async fn handle_pet(
+        &mut self,
+        session: &Session,
+        name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::companion::{pet_companion, get_player_companions};
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        let companions = get_player_companions(self.store(), username)?;
+        
+        if let Some(comp) = companions.iter().find(|c| c.name.eq_ignore_ascii_case(&name)) {
+            let gain = pet_companion(self.store(), username, &comp.id)?;
+            // Fetch updated companion to show current loyalty
+            let updated = self.store().get_companion(&comp.id)?;
+            Ok(format!("You pet {}. Loyalty +{} ({}/100)", 
+                updated.name, gain, updated.loyalty))
+        } else {
+            Ok(format!("You don't have a companion named '{}'.", name))
+        }
+    }
+
+    async fn handle_mount(
+        &mut self,
+        session: &Session,
+        name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::companion::{mount_companion, get_player_companions};
+        use crate::tmush::types::CompanionType;
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        let companions = get_player_companions(self.store(), username)?;
+        
+        if let Some(comp) = companions.iter().find(|c| c.name.eq_ignore_ascii_case(&name)) {
+            if comp.companion_type != CompanionType::Horse {
+                return Ok(format!("{} is not mountable.", comp.name));
+            }
+            if comp.is_mounted {
+                return Ok(format!("You're already mounted on {}.", comp.name));
+            }
+            
+            mount_companion(self.store(), username, &comp.id)?;
+            Ok(format!("You mount {}. Ready to ride!", comp.name))
+        } else {
+            Ok(format!("You don't have a companion named '{}'.", name))
+        }
+    }
+
+    async fn handle_dismount(
+        &mut self,
+        session: &Session,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::companion::dismount_companion;
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        
+        match dismount_companion(self.store(), username) {
+            Ok(companion_name) => Ok(format!("You dismount from {}.", companion_name)),
+            Err(_) => Ok("You're not currently mounted.".to_string()),
         }
     }
 
