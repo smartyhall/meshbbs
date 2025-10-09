@@ -5,6 +5,7 @@
 
 pub mod achievement;
 pub mod commands;
+pub mod companion;
 pub mod currency;
 pub mod errors;
 pub mod inventory;
@@ -21,6 +22,11 @@ pub use achievement::{
     get_earned_achievements, update_achievement_progress,
 };
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};
+pub use companion::{
+    auto_follow_companions, dismount_companion, feed_companion, find_companion_in_room,
+    format_companion_list, format_companion_status, get_player_companions, mount_companion,
+    move_companion_to_room, pet_companion, release_companion, tame_companion,
+};
 pub use currency::{
     convert_decimal_to_multi_tier, convert_multi_tier_to_decimal, format_currency,
     parse_currency, STANDARD_CONVERSION_RATIO,
