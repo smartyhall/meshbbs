@@ -79,6 +79,10 @@ pub enum TinyMushCommand {
     Tutorial(Option<String>), // TUTORIAL, TUTORIAL SKIP, TUTORIAL RESTART - manage tutorial
     Talk(String),          // TALK npc - interact with NPC
     
+    // Quest commands (Phase 6 Week 2)
+    Quest(Option<String>), // QUEST, QUEST LIST, QUEST ACCEPT id - manage quests
+    Abandon(String),       // ABANDON quest_id - abandon active quest
+    
     // Companion commands (Phase 6 feature)
     Companion(Option<String>), // COMPANION, COMPANION horse - manage companions
     Feed(String),           // FEED horse - feed companion
@@ -268,6 +272,8 @@ impl TinyMushProcessor {
             TinyMushCommand::TradeHistory => self.handle_trade_history(session, config).await,
             TinyMushCommand::Tutorial(subcommand) => self.handle_tutorial(session, subcommand, config).await,
             TinyMushCommand::Talk(npc) => self.handle_talk(session, npc, config).await,
+            TinyMushCommand::Quest(subcommand) => self.handle_quest(session, subcommand, config).await,
+            TinyMushCommand::Abandon(quest_id) => self.handle_abandon(session, quest_id, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -557,6 +563,22 @@ impl TinyMushProcessor {
                     TinyMushCommand::Talk(parts[1].to_uppercase())
                 } else {
                     TinyMushCommand::Unknown("Usage: TALK <npc>".to_string())
+                }
+            },
+
+            // Quest commands (Phase 6 Week 2)
+            "QUEST" | "QUESTS" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Quest(Some(parts[1..].join(" ").to_uppercase()))
+                } else {
+                    TinyMushCommand::Quest(None)
+                }
+            },
+            "ABANDON" | "ABAND" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Abandon(parts[1].to_lowercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: ABANDON <quest_id>".to_string())
                 }
             },
 
@@ -1522,6 +1544,124 @@ impl TinyMushProcessor {
             .unwrap_or("...");
 
         Ok(format!("{}: '{}'", npc.name, dialog))
+    }
+
+    /// Handle QUEST command - manage quests (list, accept, status)
+    async fn handle_quest(
+        &mut self,
+        session: &Session,
+        subcommand: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::quest::{
+            accept_quest, can_accept_quest, format_quest_list, format_quest_status,
+            get_active_quests, get_available_quests,
+        };
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        
+        match subcommand.as_deref() {
+            None => {
+                // Show active quests
+                let active = get_active_quests(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get active quests: {}", e))?;
+                
+                if active.is_empty() {
+                    return Ok("You have no active quests.\nUse QUEST LIST to see available quests.".to_string());
+                }
+
+                let mut output = String::from("=== ACTIVE QUESTS ===\n");
+                for (idx, player_quest) in active.iter().enumerate() {
+                    let quest = self.store().get_quest(&player_quest.quest_id)
+                        .map_err(|e| anyhow::anyhow!("Failed to get quest: {}", e))?;
+                    let all_done = player_quest.all_objectives_complete();
+                    let status_char = if all_done { "!" } else { " " };
+                    output.push_str(&format!(
+                        "{}. [{}] {} - {} obj.\n",
+                        idx + 1,
+                        status_char,
+                        quest.name,
+                        player_quest.objectives.len()
+                    ));
+                }
+                output.push_str("\nQUEST <id> - View details\nQUEST LIST - Available quests");
+                Ok(output)
+            }
+            Some(ref cmd) if cmd.starts_with("LIST") => {
+                // List available quests
+                let available = get_available_quests(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get available quests: {}", e))?;
+                
+                let messages = format_quest_list(self.store(), &available)
+                    .map_err(|e| anyhow::anyhow!("Failed to format quest list: {}", e))?;
+                
+                Ok(messages.join("\n"))
+            }
+            Some(ref cmd) if cmd.starts_with("ACCEPT ") => {
+                // Accept a quest by ID
+                let quest_id = cmd.strip_prefix("ACCEPT ").unwrap().trim().to_lowercase();
+                
+                if !can_accept_quest(self.store(), username, &quest_id)
+                    .map_err(|e| anyhow::anyhow!("Failed to check quest: {}", e))? {
+                    return Ok("Cannot accept that quest (already accepted/completed, or prerequisites not met).".to_string());
+                }
+                
+                accept_quest(self.store(), username, &quest_id)
+                    .map_err(|e| anyhow::anyhow!("Failed to accept quest: {}", e))?;
+                
+                let quest = self.store().get_quest(&quest_id)
+                    .map_err(|e| anyhow::anyhow!("Failed to get quest: {}", e))?;
+                
+                Ok(format!(
+                    "Quest accepted: {}\n{}\nObjectives: {}\n\nUse QUEST to view progress.",
+                    quest.name,
+                    quest.description,
+                    quest.objectives.len()
+                ))
+            }
+            Some(ref cmd) if cmd.starts_with("COMPLETE") || cmd.starts_with("COMP") => {
+                // Complete a quest
+                Ok("Quest completion is automatic when all objectives are met.\nTalk to the quest giver to turn in.".to_string())
+            }
+            Some(quest_id) => {
+                // Show quest details by ID
+                let quest_id = quest_id.trim().to_lowercase();
+                let active = get_active_quests(self.store(), username)
+                    .map_err(|e| anyhow::anyhow!("Failed to get active quests: {}", e))?;
+                
+                let player_quest = active.iter()
+                    .find(|pq| pq.quest_id == quest_id);
+                
+                if let Some(pq) = player_quest {
+                    let status = format_quest_status(self.store(), &quest_id, pq)
+                        .map_err(|e| anyhow::anyhow!("Failed to format quest status: {}", e))?;
+                    Ok(status)
+                } else {
+                    Ok(format!("Quest '{}' not found in your active quests.", quest_id))
+                }
+            }
+        }
+    }
+
+    /// Handle ABANDON command - abandon an active quest
+    async fn handle_abandon(
+        &mut self,
+        session: &Session,
+        quest_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::quest::abandon_quest;
+
+        let username = session.username.as_deref().unwrap_or("guest");
+        
+        match abandon_quest(self.store(), username, &quest_id) {
+            Ok(_) => {
+                let quest = self.store().get_quest(&quest_id)
+                    .map_err(|e| anyhow::anyhow!("Failed to get quest: {}", e))?;
+                Ok(format!("You have abandoned the quest: {}", quest.name))
+            }
+            Err(e) => Ok(format!("Failed to abandon quest: {}", e)),
+        }
     }
 
     /// Handle HELP command

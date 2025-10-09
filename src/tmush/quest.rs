@@ -5,7 +5,7 @@
 
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
-use crate::tmush::types::{CurrencyAmount, InventoryConfig, ObjectiveType, PlayerQuest, TransactionReason};
+use crate::tmush::types::{InventoryConfig, ObjectiveType, PlayerQuest, TransactionReason};
 
 /// Check if player can accept a quest (prerequisites met)
 pub fn can_accept_quest(
@@ -260,7 +260,7 @@ pub fn format_quest_list(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tmush::types::{ObjectiveType, QuestObjective, QuestRecord};
+    use crate::tmush::types::{CurrencyAmount, ObjectiveType, QuestObjective, QuestRecord};
     use tempfile::TempDir;
 
     fn setup_test_store() -> (TempDir, TinyMushStore) {
