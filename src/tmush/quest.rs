@@ -260,12 +260,16 @@ pub fn format_quest_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tmush::storage::TinyMushStoreBuilder;
     use crate::tmush::types::{CurrencyAmount, ObjectiveType, QuestObjective, QuestRecord};
     use tempfile::TempDir;
 
     fn setup_test_store() -> (TempDir, TinyMushStore) {
         let dir = TempDir::new().expect("tempdir");
-        let store = TinyMushStore::open(dir.path()).expect("store");
+        let store = TinyMushStoreBuilder::new(dir.path())
+            .without_world_seed()
+            .open()
+            .expect("store");
         (dir, store)
     }
 

@@ -103,6 +103,7 @@ impl TinyMushStore {
 
         if seed_world {
             store.seed_world_if_needed()?;
+            store.seed_quests_if_needed()?;
         }
 
         Ok(store)
@@ -390,6 +391,19 @@ impl TinyMushStore {
         let mut inserted = 0usize;
         for room in rooms {
             self.put_room(room)?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
+    pub fn seed_quests_if_needed(&self) -> Result<usize, TinyMushError> {
+        if self.quests.iter().next().is_some() {
+            return Ok(0);
+        }
+        let quests = crate::tmush::seed_starter_quests();
+        let mut inserted = 0usize;
+        for quest in quests {
+            self.put_quest(quest)?;
             inserted += 1;
         }
         Ok(inserted)
@@ -1370,6 +1384,30 @@ mod tests {
         for room_id in OLD_TOWNE_WORLD_ROOM_IDS {
             store.get_room(room_id).expect("room persists");
         }
+    }
+
+    #[test]
+    fn seeding_quests_only_happens_once() {
+        let dir = TempDir::new().expect("tempdir");
+        {
+            let store = TinyMushStoreBuilder::new(dir.path()).open().expect("store");
+            // Verify starter quests were seeded
+            let quest_ids = store.list_quest_ids().expect("list quests");
+            assert!(!quest_ids.is_empty(), "should have starter quests");
+            assert!(quest_ids.contains(&"welcome_towne".to_string()));
+            assert!(quest_ids.contains(&"market_exploration".to_string()));
+            assert!(quest_ids.contains(&"network_explorer".to_string()));
+        }
+
+        // Reopen and verify quests persist and don't get re-seeded
+        let store = TinyMushStoreBuilder::new(dir.path())
+            .without_world_seed()
+            .open()
+            .expect("reopen store");
+        let count = store.seed_quests_if_needed().expect("seed check");
+        assert_eq!(count, 0, "should not reseed when quests already exist");
+        let quest_ids = store.list_quest_ids().expect("list quests");
+        assert_eq!(quest_ids.len(), 3, "should still have 3 quests");
     }
 
     #[test]

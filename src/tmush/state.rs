@@ -135,3 +135,97 @@ fresh bread mingles with solder flux drifting from a repair booth.",
 
     rooms
 }
+
+/// Sample starter quests for Phase 6 Week 2
+///
+/// These quests demonstrate the quest system functionality and provide
+/// new players with guided activities to explore Old Towne Mesh.
+pub fn seed_starter_quests() -> Vec<crate::tmush::types::QuestRecord> {
+    use crate::tmush::types::{CurrencyAmount, ObjectiveType, QuestObjective, QuestRecord};
+
+    let mut quests = Vec::new();
+
+    // Quest 1: Welcome to Old Towne (beginner)
+    let welcome_quest = QuestRecord::new(
+        "welcome_towne",
+        "Welcome to Old Towne",
+        "Explore the basics of Old Towne Mesh and meet important NPCs.",
+        "mayor_thompson",
+        1,
+    )
+    .with_objective(QuestObjective::new(
+        "Visit the Town Square",
+        ObjectiveType::VisitLocation {
+            room_id: "town_square".to_string(),
+        },
+        1,
+    ))
+    .with_objective(QuestObjective::new(
+        "Visit the Mesh Museum",
+        ObjectiveType::VisitLocation {
+            room_id: "mesh_museum".to_string(),
+        },
+        1,
+    ))
+    .with_objective(QuestObjective::new(
+        "Talk to Mayor Thompson",
+        ObjectiveType::TalkToNpc {
+            npc_id: "mayor_thompson".to_string(),
+        },
+        1,
+    ))
+    .with_reward_currency(CurrencyAmount::Decimal { minor_units: 1000 }) // $10 or 100cp
+    .with_reward_experience(50)
+    .with_reward_item("town_badge");
+    quests.push(welcome_quest);
+
+    // Quest 2: Explore the Markets (requires quest 1)
+    let market_quest = QuestRecord::new(
+        "market_exploration",
+        "Market Exploration",
+        "Visit the South Market and learn about trading.",
+        "mayor_thompson",
+        2,
+    )
+    .with_objective(QuestObjective::new(
+        "Visit South Market",
+        ObjectiveType::VisitLocation {
+            room_id: "south_market".to_string(),
+        },
+        1,
+    ))
+    .with_objective(QuestObjective::new(
+        "Return to Town Square",
+        ObjectiveType::VisitLocation {
+            room_id: "town_square".to_string(),
+        },
+        1,
+    ))
+    .with_prerequisite("welcome_towne")
+    .with_reward_currency(CurrencyAmount::Decimal { minor_units: 1500 }) // $15 or 150cp
+    .with_reward_experience(75);
+    quests.push(market_quest);
+
+    // Quest 3: Network Explorer (advanced, requires quest 2)
+    let explorer_quest = QuestRecord::new(
+        "network_explorer",
+        "Network Explorer",
+        "Chart the full extent of Old Towne Mesh.",
+        "mayor_thompson",
+        3,
+    )
+    .with_objective(QuestObjective::new(
+        "Visit all 7 locations",
+        ObjectiveType::VisitLocation {
+            room_id: "north_gate".to_string(),
+        },
+        1,
+    ))
+    .with_prerequisite("market_exploration")
+    .with_reward_currency(CurrencyAmount::Decimal { minor_units: 2500 }) // $25 or 250cp
+    .with_reward_experience(150)
+    .with_reward_item("explorer_compass");
+    quests.push(explorer_quest);
+
+    quests
+}
