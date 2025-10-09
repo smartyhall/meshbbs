@@ -364,12 +364,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] PET <companion> - increase loyalty (shows gain +X)
   - [x] MOUNT <companion> - mount horse (type checking)
   - [x] DISMOUNT - dismount from horse (returns name)
-- [ ] Extended companion commands (Step 5 continued)
-  - [ ] TRAIN <companion> <skill> - skill development system
-  - [ ] COMPANION STAY - leave companion in current room
-  - [ ] COMPANION COME - summon companion to player
-  - [ ] COMPANION INVENTORY - view companion's carried items
-  - [ ] COMPANION RELEASE <name> - release companion back to wild
+- [x] Extended companion commands (Step 5 continued) — commit b0a58c2
+  - [x] TRAIN <companion> <skill> - skill development system with type-specific skills
+  - [x] COMPANION STAY - toggle off auto-follow behavior
+  - [x] COMPANION COME - summon companions to player location
+  - [x] COMPANION INVENTORY/INV - view companion storage
+  - [x] COMPANION RELEASE <name> - release companion back to wild
 - [ ] Integration tests (Step 6)
   - [ ] Test taming wild companions
   - [ ] Test feeding/petting mechanics and stat gains

@@ -2238,6 +2238,7 @@ impl TinyMushProcessor {
             Some("social") | Some("SOCIAL") => Ok(self.help_social()),
             Some("board") | Some("BOARD") | Some("bulletin") | Some("BULLETIN") => Ok(self.help_bulletin()),
             Some("mail") | Some("MAIL") => Ok(self.help_mail()),
+            Some("companion") | Some("COMPANION") | Some("companions") | Some("COMPANIONS") => Ok(self.help_companion()),
             None => Ok(self.help_main()),
             Some(topic) => Ok(format!("No help available for: {}\nTry: HELP COMMANDS", topic)),
         }
@@ -2552,6 +2553,20 @@ impl TinyMushProcessor {
         "READ <id> - read\n" +
         "Use at Town Square\n" +
         "Max: 50 char subj, 300 msg"
+    }
+
+    /// Companion commands help
+    pub fn help_companion(&self) -> String {
+        "=COMPANIONS=\n".to_string() +
+        "COMP [LIST] - your pets\n" +
+        "COMP TAME <name> - claim\n" +
+        "COMP <name> - status\n" +
+        "COMP RELEASE <name> - free\n" +
+        "COMP STAY/COME - control\n" +
+        "COMP INV - storage\n" +
+        "FEED/PET <name> - care\n" +
+        "MOUNT/DISMOUNT - riding\n" +
+        "TRAIN <name> <skill> - teach"
     }
 
     /// Handle MAIL command - view mail folders
