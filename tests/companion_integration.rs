@@ -97,3 +97,43 @@ fn test_feed_and_pet_stat_gains() {
     let after_feed = store.get_companion(&companion.id).unwrap();
     assert_eq!(after_feed.happiness, 100, "Happiness caps at 100");
 }
+
+#[test]
+fn test_mount_and_dismount_horses() {
+    let store = setup_store();
+    
+    // Setup: Tame the horse at south_market
+    let horse = find_companion_in_room(&store, "south_market", "Gentle Mare")
+        .unwrap()
+        .unwrap();
+    tame_companion(&store, "testuser", &horse.id).unwrap();
+    
+    use meshbbs::tmush::companion::{mount_companion, dismount_companion};
+    use meshbbs::tmush::types::CompanionType;
+    
+    // Verify it's a horse
+    let companion = store.get_companion(&horse.id).unwrap();
+    assert_eq!(companion.companion_type, CompanionType::Horse);
+    assert!(!companion.is_mounted, "Should not be mounted initially");
+    
+    // Mount the horse
+    mount_companion(&store, "testuser", &horse.id).unwrap();
+    
+    let mounted = store.get_companion(&horse.id).unwrap();
+    assert!(mounted.is_mounted, "Should be mounted");
+    
+    // Verify player record updated
+    let player = store.get_player("testuser").unwrap();
+    assert_eq!(player.mounted_companion, Some(horse.id.clone()));
+    
+    // Dismount
+    let name = dismount_companion(&store, "testuser").unwrap();
+    assert_eq!(name, "Gentle Mare");
+    
+    let dismounted = store.get_companion(&horse.id).unwrap();
+    assert!(!dismounted.is_mounted, "Should not be mounted");
+    
+    // Verify player record cleared
+    let player = store.get_player("testuser").unwrap();
+    assert_eq!(player.mounted_companion, None);
+}
