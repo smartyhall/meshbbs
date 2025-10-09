@@ -233,6 +233,26 @@ impl TinyMushProcessor {
             return Ok(format!("TinyMUSH unavailable: {}", e));
         }
 
+        // Auto-start tutorial for new players (first command only)
+        let player = self.get_or_create_player(session).await?;
+        if crate::tmush::tutorial::should_auto_start_tutorial(&player) {
+            use crate::tmush::tutorial::start_tutorial;
+            
+            // Start the tutorial
+            start_tutorial(self.store(), &player.username)?;
+            
+            // Show welcome message
+            let welcome = "=== WELCOME TO OLD TOWNE MESH ===\n".to_string() +
+                "You find yourself at the Script Gazebo...\n\n" +
+                "This tutorial will guide you through\n" +
+                "the basics of exploring our world.\n\n" +
+                "Type LOOK to see your surroundings.\n" +
+                "Type HELP for more commands.\n" +
+                "Type TUTORIAL to check your progress.";
+            
+            return Ok(welcome);
+        }
+
         let parsed_command = self.parse_command(command);
         debug!(
             "TinyMUSH command parsed: session={} command={:?}",
@@ -2451,14 +2471,14 @@ impl TinyMushProcessor {
         match self.store().get_player(&username) {
             Ok(player) => Ok(player),
             Err(TinyMushError::NotFound(_)) => {
-                // Create new player
+                // Create new player at gazebo for tutorial
                 let display_name = if session.is_logged_in() {
                     session.display_name()
                 } else {
                     format!("Guest_{}", &session.id[..8])
                 };
 
-                let player = PlayerRecord::new(&username, &display_name, REQUIRED_START_LOCATION_ID);
+                let player = PlayerRecord::new(&username, &display_name, crate::tmush::state::REQUIRED_LANDING_LOCATION_ID);
                 self.store().put_player(player.clone())?;
                 Ok(player)
             },
