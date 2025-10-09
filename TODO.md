@@ -250,6 +250,11 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [x] Script Gazebo → Town Square → City Hall Lobby → Mayor's Office flow
 - [x] Tutorial state tracking (progress, completion) with Sled persistence
 - [x] Location-based progression validation (can_advance_from_location)
+- [x] Tutorial auto-start for new players — commit b30650e
+  - [x] Detects players with TutorialState::NotStarted on first command
+  - [x] New players spawn at gazebo_landing (tutorial start location)
+  - [x] Shows welcome message and tutorial instructions
+  - [x] Seamlessly starts tutorial without manual TUTORIAL START
 - [x] Comprehensive integration tests (8 tests) — commit faa40e4
   - [x] test_complete_tutorial_flow (full walkthrough)
   - [x] test_tutorial_skip_flow, test_tutorial_restart_flow
