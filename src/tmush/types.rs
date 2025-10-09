@@ -526,6 +526,130 @@ impl PlayerQuest {
     }
 }
 
+/// Achievement system data structures for Phase 6 Week 3
+
+/// Achievement category for organization
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum AchievementCategory {
+    Combat,
+    Exploration,
+    Social,
+    Economic,
+    Crafting,
+    Quest,
+    Special,
+}
+
+/// Achievement trigger conditions
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum AchievementTrigger {
+    /// Kill N enemies
+    KillCount { required: u32 },
+    /// Visit N unique rooms
+    RoomVisits { required: u32 },
+    /// Make N friends
+    FriendCount { required: u32 },
+    /// Complete N quests
+    QuestCompletion { required: u32 },
+    /// Earn N currency
+    CurrencyEarned { amount: i64 },
+    /// Craft N items
+    CraftCount { required: u32 },
+    /// Trade N times
+    TradeCount { required: u32 },
+    /// Send N messages
+    MessagesSent { required: u32 },
+    /// Reach specific location
+    VisitLocation { room_id: String },
+    /// Complete specific quest
+    CompleteQuest { quest_id: String },
+}
+
+/// Achievement record template
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AchievementRecord {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub category: AchievementCategory,
+    pub trigger: AchievementTrigger,
+    /// Optional title awarded on completion
+    pub title: Option<String>,
+    /// Hidden achievements don't show until earned
+    pub hidden: bool,
+    /// Schema version for migrations
+    pub schema_version: u8,
+    pub created_at: DateTime<Utc>,
+}
+
+impl AchievementRecord {
+    pub fn new(
+        id: &str,
+        name: &str,
+        description: &str,
+        category: AchievementCategory,
+        trigger: AchievementTrigger,
+    ) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            category,
+            trigger,
+            title: None,
+            hidden: false,
+            schema_version: 1,
+            created_at: Utc::now(),
+        }
+    }
+
+    pub fn with_title(mut self, title: &str) -> Self {
+        self.title = Some(title.to_string());
+        self
+    }
+
+    pub fn as_hidden(mut self) -> Self {
+        self.hidden = true;
+        self
+    }
+}
+
+/// Player's achievement progress
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PlayerAchievement {
+    pub achievement_id: String,
+    /// Current progress toward trigger condition
+    pub progress: u32,
+    /// Whether achievement has been earned
+    pub earned: bool,
+    /// When achievement was earned (if earned)
+    pub earned_at: Option<DateTime<Utc>>,
+}
+
+impl PlayerAchievement {
+    pub fn new(achievement_id: &str) -> Self {
+        Self {
+            achievement_id: achievement_id.to_string(),
+            progress: 0,
+            earned: false,
+            earned_at: None,
+        }
+    }
+
+    pub fn increment(&mut self, amount: u32) {
+        if !self.earned {
+            self.progress += amount;
+        }
+    }
+
+    pub fn mark_earned(&mut self) {
+        self.earned = true;
+        self.earned_at = Some(Utc::now());
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlayerRecord {
     pub username: String,
@@ -556,6 +680,12 @@ pub struct PlayerRecord {
     /// Active and completed quests
     #[serde(default)]
     pub quests: Vec<PlayerQuest>,
+    /// Achievement progress and earned achievements
+    #[serde(default)]
+    pub achievements: Vec<PlayerAchievement>,
+    /// Currently equipped title (optional)
+    #[serde(default)]
+    pub equipped_title: Option<String>,
     pub schema_version: u8,
 }
 
@@ -577,6 +707,8 @@ impl PlayerRecord {
             credits: 0,
             tutorial_state: TutorialState::default(),
             quests: Vec::new(),
+            achievements: Vec::new(),
+            equipped_title: None,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
