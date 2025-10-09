@@ -370,13 +370,28 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] COMPANION COME - summon companions to player location
   - [x] COMPANION INVENTORY/INV - view companion storage
   - [x] COMPANION RELEASE <name> - release companion back to wild
+- [x] Help system documentation — commit f0fd98b
+  - [x] HELP COMPANION topic with concise command reference
 - [ ] Integration tests (Step 6)
-  - [ ] Test taming wild companions
+  - [ ] Test taming wild companions in different rooms
   - [ ] Test feeding/petting mechanics and stat gains
-  - [ ] Test mounting/dismounting horses
+  - [ ] Test mounting/dismounting horses  
   - [ ] Test auto-follow behavior on room movement
+  - [ ] Test STAY/COME companion control
+  - [ ] Test TRAIN skill system with loyalty requirements
+  - [ ] Test RELEASE companion flow
   - [ ] Test command output stays under 200 bytes
+  - [ ] Test companion persistence across sessions
 - **Current: 328 tests passing** (98 unit + 220 integration + 10 companion)
+
+**Companion System Summary:**
+- **10 commands**: COMPANION (7 subcommands), FEED, PET, MOUNT, DISMOUNT, TRAIN
+- **6 companion types** with type-specific skills and behaviors
+- **Full lifecycle**: Tame → Feed/Pet → Train → Mount/Release
+- **Auto-follow** system with STAY/COME control
+- **Loyalty/happiness** mechanics with stat decay
+- **Inventory storage** with type-specific capacity
+- **Help integration**: HELP COMPANION topic
 
 ---
 
