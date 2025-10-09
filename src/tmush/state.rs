@@ -400,3 +400,30 @@ pub fn seed_starter_achievements() -> Vec<AchievementRecord> {
 
     achievements
 }
+
+/// Seed starter companions for Old Towne Mesh (Phase 6 Week 4)
+pub fn seed_starter_companions() -> Vec<crate::tmush::types::CompanionRecord> {
+    use crate::tmush::types::{CompanionRecord, CompanionType};
+
+    let mut companions = Vec::new();
+
+    // A gentle horse available at the stable
+    companions.push(
+        CompanionRecord::new("gentle_mare", "Gentle Mare", CompanionType::Horse, "south_market")
+            .with_description("A gentle brown mare with kind eyes. She seems eager for a rider."),
+    );
+
+    // A loyal dog at the town square
+    companions.push(
+        CompanionRecord::new("loyal_hound", "Loyal Hound", CompanionType::Dog, REQUIRED_START_LOCATION_ID)
+            .with_description("A friendly dog with alert eyes. He wags his tail hopefully."),
+    );
+
+    // A mysterious cat near the museum
+    companions.push(
+        CompanionRecord::new("shadow_cat", "Shadow Cat", CompanionType::Cat, "mesh_museum")
+            .with_description("A sleek black cat with piercing green eyes. She watches you intently."),
+    );
+
+    companions
+}

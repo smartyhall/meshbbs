@@ -6,10 +6,10 @@ use sled::IVec;
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
-    BulletinBoard, BulletinMessage, CurrencyAmount, CurrencyTransaction, MailMessage,
-    MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, QuestRecord, RoomOwner,
-    RoomRecord, TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION,
-    OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
+    BulletinBoard, BulletinMessage, CompanionRecord, CurrencyAmount, CurrencyTransaction,
+    MailMessage, MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, QuestRecord,
+    RoomOwner, RoomRecord, TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION,
+    MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 use crate::tmush::shop::ShopRecord;
 
@@ -23,6 +23,7 @@ const TREE_TRADES: &str = "tinymush_trades";
 const TREE_NPCS: &str = "tinymush_npcs";
 const TREE_QUESTS: &str = "tinymush_quests";
 const TREE_ACHIEVEMENTS: &str = "tinymush_achievements";
+const TREE_COMPANIONS: &str = "tinymush_companions";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -68,6 +69,7 @@ pub struct TinyMushStore {
     npcs: sled::Tree,
     quests: sled::Tree,
     achievements: sled::Tree,
+    companions: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -91,6 +93,7 @@ impl TinyMushStore {
         let npcs = db.open_tree(TREE_NPCS)?;
         let quests = db.open_tree(TREE_QUESTS)?;
         let achievements = db.open_tree(TREE_ACHIEVEMENTS)?;
+        let companions = db.open_tree(TREE_COMPANIONS)?;
         let store = Self {
             _db: db,
             primary,
@@ -103,12 +106,14 @@ impl TinyMushStore {
             npcs,
             quests,
             achievements,
+            companions,
         };
 
         if seed_world {
             store.seed_world_if_needed()?;
             store.seed_quests_if_needed()?;
             store.seed_achievements_if_needed()?;
+            store.seed_companions_if_needed()?;
         }
 
         Ok(store)
@@ -1425,6 +1430,105 @@ impl TinyMushStore {
         let mut inserted = 0usize;
         for achievement in achievements {
             self.put_achievement(achievement)?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
+    // ========================================================================
+    // Companion Storage (Phase 6 Week 4)
+    // ========================================================================
+
+    /// Store or update a companion
+    pub fn put_companion(&self, mut companion: CompanionRecord) -> Result<(), TinyMushError> {
+        companion.schema_version = 1;
+        let key = format!("companion:{}", companion.id).into_bytes();
+        let bytes = Self::serialize(&companion)?;
+        self.companions.insert(key, bytes)?;
+        self.companions.flush()?;
+        Ok(())
+    }
+
+    /// Retrieve a companion by ID
+    pub fn get_companion(&self, companion_id: &str) -> Result<CompanionRecord, TinyMushError> {
+        let key = format!("companion:{}", companion_id);
+        let bytes = self
+            .companions
+            .get(key.as_bytes())?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Companion {}", companion_id)))?;
+        Self::deserialize(bytes)
+    }
+
+    /// List all companion IDs
+    pub fn list_companion_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        for kv in self.companions.iter() {
+            let (key_bytes, _) = kv?;
+            if let Ok(key_str) = std::str::from_utf8(&key_bytes) {
+                if let Some(id) = key_str.strip_prefix("companion:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    /// Get all companions in a room
+    pub fn get_companions_in_room(&self, room_id: &str) -> Result<Vec<CompanionRecord>, TinyMushError> {
+        let mut companions = Vec::new();
+        for kv in self.companions.iter() {
+            let (_key, value) = kv?;
+            let companion: CompanionRecord = Self::deserialize(value)?;
+            if companion.room_id == room_id {
+                companions.push(companion);
+            }
+        }
+        Ok(companions)
+    }
+
+    /// Get all companions owned by a player
+    pub fn get_player_companions(&self, username: &str) -> Result<Vec<CompanionRecord>, TinyMushError> {
+        let mut companions = Vec::new();
+        for kv in self.companions.iter() {
+            let (_key, value) = kv?;
+            let companion: CompanionRecord = Self::deserialize(value)?;
+            if companion.owner.as_deref() == Some(username) {
+                companions.push(companion);
+            }
+        }
+        Ok(companions)
+    }
+
+    /// Get unowned (wild) companions in a room
+    pub fn get_wild_companions_in_room(&self, room_id: &str) -> Result<Vec<CompanionRecord>, TinyMushError> {
+        let mut companions = Vec::new();
+        for kv in self.companions.iter() {
+            let (_key, value) = kv?;
+            let companion: CompanionRecord = Self::deserialize(value)?;
+            if companion.room_id == room_id && companion.owner.is_none() {
+                companions.push(companion);
+            }
+        }
+        Ok(companions)
+    }
+
+    /// Delete a companion
+    pub fn delete_companion(&self, companion_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("companion:{}", companion_id);
+        self.companions.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    /// Seed starter companions if none exist
+    pub fn seed_companions_if_needed(&self) -> Result<usize, TinyMushError> {
+        if self.companions.iter().next().is_some() {
+            return Ok(0);
+        }
+        let companions = crate::tmush::seed_starter_companions();
+        let mut inserted = 0usize;
+        for companion in companions {
+            self.put_companion(companion)?;
             inserted += 1;
         }
         Ok(inserted)
