@@ -1491,3 +1491,43 @@ impl TradeSession {
         )
     }
 }
+
+/// World configuration for customizable strings and settings
+/// This allows world creators to modify system messages without editing source code
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldConfig {
+    /// Version of the config schema
+    pub version: u8,
+    /// Last updated timestamp
+    pub updated_at: DateTime<Utc>,
+    /// Updated by which admin
+    pub updated_by: String,
+    /// Welcome message shown when tutorial auto-starts
+    pub welcome_message: String,
+    /// MOTD shown on login
+    pub motd: String,
+    /// Name of the world/game
+    pub world_name: String,
+    /// Short description of the world
+    pub world_description: String,
+}
+
+impl Default for WorldConfig {
+    fn default() -> Self {
+        Self {
+            version: 1,
+            updated_at: Utc::now(),
+            updated_by: "system".to_string(),
+            welcome_message: "=== WELCOME TO OLD TOWNE MESH ===\n".to_string() +
+                "You find yourself at the Script Gazebo...\n\n" +
+                "This tutorial will guide you through\n" +
+                "the basics of exploring our world.\n\n" +
+                "Type LOOK to see your surroundings.\n" +
+                "Type HELP for more commands.\n" +
+                "Type TUTORIAL to check your progress.",
+            motd: "Welcome to Old Towne Mesh!\nType HELP for commands.".to_string(),
+            world_name: "Old Towne Mesh".to_string(),
+            world_description: "A mesh-networked MUD adventure".to_string(),
+        }
+    }
+}

@@ -102,6 +102,8 @@ pub enum TinyMushCommand {
 
     // Meta/admin (future phases)
     Debug(String),          // DEBUG - admin diagnostics
+    SetConfig(String, String), // @SETCONFIG field value - set world configuration
+    GetConfig(Option<String>), // @GETCONFIG [field] - view world configuration
     
     // Unrecognized command
     Unknown(String),
@@ -241,16 +243,9 @@ impl TinyMushProcessor {
             // Start the tutorial
             start_tutorial(self.store(), &player.username)?;
             
-            // Show welcome message
-            let welcome = "=== WELCOME TO OLD TOWNE MESH ===\n".to_string() +
-                "You find yourself at the Script Gazebo...\n\n" +
-                "This tutorial will guide you through\n" +
-                "the basics of exploring our world.\n\n" +
-                "Type LOOK to see your surroundings.\n" +
-                "Type HELP for more commands.\n" +
-                "Type TUTORIAL to check your progress.";
-            
-            return Ok(welcome);
+            // Show welcome message from world config
+            let config = self.store().get_world_config()?;
+            return Ok(config.welcome_message);
         }
 
         let parsed_command = self.parse_command(command);
@@ -307,6 +302,8 @@ impl TinyMushProcessor {
             TinyMushCommand::Mount(name) => self.handle_mount(session, name, config).await,
             TinyMushCommand::Dismount => self.handle_dismount(session, config).await,
             TinyMushCommand::Train(companion, skill) => self.handle_train(session, companion, skill, config).await,
+            TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
+            TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -677,6 +674,22 @@ impl TinyMushProcessor {
                     TinyMushCommand::Debug(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Debug("".to_string())
+                }
+            },
+            "@SETCONFIG" | "@SETCONF" => {
+                if parts.len() > 2 {
+                    let field = parts[1].to_lowercase();
+                    let value = parts[2..].join(" ");
+                    TinyMushCommand::SetConfig(field, value)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @SETCONFIG <field> <value>\nFields: welcome_message, motd, world_name, world_description".to_string())
+                }
+            },
+            "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::GetConfig(Some(parts[1].to_lowercase()))
+                } else {
+                    TinyMushCommand::GetConfig(None)
                 }
             },
 
@@ -2235,6 +2248,74 @@ impl TinyMushProcessor {
                 comp.name, skill))
         } else {
             Ok(format!("You don't have a companion named '{}'.", companion_name))
+        }
+    }
+
+    /// Handle @SETCONFIG command - set world configuration
+    async fn handle_set_config(
+        &mut self,
+        session: &Session,
+        field: String,
+        value: String,
+        config: &Config,
+    ) -> Result<String> {
+        // Note: In future, add role-based permissions here
+        // For now, allowing any authenticated user for testing
+        let player = self.get_or_create_player(session).await?;
+
+        let store = self.get_store(config).await?;
+        
+        // Update the configuration field
+        match store.update_world_config_field(&field, &value, &player.username) {
+            Ok(_) => Ok(format!(
+                "Configuration updated:\n{}: {}\n\nUpdated by: {}",
+                field, value, player.username
+            )),
+            Err(e) => Ok(format!("Error updating configuration: {}", e)),
+        }
+    }
+
+    /// Handle @GETCONFIG command - view world configuration
+    async fn handle_get_config(
+        &mut self,
+        session: &Session,
+        field: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let _player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        
+        let world_config = store.get_world_config()?;
+
+        match field {
+            Some(f) => {
+                let value = match f.as_str() {
+                    "welcome_message" => &world_config.welcome_message,
+                    "motd" => &world_config.motd,
+                    "world_name" => &world_config.world_name,
+                    "world_description" => &world_config.world_description,
+                    _ => return Ok(format!("Unknown configuration field: {}\nAvailable: welcome_message, motd, world_name, world_description", f)),
+                };
+                Ok(format!("{}:\n{}", f, value))
+            }
+            None => {
+                // Show all configuration
+                Ok(format!(
+                    "=== WORLD CONFIGURATION ===\n\n\
+                    World Name: {}\n\
+                    Description: {}\n\n\
+                    MOTD:\n{}\n\n\
+                    Welcome Message:\n{}\n\n\
+                    Last Updated: {}\n\
+                    Updated By: {}",
+                    world_config.world_name,
+                    world_config.world_description,
+                    world_config.motd,
+                    world_config.welcome_message,
+                    world_config.updated_at.format("%Y-%m-%d %H:%M:%S"),
+                    world_config.updated_by
+                ))
+            }
         }
     }
 

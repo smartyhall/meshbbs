@@ -8,7 +8,7 @@ use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
     BulletinBoard, BulletinMessage, CompanionRecord, CurrencyAmount, CurrencyTransaction,
     MailMessage, MailStatus, NpcRecord, ObjectOwner, ObjectRecord, PlayerRecord, QuestRecord,
-    RoomOwner, RoomRecord, TradeSession, TransactionReason, BULLETIN_SCHEMA_VERSION,
+    RoomOwner, RoomRecord, TradeSession, TransactionReason, WorldConfig, BULLETIN_SCHEMA_VERSION,
     MAIL_SCHEMA_VERSION, OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
 use crate::tmush::shop::ShopRecord;
@@ -24,6 +24,7 @@ const TREE_NPCS: &str = "tinymush_npcs";
 const TREE_QUESTS: &str = "tinymush_quests";
 const TREE_ACHIEVEMENTS: &str = "tinymush_achievements";
 const TREE_COMPANIONS: &str = "tinymush_companions";
+const TREE_CONFIG: &str = "tinymush_config";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -70,6 +71,7 @@ pub struct TinyMushStore {
     quests: sled::Tree,
     achievements: sled::Tree,
     companions: sled::Tree,
+    config: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -94,6 +96,7 @@ impl TinyMushStore {
         let quests = db.open_tree(TREE_QUESTS)?;
         let achievements = db.open_tree(TREE_ACHIEVEMENTS)?;
         let companions = db.open_tree(TREE_COMPANIONS)?;
+        let config = db.open_tree(TREE_CONFIG)?;
         let store = Self {
             _db: db,
             primary,
@@ -107,6 +110,7 @@ impl TinyMushStore {
             quests,
             achievements,
             companions,
+            config,
         };
 
         if seed_world {
@@ -1532,6 +1536,55 @@ impl TinyMushStore {
             inserted += 1;
         }
         Ok(inserted)
+    }
+
+    // ========================
+    // World Configuration
+    // ========================
+
+    /// Get the world configuration, returning default if not found
+    pub fn get_world_config(&self) -> Result<WorldConfig, TinyMushError> {
+        let key = b"world_config";
+        match self.config.get(key)? {
+            Some(value) => Ok(Self::deserialize(value)?),
+            None => {
+                // Initialize with default if not found
+                let default = WorldConfig::default();
+                self.put_world_config(&default)?;
+                Ok(default)
+            }
+        }
+    }
+
+    /// Save the world configuration
+    pub fn put_world_config(&self, config: &WorldConfig) -> Result<(), TinyMushError> {
+        let key = b"world_config";
+        let value = Self::serialize(config)?;
+        self.config.insert(key, value)?;
+        Ok(())
+    }
+
+    /// Update a specific configuration field
+    pub fn update_world_config_field(
+        &self,
+        field: &str,
+        value: &str,
+        updated_by: &str,
+    ) -> Result<(), TinyMushError> {
+        let mut config = self.get_world_config()?;
+        config.updated_at = Utc::now();
+        config.updated_by = updated_by.to_string();
+
+        match field {
+            "welcome_message" => config.welcome_message = value.to_string(),
+            "motd" => config.motd = value.to_string(),
+            "world_name" => config.world_name = value.to_string(),
+            "world_description" => config.world_description = value.to_string(),
+            _ => return Err(TinyMushError::NotFound(format!("Unknown config field: {}", field))),
+        }
+
+        self.put_world_config(&config)?;
+        Ok(())
     }
 }
 
