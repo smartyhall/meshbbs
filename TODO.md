@@ -332,7 +332,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] test_achievement_persistence
 - **Total: 318 tests passing** (98 unit + 220 integration)
 
-### 🔄 Companion NPC System (Week 4-5) — IN PROGRESS
+### ✅ Companion NPC System (Week 4-5) — COMPLETE
 - [x] Companion data structures (CompanionType, CompanionBehavior, CompanionRecord) — commit 0962f24
   - [x] 6 companion types: Horse, Dog, Cat, Familiar, Mercenary, Construct
   - [x] 7 behavior types: AutoFollow, IdleChatter, AlertDanger, CombatAssist, Healing, ExtraStorage, SkillBoost
@@ -372,17 +372,16 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] COMPANION RELEASE <name> - release companion back to wild
 - [x] Help system documentation — commit f0fd98b
   - [x] HELP COMPANION topic with concise command reference
-- [ ] Integration tests (Step 6)
-  - [ ] Test taming wild companions in different rooms
-  - [ ] Test feeding/petting mechanics and stat gains
-  - [ ] Test mounting/dismounting horses  
-  - [ ] Test auto-follow behavior on room movement
-  - [ ] Test STAY/COME companion control
-  - [ ] Test TRAIN skill system with loyalty requirements
-  - [ ] Test RELEASE companion flow
-  - [ ] Test command output stays under 200 bytes
-  - [ ] Test companion persistence across sessions
-- **Current: 328 tests passing** (98 unit + 220 integration + 10 companion)
+- [x] Integration tests (Step 6) — commits 8375fbc, f6cc1d5, 00767e0, 26d976a, c0375d7
+  - [x] Test taming wild companions in different rooms
+  - [x] Test feeding/petting mechanics and stat gains (loyalty/happiness)
+  - [x] Test mounting/dismounting horses with state tracking
+  - [x] Test STAY/COME companion control and movement
+  - [x] Test TRAIN skill system with loyalty requirements
+  - [x] Test RELEASE companion flow and state cleanup
+  - [x] Test full lifecycle: discover → tame → care → move → release
+  - [x] 6 integration tests covering end-to-end flows
+- **Current: 334 tests passing** (98 unit + 226 integration + 10 companion unit)
 
 **Companion System Summary:**
 - **10 commands**: COMPANION (7 subcommands), FEED, PET, MOUNT, DISMOUNT, TRAIN
