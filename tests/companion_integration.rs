@@ -55,3 +55,45 @@ fn test_companion_taming_and_listing() {
     let player = store.get_player("testuser").unwrap();
     assert!(player.companions.contains(&companion.id));
 }
+
+#[test]
+fn test_feed_and_pet_stat_gains() {
+    let store = setup_store();
+    
+    // Setup: Tame a companion first
+    let companion = find_companion_in_room(&store, "town_square", "Loyal Hound")
+        .unwrap()
+        .unwrap();
+    tame_companion(&store, "testuser", &companion.id).unwrap();
+    
+    let initial = store.get_companion(&companion.id).unwrap();
+    assert_eq!(initial.happiness, 100, "Starts with max happiness");
+    assert_eq!(initial.loyalty, 30, "Starts with loyalty 30 after taming");
+    
+    // Test petting - should gain loyalty (starts at 30, <50)
+    use meshbbs::tmush::companion::pet_companion;
+    let gain = pet_companion(&store, "testuser", &companion.id).unwrap();
+    assert_eq!(gain, 5, "Should gain 5 loyalty when <50");
+    
+    let after_pet = store.get_companion(&companion.id).unwrap();
+    assert_eq!(after_pet.loyalty, 35);
+    
+    // Pet multiple times to test reduced gains at high loyalty
+    for _ in 0..4 {
+        pet_companion(&store, "testuser", &companion.id).unwrap();
+    }
+    
+    let high_loyalty = store.get_companion(&companion.id).unwrap();
+    assert!(high_loyalty.loyalty >= 50, "Should reach loyalty 50+");
+    
+    let small_gain = pet_companion(&store, "testuser", &companion.id).unwrap();
+    assert_eq!(small_gain, 2, "Should gain 2 loyalty when >=50");
+    
+    // Test feeding - happiness at 100 should give smaller gain
+    use meshbbs::tmush::companion::feed_companion;
+    let happiness_gain = feed_companion(&store, "testuser", &companion.id).unwrap();
+    assert_eq!(happiness_gain, 10, "Should gain 10 happiness when >=50");
+    
+    let after_feed = store.get_companion(&companion.id).unwrap();
+    assert_eq!(after_feed.happiness, 100, "Happiness caps at 100");
+}
