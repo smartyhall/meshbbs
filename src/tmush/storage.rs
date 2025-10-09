@@ -22,6 +22,7 @@ const TREE_SHOPS: &str = "tinymush_shops";
 const TREE_TRADES: &str = "tinymush_trades";
 const TREE_NPCS: &str = "tinymush_npcs";
 const TREE_QUESTS: &str = "tinymush_quests";
+const TREE_ACHIEVEMENTS: &str = "tinymush_achievements";
 
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
@@ -66,6 +67,7 @@ pub struct TinyMushStore {
     trades: sled::Tree,
     npcs: sled::Tree,
     quests: sled::Tree,
+    achievements: sled::Tree,
 }
 
 impl TinyMushStore {
@@ -88,6 +90,7 @@ impl TinyMushStore {
         let trades = db.open_tree(TREE_TRADES)?;
         let npcs = db.open_tree(TREE_NPCS)?;
         let quests = db.open_tree(TREE_QUESTS)?;
+        let achievements = db.open_tree(TREE_ACHIEVEMENTS)?;
         let store = Self {
             _db: db,
             primary,
@@ -99,11 +102,13 @@ impl TinyMushStore {
             trades,
             npcs,
             quests,
+            achievements,
         };
 
         if seed_world {
             store.seed_world_if_needed()?;
             store.seed_quests_if_needed()?;
+            store.seed_achievements_if_needed()?;
         }
 
         Ok(store)
@@ -1340,6 +1345,89 @@ impl TinyMushStore {
         let key = format!("quest:{}", quest_id);
         self.quests.remove(key.as_bytes())?;
         Ok(())
+    }
+
+    // ========================================================================
+    // Achievement Storage
+    // ========================================================================
+
+    /// Store or update an achievement
+    pub fn put_achievement(
+        &self,
+        mut achievement: crate::tmush::types::AchievementRecord,
+    ) -> Result<(), TinyMushError> {
+        achievement.schema_version = 1;
+        let key = format!("achievement:{}", achievement.id).into_bytes();
+        let bytes = Self::serialize(&achievement)?;
+        self.achievements.insert(key, bytes)?;
+        self.achievements.flush()?;
+        Ok(())
+    }
+
+    /// Retrieve an achievement by ID
+    pub fn get_achievement(
+        &self,
+        achievement_id: &str,
+    ) -> Result<crate::tmush::types::AchievementRecord, TinyMushError> {
+        let key = format!("achievement:{}", achievement_id);
+        let bytes = self
+            .achievements
+            .get(key.as_bytes())?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Achievement {}", achievement_id)))?;
+        Self::deserialize(bytes)
+    }
+
+    /// List all achievement IDs
+    pub fn list_achievement_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        for kv in self.achievements.iter() {
+            let (key_bytes, _) = kv?;
+            if let Ok(key_str) = std::str::from_utf8(&key_bytes) {
+                if let Some(id) = key_str.strip_prefix("achievement:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    /// Get all achievements in a category
+    pub fn get_achievements_by_category(
+        &self,
+        category: &crate::tmush::types::AchievementCategory,
+    ) -> Result<Vec<crate::tmush::types::AchievementRecord>, TinyMushError> {
+        let mut achievements = Vec::new();
+        for kv in self.achievements.iter() {
+            let (_key, value) = kv?;
+            let achievement: crate::tmush::types::AchievementRecord =
+                Self::deserialize(value)?;
+            if &achievement.category == category {
+                achievements.push(achievement);
+            }
+        }
+        Ok(achievements)
+    }
+
+    /// Delete an achievement
+    pub fn delete_achievement(&self, achievement_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("achievement:{}", achievement_id);
+        self.achievements.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    /// Seed achievements if none exist
+    pub fn seed_achievements_if_needed(&self) -> Result<usize, TinyMushError> {
+        if self.achievements.iter().next().is_some() {
+            return Ok(0);
+        }
+        let achievements = crate::tmush::seed_starter_achievements();
+        let mut inserted = 0usize;
+        for achievement in achievements {
+            self.put_achievement(achievement)?;
+            inserted += 1;
+        }
+        Ok(inserted)
     }
 }
 

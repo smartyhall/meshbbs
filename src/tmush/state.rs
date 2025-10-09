@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 
-use crate::tmush::types::{Direction, RoomFlag, RoomRecord};
+use crate::tmush::types::{
+    AchievementCategory, AchievementRecord, AchievementTrigger, Direction, RoomFlag, RoomRecord,
+};
 
 /// Required landing location where new characters are staged before entering the world.
 pub const REQUIRED_LANDING_LOCATION_ID: &str = "gazebo_landing";
@@ -228,4 +230,173 @@ pub fn seed_starter_quests() -> Vec<crate::tmush::types::QuestRecord> {
     quests.push(explorer_quest);
 
     quests
+}
+
+/// Generate starter achievements for Old Towne Mesh (Phase 6 Week 3)
+pub fn seed_starter_achievements() -> Vec<AchievementRecord> {
+    use AchievementCategory::*;
+    use AchievementTrigger::*;
+
+    let mut achievements = Vec::new();
+
+    // Combat achievements
+    achievements.push(
+        AchievementRecord::new(
+            "first_blood",
+            "First Blood",
+            "Defeat your first enemy",
+            Combat,
+            KillCount { required: 1 },
+        )
+        .with_title("the Brave"),
+    );
+
+    achievements.push(AchievementRecord::new(
+        "veteran",
+        "Veteran",
+        "Defeat 100 enemies",
+        Combat,
+        KillCount { required: 100 },
+    ));
+
+    achievements.push(
+        AchievementRecord::new(
+            "legendary",
+            "Legendary Warrior",
+            "Defeat 1000 enemies",
+            Combat,
+            KillCount { required: 1000 },
+        )
+        .with_title("the Legendary")
+        .as_hidden(),
+    );
+
+    // Exploration achievements
+    achievements.push(
+        AchievementRecord::new(
+            "wanderer",
+            "Wanderer",
+            "Visit 10 unique rooms",
+            Exploration,
+            RoomVisits { required: 10 },
+        )
+        .with_title("the Wanderer"),
+    );
+
+    achievements.push(AchievementRecord::new(
+        "explorer",
+        "Explorer",
+        "Visit 50 unique rooms",
+        Exploration,
+        RoomVisits { required: 50 },
+    ));
+
+    achievements.push(
+        AchievementRecord::new(
+            "cartographer",
+            "Cartographer",
+            "Visit all rooms in Old Towne",
+            Exploration,
+            RoomVisits { required: 100 },
+        )
+        .with_title("the Cartographer"),
+    );
+
+    // Social achievements
+    achievements.push(AchievementRecord::new(
+        "friendly",
+        "Friendly",
+        "Make 5 friends",
+        Social,
+        FriendCount { required: 5 },
+    ));
+
+    achievements.push(
+        AchievementRecord::new(
+            "popular",
+            "Popular",
+            "Make 20 friends",
+            Social,
+            FriendCount { required: 20 },
+        )
+        .with_title("the Popular"),
+    );
+
+    achievements.push(AchievementRecord::new(
+        "chatterbox",
+        "Chatterbox",
+        "Send 1000 messages",
+        Social,
+        MessagesSent { required: 1000 },
+    ));
+
+    // Economic achievements
+    achievements.push(
+        AchievementRecord::new(
+            "merchant",
+            "Merchant",
+            "Complete 50 trades",
+            Economic,
+            TradeCount { required: 50 },
+        )
+        .with_title("the Merchant"),
+    );
+
+    achievements.push(AchievementRecord::new(
+        "wealthy",
+        "Wealthy",
+        "Earn 100000 currency",
+        Economic,
+        CurrencyEarned { amount: 100000 },
+    ));
+
+    // Quest achievements
+    achievements.push(
+        AchievementRecord::new(
+            "quest_beginner",
+            "Quest Beginner",
+            "Complete your first quest",
+            Quest,
+            QuestCompletion { required: 1 },
+        )
+        .with_title("the Questor"),
+    );
+
+    achievements.push(AchievementRecord::new(
+        "quest_veteran",
+        "Quest Veteran",
+        "Complete 25 quests",
+        Quest,
+        QuestCompletion { required: 25 },
+    ));
+
+    // Special/hidden achievements
+    achievements.push(
+        AchievementRecord::new(
+            "town_founder",
+            "Town Founder",
+            "Discover the founder's secret",
+            Special,
+            VisitLocation {
+                room_id: "mayor_office".to_string(),
+            },
+        )
+        .with_title("Town Founder")
+        .as_hidden(),
+    );
+
+    achievements.push(
+        AchievementRecord::new(
+            "network_pioneer",
+            "Network Pioneer",
+            "Complete the Network Explorer quest",
+            Special,
+            CompleteQuest {
+                quest_id: "network_explorer".to_string(),
+            },
+        )
+        .with_title("Network Pioneer"),
+    );
+
+    achievements
 }
