@@ -137,3 +137,41 @@ fn test_mount_and_dismount_horses() {
     let player = store.get_player("testuser").unwrap();
     assert_eq!(player.mounted_companion, None);
 }
+
+#[test]
+fn test_companion_stay_and_come_control() {
+    let store = setup_store();
+    
+    // Setup: Tame dog with auto-follow
+    let dog = find_companion_in_room(&store, "town_square", "Loyal Hound")
+        .unwrap()
+        .unwrap();
+    tame_companion(&store, "testuser", &dog.id).unwrap();
+    
+    use meshbbs::tmush::companion::move_companion_to_room;
+    use meshbbs::tmush::types::CompanionBehavior;
+    
+    let initial = store.get_companion(&dog.id).unwrap();
+    assert!(initial.has_auto_follow(), "Dog should have auto-follow");
+    assert_eq!(initial.room_id, "town_square");
+    
+    // Simulate STAY: remove auto-follow behavior
+    let mut stayed = initial.clone();
+    stayed.behaviors.retain(|b| !matches!(b, CompanionBehavior::AutoFollow));
+    store.put_companion(stayed).unwrap();
+    
+    let after_stay = store.get_companion(&dog.id).unwrap();
+    assert!(!after_stay.has_auto_follow(), "Auto-follow should be disabled");
+    
+    // Move companion to different room
+    move_companion_to_room(&store, &dog.id, "south_market").unwrap();
+    
+    let moved = store.get_companion(&dog.id).unwrap();
+    assert_eq!(moved.room_id, "south_market");
+    
+    // Simulate COME: move back to player's room
+    move_companion_to_room(&store, &dog.id, "town_square").unwrap();
+    
+    let returned = store.get_companion(&dog.id).unwrap();
+    assert_eq!(returned.room_id, "town_square");
+}
