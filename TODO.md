@@ -1,6 +1,6 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-08 (Phase 6 Week 1 COMPLETE - Tutorial System)
+**Last Updated**: 2025-10-08 (Phase 6 Week 2 COMPLETE - Quest Engine)
 
 ## Development Standards
 
@@ -258,15 +258,32 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] test_location_based_progression_validation
 - **Total: 281 tests passing** (89 unit + 192 integration)
 
-### Quest Engine (Week 2)
-- [ ] Quest data structures (objectives, progress, rewards)
-- [ ] Quest state machine (available, active, complete, failed)
-- [ ] Quest objective tracking (kill counts, item collection, location visits)
-- [ ] Quest templates with variable rewards
-- [ ] Quest persistence across sessions
-- [ ] QUEST command (list, accept, abandon, status)
-- [ ] Quest completion and reward distribution
-- [ ] Quest chain support (dependencies)
+### ✅ Quest Engine (Week 2) — COMPLETE
+- [x] Quest data structures (QuestState, ObjectiveType, QuestObjective, QuestRewards, QuestRecord, PlayerQuest) — commit 1db20d2
+- [x] Quest storage methods (put_quest, get_quest, list_quest_ids, get_quests_by_npc, delete_quest) — commit a3baf24
+- [x] Quest progression logic (9 functions, 9 unit tests) — commit 863ad44
+  - [x] can_accept_quest, accept_quest, update_quest_objective, complete_quest
+  - [x] abandon_quest, get_available_quests, get_active_quests, get_completed_quests
+  - [x] format_quest_status, format_quest_list
+- [x] QUEST/ABANDON command handlers with subcommands — commit 554d6bb
+  - [x] QUEST LIST - show available quests
+  - [x] QUEST ACCEPT <id> - accept quest
+  - [x] QUEST <id> - show status
+  - [x] ABANDON <id> - abandon active quest
+- [x] Starter quest content (3 quests: welcome_towne → market_exploration → network_explorer) — commit a1f2f7d
+- [x] Quest seeding on initialization (seed_quests_if_needed) — commit a1f2f7d
+- [x] Prerequisite chain support (quest dependencies)
+- [x] Reward distribution (currency, XP, items, reputation)
+- [x] Comprehensive integration tests (7 tests) — commit ad9aecd
+  - [x] test_quest_lifecycle_complete_flow (full quest completion)
+  - [x] test_quest_prerequisites_enforced (chain validation)
+  - [x] test_quest_list_formatting_under_200_bytes
+  - [x] test_quest_status_formatting_under_200_bytes
+  - [x] test_quest_cannot_be_accepted_twice (duplicate prevention)
+  - [x] test_quest_rewards_include_items
+  - [x] test_abandoned_quest_can_be_retaken
+- [x] Bug fix: complete_quest now distributes rewards before marking complete
+- **Total: 298 tests passing** (90 unit + 208 integration)
 
 ### Achievement & Title System (Week 3)
 - [ ] Achievement data structures (triggers, rewards, titles)
