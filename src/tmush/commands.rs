@@ -123,6 +123,7 @@ pub enum TinyMushCommand {
     EditRoom(String, String), // @EDITROOM <room_id> <description> - edit any room description (admin only)
     EditNpc(String, String, String), // @EDITNPC <npc_id> <field> <value> - edit NPC properties (admin only)
     ListAbandoned,          // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
+    Dialog(String, String, Option<String>), // @DIALOG <npc> <subcommand> [args] - manage NPC dialogue trees (admin only)
     
     // Unrecognized command
     Unknown(String),
@@ -341,6 +342,7 @@ impl TinyMushProcessor {
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::EditRoom(room_id, description) => self.handle_edit_room(session, room_id, description, config).await,
             TinyMushCommand::EditNpc(npc_id, field, value) => self.handle_edit_npc(session, npc_id, field, value, config).await,
+            TinyMushCommand::Dialog(npc_id, subcommand, args) => self.handle_dialog(session, npc_id, subcommand, args, config).await,
             TinyMushCommand::ListAbandoned => self.handle_list_abandoned(session, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
@@ -844,6 +846,20 @@ impl TinyMushProcessor {
                     TinyMushCommand::EditNpc(npc_id, field, value)
                 } else {
                     TinyMushCommand::Unknown("Usage: @EDITNPC <npc_id> <field> <value>\nFields: dialog.<key>, description, room\nExample: @EDITNPC mayor_thompson dialog.greeting Hello there!".to_string())
+                }
+            },
+            "@DIALOG" | "@DLG" => {
+                if parts.len() >= 3 {
+                    let npc_id = parts[1].to_string();
+                    let subcommand = parts[2].to_uppercase();
+                    let args = if parts.len() > 3 {
+                        Some(parts[3..].join(" "))
+                    } else {
+                        None
+                    };
+                    TinyMushCommand::Dialog(npc_id, subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @DIALOG <npc> <subcommand> [args]\nSubcommands: LIST, VIEW <topic>, ADD <topic> <text>, EDIT <topic> <json>, DELETE <topic>, TEST <topic>\nExample: @DIALOG merchant VIEW greeting".to_string())
                 }
             },
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -1857,7 +1873,7 @@ impl TinyMushProcessor {
                     "BACK" => {
                         if dialog_session.go_back() {
                             self.store().put_dialog_session(dialog_session.clone())?;
-                            return self.render_dialog_node(&npc.name, &dialog_session);
+                            return self.render_dialog_node(&npc.name, &npc.id, &dialog_session, &player);
                         } else {
                             return Ok("You're at the start of the conversation.".to_string());
                         }
@@ -1870,8 +1886,13 @@ impl TinyMushProcessor {
                     let goto_node = {
                         let node = dialog_session.get_current_node();
                         if let Some(node) = node {
-                            if choice_num > 0 && choice_num <= node.choices.len() {
-                                let choice = &node.choices[choice_num - 1];
+                            // Filter visible choices based on conditions
+                            let visible_choices: Vec<_> = node.choices.iter()
+                                .filter(|c| self.evaluate_conditions(&c.conditions, &player, &npc.id).unwrap_or(false))
+                                .collect();
+                            
+                            if choice_num > 0 && choice_num <= visible_choices.len() {
+                                let choice = visible_choices[choice_num - 1];
                                 
                                 if choice.exit {
                                     self.store().delete_dialog_session(&username, &npc.id)?;
@@ -1889,8 +1910,24 @@ impl TinyMushProcessor {
                     
                     if let Some(goto_node) = goto_node {
                         if dialog_session.navigate_to(&goto_node) {
+                            // Execute actions for the new node
+                            let action_messages = if let Some(node) = dialog_session.get_current_node() {
+                                self.execute_actions(&node.actions, &username, &npc.id).await?
+                            } else {
+                                Vec::new()
+                            };
+                            
                             self.store().put_dialog_session(dialog_session.clone())?;
-                            return self.render_dialog_node(&npc.name, &dialog_session);
+                            
+                            let mut response = self.render_dialog_node(&npc.name, &npc.id, &dialog_session, &player)?;
+                            
+                            // Prepend action messages
+                            if !action_messages.is_empty() {
+                                let actions_text = action_messages.join("\n");
+                                response = format!("{}\n\n{}", actions_text, response);
+                            }
+                            
+                            return Ok(response);
                         } else {
                             self.store().delete_dialog_session(&username, &npc.id)?;
                             return Ok("Conversation error - dialogue tree too deep.".to_string());
@@ -1902,7 +1939,7 @@ impl TinyMushProcessor {
             }
             
             // No input or invalid input - show current node again
-            return self.render_dialog_node(&npc.name, &dialog_session);
+            return self.render_dialog_node(&npc.name, &npc.id, &dialog_session, &player);
         }
 
         // Handle LIST keyword to show available topics
@@ -1974,8 +2011,25 @@ impl TinyMushProcessor {
                     start_node,
                     npc.dialog_tree.clone(),
                 );
+                
+                // Execute actions for the greeting node
+                let action_messages = if let Some(node) = dialog_session.get_current_node() {
+                    self.execute_actions(&node.actions, &username, &npc.id).await?
+                } else {
+                    Vec::new()
+                };
+                
                 self.store().put_dialog_session(dialog_session.clone())?;
-                return self.render_dialog_node(&npc.name, &dialog_session);
+                
+                let mut response = self.render_dialog_node(&npc.name, &npc.id, &dialog_session, &player)?;
+                
+                // Prepend action messages
+                if !action_messages.is_empty() {
+                    let actions_text = action_messages.join("\n");
+                    response = format!("{}\n\n{}", actions_text, response);
+                }
+                
+                return Ok(response);
             }
         }
 
@@ -2046,7 +2100,9 @@ impl TinyMushProcessor {
     fn render_dialog_node(
         &self,
         npc_name: &str,
+        npc_id: &str,
         session: &crate::tmush::types::DialogSession,
+        player: &crate::tmush::types::PlayerRecord,
     ) -> Result<String> {
         let node = session.get_current_node()
             .ok_or_else(|| anyhow::anyhow!("Dialog node not found"))?;
@@ -2055,8 +2111,21 @@ impl TinyMushProcessor {
 
         if !node.choices.is_empty() {
             response.push('\n');
-            for (i, choice) in node.choices.iter().enumerate() {
-                response.push_str(&format!("{}) {}\n", i + 1, choice.label));
+            
+            // Filter choices based on conditions
+            let mut visible_choices = Vec::new();
+            for choice in &node.choices {
+                if self.evaluate_conditions(&choice.conditions, player, npc_id).unwrap_or(false) {
+                    visible_choices.push(choice);
+                }
+            }
+            
+            if visible_choices.is_empty() {
+                response.push_str("(No available options at this time)\n");
+            } else {
+                for (i, choice) in visible_choices.iter().enumerate() {
+                    response.push_str(&format!("{}) {}\n", i + 1, choice.label));
+                }
             }
             
             if session.can_go_back() {
@@ -2137,6 +2206,316 @@ impl TinyMushProcessor {
         }
 
         Ok(response)
+    }
+
+    /// Evaluate dialogue conditions for a player
+    fn evaluate_conditions(
+        &self,
+        conditions: &[crate::tmush::types::DialogCondition],
+        player: &crate::tmush::types::PlayerRecord,
+        npc_id: &str,
+    ) -> Result<bool> {
+        use crate::tmush::types::DialogCondition;
+
+        // Empty conditions = always show
+        if conditions.is_empty() {
+            return Ok(true);
+        }
+
+        // Check each condition (ALL must be true)
+        for condition in conditions {
+            match condition {
+                DialogCondition::Always => continue,
+                
+                DialogCondition::HasDiscussed { topic } => {
+                    if let Ok(Some(conv_state)) = self.store().get_conversation_state(&player.username, npc_id) {
+                        if !conv_state.has_discussed(topic) {
+                            return Ok(false);
+                        }
+                    } else {
+                        return Ok(false);
+                    }
+                }
+                
+                DialogCondition::HasFlag { flag, value } => {
+                    if let Ok(Some(conv_state)) = self.store().get_conversation_state(&player.username, npc_id) {
+                        if conv_state.get_flag(flag) != *value {
+                            return Ok(false);
+                        }
+                    } else {
+                        return Ok(false);
+                    }
+                }
+                
+                DialogCondition::HasItem { item_id } => {
+                    if !player.inventory.contains(item_id) {
+                        return Ok(false);
+                    }
+                }
+                
+                DialogCondition::HasCurrency { amount } => {
+                    if player.currency.base_value() < *amount {
+                        return Ok(false);
+                    }
+                }
+                
+                DialogCondition::MinLevel { level } => {
+                    // Level is stored in stats, not directly on player
+                    // For now, just pass (we can add proper level tracking later)
+                    let _ = level; // Suppress unused warning
+                }
+                
+                DialogCondition::QuestStatus { quest_id, status } => {
+                    // Check player's quests vector
+                    let has_quest = player.quests.iter().any(|q| {
+                        q.quest_id == *quest_id && format!("{:?}", q.state).contains(status)
+                    });
+                    if !has_quest {
+                        return Ok(false);
+                    }
+                }
+                
+                DialogCondition::HasAchievement { achievement_id } => {
+                    let has_achievement = player.achievements.iter().any(|a| &a.achievement_id == achievement_id);
+                    if !has_achievement {
+                        return Ok(false);
+                    }
+                }
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Execute dialogue actions when a node is reached
+    async fn execute_actions(
+        &mut self,
+        actions: &[crate::tmush::types::DialogAction],
+        player_name: &str,
+        npc_id: &str,
+    ) -> Result<Vec<String>> {
+        use crate::tmush::types::DialogAction;
+        
+        let mut messages = Vec::new();
+        
+        for action in actions {
+            match action {
+                DialogAction::GiveItem { item_id, quantity } => {
+                    // Add item to player inventory
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    for _ in 0..*quantity {
+                        player.inventory.push(item_id.clone());
+                    }
+                    
+                    self.store().put_player(player)?;
+                    
+                    let qty_msg = if *quantity > 1 {
+                        format!("{} x{}", item_id, quantity)
+                    } else {
+                        item_id.clone()
+                    };
+                    messages.push(format!("🎁 You received: {}", qty_msg));
+                }
+                
+                DialogAction::TakeItem { item_id, quantity } => {
+                    // Remove item from player inventory
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    let mut removed = 0;
+                    for _ in 0..*quantity {
+                        if let Some(pos) = player.inventory.iter().position(|x| x == item_id) {
+                            player.inventory.remove(pos);
+                            removed += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if removed > 0 {
+                        self.store().put_player(player)?;
+                        let qty_msg = if removed > 1 {
+                            format!("{} x{}", item_id, removed)
+                        } else {
+                            item_id.clone()
+                        };
+                        messages.push(format!("📤 You gave: {}", qty_msg));
+                    }
+                }
+                
+                DialogAction::GiveCurrency { amount } => {
+                    // Add currency to player
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    // Create currency amount to add
+                    let currency_to_add = match &player.currency {
+                        crate::tmush::types::CurrencyAmount::Decimal { .. } => {
+                            crate::tmush::types::CurrencyAmount::Decimal { minor_units: *amount }
+                        }
+                        crate::tmush::types::CurrencyAmount::MultiTier { .. } => {
+                            crate::tmush::types::CurrencyAmount::MultiTier { base_units: *amount }
+                        }
+                    };
+                    
+                    player.currency = player.currency.add(&currency_to_add)
+                        .map_err(|e| anyhow::anyhow!("Currency error: {}", e))?;
+                    self.store().put_player(player)?;
+                    
+                    messages.push(format!("💰 You received {} credits!", amount));
+                }
+                
+                DialogAction::TakeCurrency { amount } => {
+                    // Deduct currency from player
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    if player.currency.base_value() >= *amount {
+                        // Create currency amount to subtract
+                        let currency_to_sub = match &player.currency {
+                            crate::tmush::types::CurrencyAmount::Decimal { .. } => {
+                                crate::tmush::types::CurrencyAmount::Decimal { minor_units: *amount }
+                            }
+                            crate::tmush::types::CurrencyAmount::MultiTier { .. } => {
+                                crate::tmush::types::CurrencyAmount::MultiTier { base_units: *amount }
+                            }
+                        };
+                        
+                        player.currency = player.currency.subtract(&currency_to_sub)
+                            .map_err(|e| anyhow::anyhow!("Currency error: {}", e))?;
+                        self.store().put_player(player)?;
+                        messages.push(format!("💸 You paid {} credits.", amount));
+                    } else {
+                        messages.push("❌ Insufficient funds.".to_string());
+                    }
+                }
+                
+                DialogAction::StartQuest { quest_id } => {
+                    // Start a quest for the player
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    // Check if player already has this quest
+                    let has_quest = player.quests.iter().any(|q| &q.quest_id == quest_id);
+                    
+                    if !has_quest {
+                        use crate::tmush::types::{PlayerQuest, QuestState};
+                        
+                        // Create a basic quest with empty objectives
+                        // In a real implementation, you'd load objectives from quest definition
+                        let new_quest = PlayerQuest {
+                            quest_id: quest_id.clone(),
+                            state: QuestState::Active {
+                                started_at: chrono::Utc::now(),
+                            },
+                            objectives: Vec::new(), // Would be populated from quest definition
+                        };
+                        
+                        player.quests.push(new_quest);
+                        self.store().put_player(player)?;
+                        
+                        messages.push(format!("📜 New quest started: {}", quest_id));
+                    } else {
+                        messages.push("ℹ️ You already have this quest.".to_string());
+                    }
+                }
+                
+                DialogAction::CompleteQuest { quest_id } => {
+                    // Complete a quest for the player
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    let mut completed = false;
+                    for quest in &mut player.quests {
+                        if &quest.quest_id == quest_id {
+                            use crate::tmush::types::QuestState;
+                            quest.state = QuestState::Completed {
+                                completed_at: chrono::Utc::now(),
+                            };
+                            completed = true;
+                            break;
+                        }
+                    }
+                    
+                    if completed {
+                        self.store().put_player(player)?;
+                        messages.push(format!("✅ Quest completed: {}", quest_id));
+                    } else {
+                        messages.push("❌ Quest not found or already complete.".to_string());
+                    }
+                }
+                
+                DialogAction::GrantAchievement { achievement_id } => {
+                    // Grant an achievement to the player
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    // Check if player already has this achievement
+                    let achievement_index = player.achievements.iter().position(|a| {
+                        &a.achievement_id == achievement_id
+                    });
+                    
+                    match achievement_index {
+                        Some(idx) if !player.achievements[idx].earned => {
+                            // Mark existing achievement as earned
+                            player.achievements[idx].earned = true;
+                            player.achievements[idx].earned_at = Some(chrono::Utc::now());
+                            self.store().put_player(player)?;
+                            messages.push(format!("🏆 Achievement unlocked: {}", achievement_id));
+                        }
+                        Some(_) => {
+                            // Already earned, do nothing
+                        }
+                        None => {
+                            // Create new achievement
+                            use crate::tmush::types::PlayerAchievement;
+                            
+                            let new_achievement = PlayerAchievement {
+                                achievement_id: achievement_id.clone(),
+                                progress: 0,
+                                earned: true,
+                                earned_at: Some(chrono::Utc::now()),
+                            };
+                            
+                            player.achievements.push(new_achievement);
+                            self.store().put_player(player)?;
+                            messages.push(format!("🏆 Achievement unlocked: {}", achievement_id));
+                        }
+                    }
+                }
+                
+                DialogAction::SetFlag { flag, value } => {
+                    // Set a conversation flag
+                    let mut conv_state = self.store()
+                        .get_conversation_state(player_name, npc_id)?
+                        .unwrap_or_else(|| {
+                            use crate::tmush::types::ConversationState;
+                            ConversationState::new(player_name, npc_id)
+                        });
+                    
+                    conv_state.set_flag(flag, *value);
+                    self.store().put_conversation_state(conv_state)?;
+                    
+                    // Don't show message for flag setting (internal state)
+                }
+                
+                DialogAction::Teleport { room_id } => {
+                    // Move player to a room
+                    let mut player = self.store().get_player(player_name)?;
+                    
+                    // Check if room exists (get_room returns Result<RoomRecord>)
+                    if self.store().get_room(room_id).is_ok() {
+                        player.current_room = room_id.clone();
+                        self.store().put_player(player)?;
+                        messages.push(format!("🌀 You have been teleported to {}!", room_id));
+                    } else {
+                        messages.push(format!("❌ Location '{}' not found.", room_id));
+                    }
+                }
+                
+                DialogAction::SendMessage { text } => {
+                    // Send a system message
+                    messages.push(format!("📢 {}", text));
+                }
+            }
+        }
+        
+        Ok(messages)
     }
 
     /// Handle QUEST command - manage quests (list, accept, status)
@@ -3930,6 +4309,321 @@ impl TinyMushProcessor {
             old_value,
             value
         ))
+    }
+
+    /// Handle @DIALOG command - manage NPC dialogue trees (admin only)
+    async fn handle_dialog(
+        &mut self,
+        session: &Session,
+        npc_id: String,
+        subcommand: String,
+        args: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        
+        // TODO: Add proper role-based permissions
+        // For now, allowing any authenticated user for alpha testing
+        
+        let store = self.get_store(config).await?;
+        
+        // Get the NPC
+        let mut npc = match store.get_npc(&npc_id) {
+            Ok(npc) => npc,
+            Err(_) => {
+                return Ok(format!(
+                    "NPC '{}' not found.\n\n\
+                    Available NPCs: mayor_thompson, city_clerk, gate_guard, market_vendor, museum_curator",
+                    npc_id
+                ));
+            }
+        };
+        
+        match subcommand.as_str() {
+            "LIST" => {
+                // List all dialogue topics for this NPC
+                let mut response = format!("=== Dialogue Topics for {} ===\n\n", npc.name);
+                
+                if npc.dialog.is_empty() && npc.dialog_tree.is_empty() {
+                    response.push_str("(No dialogue configured)\n");
+                } else {
+                    if !npc.dialog.is_empty() {
+                        response.push_str("Simple Dialogue:\n");
+                        let mut topics: Vec<_> = npc.dialog.keys().collect();
+                        topics.sort();
+                        for topic in topics {
+                            let text = &npc.dialog[topic];
+                            let preview = if text.len() > 50 {
+                                format!("{}...", &text[..47])
+                            } else {
+                                text.clone()
+                            };
+                            response.push_str(&format!("  {} - {}\n", topic, preview));
+                        }
+                        response.push('\n');
+                    }
+                    
+                    if !npc.dialog_tree.is_empty() {
+                        response.push_str("Dialogue Trees:\n");
+                        let mut topics: Vec<_> = npc.dialog_tree.keys().collect();
+                        topics.sort();
+                        for topic in topics {
+                            let node = &npc.dialog_tree[topic];
+                            let choice_count = node.choices.len();
+                            let action_count = node.actions.len();
+                            let condition_count = node.conditions.len();
+                            response.push_str(&format!(
+                                "  {} - {} choices, {} actions, {} conditions\n",
+                                topic, choice_count, action_count, condition_count
+                            ));
+                        }
+                    }
+                }
+                
+                response.push_str("\nCommands:\n");
+                response.push_str("  @DIALOG <npc> VIEW <topic> - View dialogue details\n");
+                response.push_str("  @DIALOG <npc> ADD <topic> <text> - Add simple dialogue\n");
+                response.push_str("  @DIALOG <npc> EDIT <topic> <json> - Edit dialogue tree\n");
+                response.push_str("  @DIALOG <npc> DELETE <topic> - Remove dialogue\n");
+                response.push_str("  @DIALOG <npc> TEST <topic> - Test dialogue conditions\n");
+                
+                Ok(response)
+            }
+            
+            "VIEW" => {
+                // View details of a specific topic
+                let topic = match args {
+                    Some(t) => t,
+                    None => return Ok("Usage: @DIALOG <npc> VIEW <topic>".to_string()),
+                };
+                
+                let mut response = format!("=== Dialogue: {} - {} ===\n\n", npc.name, topic);
+                
+                // Check simple dialogue first
+                if let Some(text) = npc.dialog.get(&topic) {
+                    response.push_str("Type: Simple Text\n\n");
+                    response.push_str(&format!("Text:\n{}\n", text));
+                    return Ok(response);
+                }
+                
+                // Check dialogue tree
+                if let Some(node) = npc.dialog_tree.get(&topic) {
+                    response.push_str("Type: Dialogue Tree\n\n");
+                    
+                    // Show as formatted JSON
+                    match serde_json::to_string_pretty(node) {
+                        Ok(json) => {
+                            response.push_str("JSON Definition:\n");
+                            response.push_str(&json);
+                            response.push('\n');
+                        }
+                        Err(e) => {
+                            response.push_str(&format!("Error serializing: {}\n", e));
+                        }
+                    }
+                    
+                    return Ok(response);
+                }
+                
+                Ok(format!("Topic '{}' not found for NPC '{}'.", topic, npc.name))
+            }
+            
+            "ADD" => {
+                // Add simple text dialogue
+                let args_str = match args {
+                    Some(a) => a,
+                    None => return Ok("Usage: @DIALOG <npc> ADD <topic> <text>".to_string()),
+                };
+                
+                let parts: Vec<&str> = args_str.splitn(2, ' ').collect();
+                if parts.len() < 2 {
+                    return Ok("Usage: @DIALOG <npc> ADD <topic> <text>".to_string());
+                }
+                
+                let topic = parts[0].to_string();
+                let text = parts[1].to_string();
+                
+                // Validate
+                const MAX_TEXT_LENGTH: usize = 500;
+                if text.len() > MAX_TEXT_LENGTH {
+                    return Ok(format!("Text too long: {} chars (max {})", text.len(), MAX_TEXT_LENGTH));
+                }
+                
+                // Check if topic already exists
+                if npc.dialog.contains_key(&topic) || npc.dialog_tree.contains_key(&topic) {
+                    return Ok(format!(
+                        "Topic '{}' already exists. Use @DIALOG {} DELETE {} first, or @DIALOG {} EDIT {}",
+                        topic, npc_id, topic, npc_id, topic
+                    ));
+                }
+                
+                // Add to simple dialogue
+                npc.dialog.insert(topic.clone(), text.clone());
+                let npc_name = npc.name.clone();
+                store.put_npc(npc)?;
+                
+                Ok(format!(
+                    "Added simple dialogue for {} by {}.\n\
+                    Topic: {}\n\
+                    Text: {}",
+                    npc_name, player.username, topic, text
+                ))
+            }
+            
+            "EDIT" => {
+                // Edit dialogue tree with JSON
+                let args_str = match args {
+                    Some(a) => a,
+                    None => return Ok("Usage: @DIALOG <npc> EDIT <topic> <json>\n\nExample JSON:\n{\n  \"text\": \"Hello!\",\n  \"choices\": [\n    {\"label\": \"Goodbye\", \"exit\": true}\n  ]\n}".to_string()),
+                };
+                
+                let parts: Vec<&str> = args_str.splitn(2, ' ').collect();
+                if parts.len() < 2 {
+                    return Ok("Usage: @DIALOG <npc> EDIT <topic> <json>".to_string());
+                }
+                
+                let topic = parts[0].to_string();
+                let json_str = parts[1].to_string();
+                
+                // Parse JSON into DialogNode
+                use crate::tmush::types::DialogNode;
+                let node: DialogNode = match serde_json::from_str(&json_str) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        return Ok(format!(
+                            "Invalid JSON: {}\n\n\
+                            Expected format:\n\
+                            {{\n\
+                              \"text\": \"Dialogue text here\",\n\
+                              \"actions\": [{{\n\
+                                \"type\": \"give_item\",\n\
+                                \"item_id\": \"sword\",\n\
+                                \"quantity\": 1\n\
+                              }}],\n\
+                              \"choices\": [{{\n\
+                                \"label\": \"Continue\",\n\
+                                \"goto\": \"next_node\"\n\
+                              }}]\n\
+                            }}",
+                            e
+                        ));
+                    }
+                };
+                
+                // Remove from simple dialogue if it exists there
+                npc.dialog.remove(&topic);
+                
+                // Add/update in dialogue tree
+                npc.dialog_tree.insert(topic.clone(), node);
+                let npc_name = npc.name.clone();
+                store.put_npc(npc)?;
+                
+                Ok(format!(
+                    "Updated dialogue tree for {} by {}.\n\
+                    Topic: {}\n\n\
+                    Use @DIALOG {} VIEW {} to see the result.",
+                    npc_name, player.username, topic, npc_id, topic
+                ))
+            }
+            
+            "DELETE" => {
+                // Delete a dialogue topic
+                let topic = match args {
+                    Some(t) => t,
+                    None => return Ok("Usage: @DIALOG <npc> DELETE <topic>".to_string()),
+                };
+                
+                let was_simple = npc.dialog.remove(&topic).is_some();
+                let was_tree = npc.dialog_tree.remove(&topic).is_some();
+                
+                if !was_simple && !was_tree {
+                    return Ok(format!("Topic '{}' not found for NPC '{}'.", topic, npc.name));
+                }
+                
+                let npc_name = npc.name.clone();
+                store.put_npc(npc)?;
+                
+                let type_str = if was_tree { "dialogue tree" } else { "simple dialogue" };
+                Ok(format!(
+                    "Deleted {} '{}' from {} by {}.",
+                    type_str, topic, npc_name, player.username
+                ))
+            }
+            
+            "TEST" => {
+                // Test dialogue conditions for current player
+                let topic = match args {
+                    Some(t) => t,
+                    None => return Ok("Usage: @DIALOG <npc> TEST <topic>".to_string()),
+                };
+                
+                // Check if topic exists
+                if let Some(node) = npc.dialog_tree.get(&topic) {
+                    let mut response = format!("=== Testing Dialogue: {} - {} ===\n\n", npc.name, topic);
+                    
+                    // Test node conditions
+                    response.push_str("Node Conditions:\n");
+                    if node.conditions.is_empty() {
+                        response.push_str("  (none - always visible)\n");
+                    } else {
+                        for (_i, condition) in node.conditions.iter().enumerate() {
+                            let result = self.evaluate_conditions(&[condition.clone()], &player, &npc.id);
+                            let status = if result.unwrap_or(false) { "✓ PASS" } else { "✗ FAIL" };
+                            response.push_str(&format!("  {} - {:?}\n", status, condition));
+                        }
+                    }
+                    
+                    response.push_str("\nVisible Choices:\n");
+                    let visible_choices: Vec<_> = node.choices.iter()
+                        .filter(|c| self.evaluate_conditions(&c.conditions, &player, &npc.id).unwrap_or(false))
+                        .collect();
+                    
+                    if visible_choices.is_empty() {
+                        response.push_str("  (none visible - player doesn't meet conditions)\n");
+                    } else {
+                        for (i, choice) in visible_choices.iter().enumerate() {
+                            response.push_str(&format!("  {}) {}\n", i + 1, choice.label));
+                            if !choice.conditions.is_empty() {
+                                response.push_str("     Conditions: ");
+                                for cond in &choice.conditions {
+                                    response.push_str(&format!("{:?} ", cond));
+                                }
+                                response.push('\n');
+                            }
+                        }
+                    }
+                    
+                    response.push_str("\nActions:\n");
+                    if node.actions.is_empty() {
+                        response.push_str("  (none)\n");
+                    } else {
+                        for action in &node.actions {
+                            response.push_str(&format!("  {:?}\n", action));
+                        }
+                    }
+                    
+                    Ok(response)
+                } else if npc.dialog.contains_key(&topic) {
+                    Ok(format!("Topic '{}' is simple text dialogue (no conditions to test).", topic))
+                } else {
+                    Ok(format!("Topic '{}' not found for NPC '{}'.", topic, npc.name))
+                }
+            }
+            
+            _ => {
+                Ok(format!(
+                    "Unknown subcommand: {}\n\n\
+                    Available subcommands:\n\
+                    - LIST - Show all dialogue topics\n\
+                    - VIEW <topic> - View dialogue details\n\
+                    - ADD <topic> <text> - Add simple dialogue\n\
+                    - EDIT <topic> <json> - Edit dialogue tree\n\
+                    - DELETE <topic> - Remove dialogue\n\
+                    - TEST <topic> - Test conditions for current player",
+                    subcommand
+                ))
+            }
+        }
     }
 
     /// Handle @LISTABANDONED command - view abandoned/at-risk housing (admin)

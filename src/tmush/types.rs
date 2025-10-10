@@ -360,6 +360,10 @@ impl ConversationState {
 pub struct DialogNode {
     pub text: String,
     #[serde(default)]
+    pub conditions: Vec<DialogCondition>,
+    #[serde(default)]
+    pub actions: Vec<DialogAction>,
+    #[serde(default)]
     pub choices: Vec<DialogChoice>,
 }
 
@@ -367,6 +371,8 @@ impl DialogNode {
     pub fn new(text: &str) -> Self {
         Self {
             text: text.to_string(),
+            conditions: Vec::new(),
+            actions: Vec::new(),
             choices: Vec::new(),
         }
     }
@@ -375,6 +381,64 @@ impl DialogNode {
         self.choices.push(choice);
         self
     }
+
+    pub fn with_condition(mut self, condition: DialogCondition) -> Self {
+        self.conditions.push(condition);
+        self
+    }
+
+    pub fn with_action(mut self, action: DialogAction) -> Self {
+        self.actions.push(action);
+        self
+    }
+}
+
+/// Condition for showing dialogue or choices
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DialogCondition {
+    /// Check if player has discussed a topic with any NPC
+    HasDiscussed { topic: String },
+    /// Check if player has a specific conversation flag set
+    HasFlag { flag: String, value: bool },
+    /// Check if player has a specific item in inventory
+    HasItem { item_id: String },
+    /// Check if player has minimum currency amount
+    HasCurrency { amount: i64 },
+    /// Check player level
+    MinLevel { level: u32 },
+    /// Check quest status
+    QuestStatus { quest_id: String, status: String },
+    /// Check if player has achievement
+    HasAchievement { achievement_id: String },
+    /// Always true (for default fallback)
+    Always,
+}
+
+/// Action to execute when dialogue node is reached (Phase 8.5)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DialogAction {
+    /// Give an item to the player
+    GiveItem { item_id: String, quantity: u32 },
+    /// Take an item from the player
+    TakeItem { item_id: String, quantity: u32 },
+    /// Give currency to the player
+    GiveCurrency { amount: i64 },
+    /// Take currency from the player
+    TakeCurrency { amount: i64 },
+    /// Start a quest for the player
+    StartQuest { quest_id: String },
+    /// Complete a quest for the player
+    CompleteQuest { quest_id: String },
+    /// Grant an achievement to the player
+    GrantAchievement { achievement_id: String },
+    /// Set a conversation flag
+    SetFlag { flag: String, value: bool },
+    /// Teleport player to a room
+    Teleport { room_id: String },
+    /// Send a system message to the player
+    SendMessage { text: String },
 }
 
 /// Choice in a dialogue tree
@@ -385,6 +449,8 @@ pub struct DialogChoice {
     pub goto: Option<String>,
     #[serde(default)]
     pub exit: bool,
+    #[serde(default)]
+    pub conditions: Vec<DialogCondition>,
 }
 
 impl DialogChoice {
@@ -393,6 +459,7 @@ impl DialogChoice {
             label: label.to_string(),
             goto: None,
             exit: false,
+            conditions: Vec::new(),
         }
     }
 
@@ -405,6 +472,11 @@ impl DialogChoice {
     pub fn exit(mut self) -> Self {
         self.exit = true;
         self.goto = None;
+        self
+    }
+
+    pub fn with_condition(mut self, condition: DialogCondition) -> Self {
+        self.conditions.push(condition);
         self
     }
 }
