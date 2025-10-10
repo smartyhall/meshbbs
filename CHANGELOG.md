@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **TinyMUSH Admin Command Handlers (Phase 9.2)**: Complete admin management interface
+  - `@ADMIN` command to view admin status, level, and available commands
+  - `@SETADMIN <player> <level>` to grant admin privileges (levels 0-3)
+  - `@REMOVEADMIN <player>` / `@REVOKEADMIN <player>` to revoke admin privileges
+  - `@ADMINS` / `@ADMINLIST` to list all administrators (public command)
+  - Permission checking: Level 2+ required for grant/revoke operations
+  - Level validation: Cannot grant higher level than caller's own level
+  - Self-protection: Cannot revoke your own admin privileges
+  - Username normalization: Case-insensitive username handling
+  - Formatted Unicode output with emoji indicators (🛡️, ✅, ❌, ⛔)
+  - Comprehensive integration tests (8 tests, all passing)
+  - Enhanced rustdoc documentation for API reference
+  - User-facing documentation: `docs/development/TMUSH_ADMIN_COMMANDS.md`
 - **TinyMUSH Complete Internationalization Support**: Extended WorldConfig system for comprehensive i18n capability
   - **113 configurable string fields** covering ALL user-facing text (up from initial 4 fields)
   - 7 help system templates (help_main, help_commands, help_movement, help_social, help_bulletin, help_companion, help_mail)

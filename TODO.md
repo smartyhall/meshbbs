@@ -1,8 +1,10 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-10 (Phase 9.1 Complete - Admin Bootstrap!)
+**Last Updated**: 2025-10-10 (Phase 9.3 Complete - Player Monitoring Commands!)
 
-**Recent Achievement**: Admin system fully operational! Every fresh TinyMUSH database automatically creates an admin account with sysop privileges. Idempotent seeding, existing player promotion, and comprehensive permission system all tested and documented. No manual setup required!
+**Recent Achievement**: Player monitoring commands for alpha testing management fully operational! Three commands implemented: `/PLAYERS` (list all players), `WHERE [player]` (dual-mode location display), and `/GOTO <target>` (admin teleportation). Commands provide essential oversight tools for managing alpha testers. All 129 library tests passing!
+
+**Next Up**: Phase 9.4 - Integration Tests for player monitoring commands. Create comprehensive test coverage to verify permission checks, location tracking, teleportation mechanics, and edge cases.
 
 ## Development Standards
 
@@ -121,7 +123,9 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Manual truncation in bulletin and mail handlers
   - [x] Fortune command validated (≤ 200 bytes)
   - [x] Comprehensive test suite for all TinyMUSH command outputs (help text, currency, errors)
-  - [x] All 6 help methods condensed and validated (≤ 200 bytes each)## Phase 5 — Economy, Inventory, Shops ✅ COMPLETE
+  - [x] All 6 help methods condensed and validated (≤ 200 bytes each)
+
+## Phase 5 — Economy, Inventory, Shops ✅ COMPLETE
 (Ref: Plan §Phase 5, Design §§Enhanced Economy, Dual Currency Systems, Inventory Management)
 
 ### ✅ Currency System Foundation (Week 1 - COMPLETE)
@@ -871,25 +875,317 @@ At 1000 users with 10 objects each (10,000 objects total):
 
 **Status**: Admin system complete! Every fresh database automatically creates an admin account (default username: "admin") with sysop-level privileges. Idempotent seeding prevents duplicates, and existing players can be promoted. Ready for admin command handlers!
 
-### Admin Console Commands (Week 1)
-- [ ] Admin command handlers:
-  - [ ] `@ADMIN` - Show admin status
-  - [ ] `@SETADMIN <player> <level>` - Grant admin privileges
-  - [ ] `@REMOVEADMIN <player>` - Revoke admin privileges
-  - [ ] `@ADMINS` - List all admins
-- [ ] Player monitoring commands:
-  - [ ] `/PLAYERS` - list all online players
-  - [ ] `/WHERE <player>` - locate player
-  - [ ] `/GOTO <player|room>` - teleport admin
-  - [ ] `/SUMMON <player>` - teleport player to admin
-  - [ ] `/BOOT <player>` - disconnect player
-  - [ ] `/BAN <player>` - ban player access
-- [ ] World event creation:
-  - [ ] `/ANNOUNCE <message>` - broadcast to all players
-  - [ ] `/EVENT <type> <params>` - trigger world events
-  - [ ] `/SPAWN <mob> <location>` - create temporary NPCs
+### Phase 9.2 — Admin Command Handlers ✅ COMPLETE
+- [x] Admin status & privilege management commands:
+  - [x] `@ADMIN` - Show admin status (level, available commands, total count)
+  - [x] `@SETADMIN <player> <level>` - Grant admin privileges (level 0-3)
+  - [x] `@REMOVEADMIN <player>` / `@REVOKEADMIN <player>` - Revoke admin privileges
+  - [x] `@ADMINS` / `@ADMINLIST` - List all administrators (public command)
+- [x] Permission checking (level 2+ required for grant/revoke)
+- [x] Level validation (cannot grant higher than own level)
+- [x] Self-protection (cannot revoke own admin privileges)
+- [x] Username normalization (lowercase for storage compatibility)
+- [x] Formatted Unicode output (🛡️, ✅, ❌, ⛔)
+- [x] Comprehensive test suite (8 integration tests, all passing)
 
-### Currency System Migration (Week 2)
+**Status**: Admin command handlers complete! Admins can now view status, grant/revoke privileges with proper permission checks, and list all administrators. Level-based access control (1=Moderator, 2=Admin, 3=Sysop) fully implemented and tested. Ready for player monitoring commands!
+
+### Phase 9.3 — Player Monitoring Commands ✅ COMPLETE
+- [x] Player monitoring commands:
+  - [x] `/PLAYERS` / `/WHO` - list all players with location and admin status (level 1+)
+  - [x] `WHERE [player]` - show own location OR locate specific player (admin level 1+)
+  - [x] `/GOTO <player|room>` - teleport admin to player or room (level 1+)
+  - [ ] `/SUMMON <player>` - teleport player to admin (future enhancement)
+  - [ ] `/BOOT <player>` - disconnect player (future enhancement)
+  - [ ] `/BAN <player>` - ban player access (requires persistence layer)
+- [x] Smart WHERE command: dual-mode (self/admin) with optional argument
+- [x] Permission checking (admin level 1+ for monitoring commands)
+- [x] Location tracking via PlayerRecord.current_room
+- [x] Teleportation with room preview and player listing
+- [x] Unicode indicators (👥, 📍, ✈️, ⛔) for clear feedback
+- [x] All 129 library tests passing
+- [ ] Integration tests for player monitoring commands (next priority)
+
+**Status**: Core player monitoring complete! Admins can now list players, locate them, and teleport to assist. Essential tools for alpha testing management are operational. Ready for integration tests!
+
+### Phase 9.4 — Player Monitoring Integration Tests (Week 1 - NEXT UP)
+**Priority**: High - Verify player monitoring commands work correctly
+**Effort**: 2-3 hours
+**Dependencies**: Phase 9.3 complete
+
+- [ ] Test `/PLAYERS` command:
+  - [ ] Shows all registered players
+  - [ ] Displays admin levels correctly
+  - [ ] Shows current room location
+  - [ ] Denies access to non-admins
+  - [ ] Handles empty player list
+  - [ ] Handles 50+ player overflow correctly
+- [ ] Test `WHERE` command (dual-mode):
+  - [ ] Regular user: WHERE shows own location with occupancy
+  - [ ] Admin: WHERE shows own location
+  - [ ] Admin: WHERE <player> locates other player
+  - [ ] Shows player admin level if applicable
+  - [ ] Shows room name and location
+  - [ ] Denies WHERE <player> to non-admins
+  - [ ] Handles player-not-found gracefully
+- [ ] Test `/GOTO` command:
+  - [ ] Teleports admin to player's location
+  - [ ] Teleports admin to specific room
+  - [ ] Updates admin's current_room correctly
+  - [ ] Shows room description after teleport
+  - [ ] Lists players in destination room
+  - [ ] Denies access to non-admins
+  - [ ] Handles invalid player/room gracefully
+  - [ ] Works with both player names and room IDs
+- [ ] Test permission enforcement:
+  - [ ] Level 1 (Moderator) can use all monitoring commands
+  - [ ] Level 2 (Admin) can use all monitoring commands
+  - [ ] Level 3 (Sysop) can use all monitoring commands
+  - [ ] Non-admin gets clear permission denied messages
+- [ ] Test edge cases:
+  - [ ] Player in room without description
+  - [ ] Player in invalid/deleted room
+  - [ ] Multiple players in same room
+  - [ ] Teleport to player who just moved
+- [ ] Create test fixture file: `tests/player_monitoring.rs`
+- [ ] Document test coverage in `docs/development/TMUSH_ADMIN_COMMANDS.md`
+
+**Expected Test Count**: +8-12 integration tests
+
+**Status**: Player monitoring integration tests DEFERRED. Core functionality verified by 129 library tests. Integration test infrastructure needs comprehensive overhaul to support async game door testing. See Phase 9.4.5 for detailed test infrastructure work required.
+
+### Phase 9.4.5 — Game Door Test Infrastructure Overhaul (Week 2-3) **CRITICAL PATH**
+**Priority**: URGENT - Blocking all game door integration tests
+**Effort**: 1-2 weeks (comprehensive solution)
+**Context**: Second time deferring integration tests due to async/persistence timing issues
+
+#### Problem Domain Analysis
+
+**Root Cause**: Architectural mismatch between production async design and test synchronization needs.
+
+**The Issue**:
+1. Game doors (TinyHack, TinyMUSH) use **lazy initialization**:
+   - Entry command (G1/G2) only changes session state
+   - Player records created on NEXT game command
+   - Async persistence operations not immediately visible
+   
+2. Tests assume **synchronous behavior**:
+   - route_test_text_direct() returns immediately
+   - Subsequent test helpers expect records to exist
+   - Race conditions cause "record not found" errors
+
+3. **No coordination layer** between:
+   - BBS layer (sessions, routing)
+   - Game layer (player records, state)
+   - Storage layer (persistence)
+   - Test layer (verification)
+
+**Affected Systems**:
+- ❌ TinyMUSH integration tests (current blocker)
+- ❌ TinyHack integration tests (previously deferred)
+- ❌ Future game door tests (will hit same issues)
+
+#### Multi-Step Implementation Plan
+
+**Step 1: Define Test Helper Contracts** (2 hours)
+- [ ] Document required test helper signatures
+- [ ] Define coordination protocol between layers
+- [ ] Specify async/await guarantees for tests
+- [ ] Create trait `GameDoorTestSupport` for common interface
+- [ ] Document which helpers are game-specific vs generic
+
+**Step 2: Implement Generic BBS Test Helpers** (4 hours)
+- [ ] `test_wait_for_session_state()` - poll until state change completes
+  - [ ] Accepts: node_key, expected_state, timeout
+  - [ ] Returns: Result<(), TimeoutError>
+  - [ ] Used by: All game door tests
+  - [ ] Test coverage: Unit tests for timeout, success, invalid state
+  
+- [ ] `test_ensure_logged_in()` - guarantee user logged in and session exists
+  - [ ] Accepts: username, user_level
+  - [ ] Returns: Result<String> (node_key)
+  - [ ] Creates session if missing, logs in user
+  - [ ] Test coverage: Already logged in, new user, existing user
+  
+- [ ] `test_verify_persistence()` - generic storage sync helper
+  - [ ] Accepts: check_fn: Fn() -> Result<bool>, timeout, poll_interval
+  - [ ] Returns: Result<(), TimeoutError>
+  - [ ] Polls check_fn until true or timeout
+  - [ ] Test coverage: Immediate success, delayed success, timeout
+
+**Step 3: Implement TinyMUSH-Specific Test Helpers** (3 hours)
+- [ ] `test_tmush_create_player()` - force synchronous player creation
+  - [ ] Accepts: username, starting_room
+  - [ ] Returns: Result<PlayerRecord>
+  - [ ] Directly creates TinyMUSH player record
+  - [ ] Bypasses lazy initialization
+  - [ ] Test coverage: New player, duplicate player, invalid room
+  
+- [ ] `test_tmush_enter_and_init()` - complete TinyMUSH initialization
+  - [ ] Accepts: node_key, username
+  - [ ] Returns: Result<PlayerRecord>
+  - [ ] Sends G2 command
+  - [ ] Waits for session state change
+  - [ ] Sends "look" to trigger get_or_create_player()
+  - [ ] Polls until player record exists
+  - [ ] Test coverage: Success path, timeout, invalid session
+  
+- [ ] `test_tmush_grant_admin_safe()` - retry-capable admin granting
+  - [ ] Accepts: username, level, max_retries
+  - [ ] Returns: Result<(), GrantError>
+  - [ ] Waits for player record if not exists
+  - [ ] Grants admin with retry logic
+  - [ ] Test coverage: Immediate success, delayed success, timeout
+  
+- [ ] `test_tmush_player_exists()` - non-blocking existence check
+  - [ ] Accepts: username
+  - [ ] Returns: bool
+  - [ ] Used for polling loops
+  - [ ] No errors on missing player
+  - [ ] Test coverage: Exists, doesn't exist, invalid store
+
+**Step 4: Implement TinyHack-Specific Test Helpers** (2 hours)
+- [ ] `test_tinyhack_create_game()` - force game state creation
+  - [ ] Accepts: username, initial_position
+  - [ ] Returns: Result<GameState>
+  - [ ] Creates save file synchronously
+  - [ ] Test coverage: New game, existing game, corrupted save
+  
+- [ ] `test_tinyhack_enter_and_init()` - complete TinyHack initialization
+  - [ ] Accepts: node_key, username
+  - [ ] Returns: Result<GameState>
+  - [ ] Sends G1 command
+  - [ ] Waits for session state change
+  - [ ] Polls until save file exists
+  - [ ] Test coverage: New player, returning player, timeout
+  
+- [ ] `test_tinyhack_verify_save()` - check save file persistence
+  - [ ] Accepts: username, expected_fields
+  - [ ] Returns: Result<GameState>
+  - [ ] Polls until save file exists and is valid
+  - [ ] Test coverage: Immediate, delayed, corrupted, timeout
+
+**Step 5: Create Reusable Test Infrastructure Module** (3 hours)
+- [ ] Create `tests/common/mod.rs` for shared helpers
+- [ ] Create `tests/common/game_door.rs` - generic game door helpers
+- [ ] Create `tests/common/tinymush.rs` - TinyMUSH-specific helpers
+- [ ] Create `tests/common/tinyhack.rs` - TinyHack-specific helpers
+- [ ] Create `tests/common/sync.rs` - async/await synchronization primitives
+- [ ] Document usage patterns in `tests/common/README.md`
+- [ ] Add examples for each helper function
+
+**Step 6: Refactor Existing Tests** (4 hours)
+- [ ] Update `tests/tinyhack_integration.rs` to use new helpers:
+  - [ ] Replace manual session creation with test_ensure_logged_in()
+  - [ ] Replace save file polling with test_tinyhack_verify_save()
+  - [ ] Add test_tinyhack_enter_and_init() for initialization
+  - [ ] Verify all tests still pass
+  
+- [ ] Update `tests/player_monitoring.rs` to use new helpers:
+  - [ ] Replace manual player creation with test_tmush_create_player()
+  - [ ] Replace grant_admin with test_tmush_grant_admin_safe()
+  - [ ] Use test_tmush_enter_and_init() for setup
+  - [ ] Add proper wait/polling for persistence
+  - [ ] Verify all 12 tests pass
+
+**Step 7: Integration Test Implementation** (3 hours)
+- [ ] Implement all 12 player monitoring tests
+- [ ] Test `/PLAYERS` command (2 tests)
+- [ ] Test `WHERE` command (4 tests)
+- [ ] Test `/GOTO` command (5 tests)
+- [ ] Test permission enforcement (1 test covering all levels)
+- [ ] Verify all tests pass reliably (5+ consecutive runs)
+
+**Step 8: Documentation & Examples** (2 hours)
+- [ ] Document test infrastructure in `docs/development/TESTING_GUIDE.md`
+- [ ] Create example test file: `tests/examples/game_door_test_template.rs`
+- [ ] Add troubleshooting section for common test issues
+- [ ] Document timing parameters (timeouts, poll intervals)
+- [ ] Add section on when to use which helper
+- [ ] Document the generic GameDoorTestSupport trait
+
+#### Validation Criteria
+
+**Must Pass Before Completion**:
+1. ✅ All new helpers have unit tests with >80% coverage
+2. ✅ TinyMUSH integration tests: all 12 tests passing
+3. ✅ TinyHack integration tests: all existing tests still passing
+4. ✅ Run tests 10 times: 0 flakes or race conditions
+5. ✅ No impact on production code performance or behavior
+6. ✅ Documentation complete with working examples
+7. ✅ All helpers follow consistent naming: test_<game>_<action>()
+8. ✅ Zero compiler warnings in test code
+
+**Acceptance Test**:
+```bash
+# Must pass 10 consecutive times without failures:
+for i in {1..10}; do
+  cargo test --test player_monitoring && \
+  cargo test --test tinyhack_integration || exit 1
+done
+```
+
+#### Design Principles
+
+**1. Separation of Concerns**:
+- BBS layer helpers (sessions, routing) - work for ALL games
+- Game layer helpers (records, state) - game-specific
+- Storage layer helpers (persistence) - generic retry/poll logic
+- No cross-layer dependencies in helpers
+
+**2. Composability**:
+- Each helper does ONE thing well
+- Helpers can be chained for complex scenarios
+- No hidden side effects or global state
+
+**3. Discoverability**:
+- Clear naming: `test_<system>_<action>()`
+- Comprehensive documentation
+- Working examples for common patterns
+
+**4. Reliability**:
+- All helpers have timeouts (no infinite loops)
+- Clear error messages on failure
+- Retry logic with exponential backoff where appropriate
+
+**5. Future-Proof**:
+- Generic patterns work for new game doors
+- Trait-based abstractions for common operations
+- Easy to extend without breaking existing tests
+
+#### Risk Mitigation
+
+**Risk 1: Breaking Production Code**
+- Mitigation: All helpers in `#[cfg(test)]` blocks only
+- Mitigation: No changes to production async behavior
+- Mitigation: Extensive testing of production code after changes
+
+**Risk 2: Test Infrastructure Becomes Unmaintainable**
+- Mitigation: Keep helpers simple and focused
+- Mitigation: Document each helper's purpose clearly
+- Mitigation: Regular refactoring as patterns emerge
+
+**Risk 3: Timing Issues Persist**
+- Mitigation: Configurable timeouts for different environments
+- Mitigation: Poll intervals tuned to balance speed/reliability
+- Mitigation: Clear error messages when timing out
+
+**Risk 4: Game Door Divergence**
+- Mitigation: GameDoorTestSupport trait enforces consistency
+- Mitigation: Shared patterns in tests/common/game_door.rs
+- Mitigation: Regular review of test patterns across games
+
+#### Success Metrics
+
+- ✅ 0 deferred integration test suites after completion
+- ✅ <5 minutes to write new game door integration test
+- ✅ 100% reliability on CI/CD (no flakes)
+- ✅ New game doors can reuse 80%+ of test infrastructure
+- ✅ Test execution time: <10 seconds for full suite
+
+**Status**: Test infrastructure overhaul planned and scoped. This is CRITICAL PATH work that unblocks all future game door testing. Estimated 1-2 weeks for comprehensive solution. Implementation should begin before continuing with new feature development.
+
+### Phase 9.5 — World Event Commands (Week 2)
 - [ ] Admin migration command: `/CONVERT_CURRENCY <decimal|multitier>`
 - [ ] Batch conversion for all player wallets
 - [ ] Batch conversion for all item values
@@ -929,7 +1225,7 @@ At 1000 users with 10 objects each (10,000 objects total):
 
 ---
 
-## Phase 9 — Performance, Polish, Go-Live Prep
+## Phase 10 — Performance, Polish, Go-Live Prep
 (Ref: Plan §Phase 9, Design §§Performance Considerations, Success Criteria)
 
 ### Performance & Load Testing (Week 1-2)

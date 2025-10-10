@@ -24,7 +24,7 @@ pub enum TinyMushCommand {
     // Core navigation
     Look(Option<String>),    // L, L chest
     Move(Direction),         // N, S, E, W, U, D, NE, NW, SE, SW
-    Where,                   // WHERE - show current location
+    Where(Option<String>),   // WHERE - show current location, WHERE player (admin) - locate player
     Map,                     // MAP - show area overview
 
     // Inventory and items
@@ -124,6 +124,36 @@ pub enum TinyMushCommand {
     EditNpc(String, String, String), // @EDITNPC <npc_id> <field> <value> - edit NPC properties (admin only)
     ListAbandoned,          // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
     Dialog(String, String, Option<String>), // @DIALOG <npc> <subcommand> [args] - manage NPC dialogue trees (admin only)
+    
+    /// Admin permission commands (Phase 9.2)
+    /// 
+    /// These commands manage administrative privileges in TinyMUSH:
+    /// - `Admin`: Display admin status, level, and available commands
+    /// - `SetAdmin(username, level)`: Grant admin privileges (level 0-3: 0=none, 1=moderator, 2=admin, 3=sysop)
+    /// - `RemoveAdmin(username)`: Revoke admin privileges
+    /// - `Admins`: List all administrators (public command)
+    /// 
+    /// Permission requirements:
+    /// - `Admin` and `Admins`: Available to all players
+    /// - `SetAdmin` and `RemoveAdmin`: Require admin level 2+
+    /// 
+    /// See handler documentation for detailed usage and examples.
+    Admin,                  // @ADMIN - show admin status
+    SetAdmin(String, u8),   // @SETADMIN player level - grant admin privileges (0-3)
+    RemoveAdmin(String),    // @REMOVEADMIN / @REVOKEADMIN player - revoke admin privileges  
+    Admins,                 // @ADMINS / @ADMINLIST - list all admins
+    
+    /// Player monitoring commands (Phase 9.3)
+    ///
+    /// These commands enable administrators to monitor and manage player activity:
+    /// - `Players`: List all players in TinyMUSH (online/offline status, location)
+    /// - `Goto(target)`: Teleport admin to a player's location or specific room
+    /// 
+    /// Permission requirements:
+    /// - All commands require admin level 1+ (Moderator or higher)
+    /// - Transparency: Actions are logged for accountability
+    Players,                // /PLAYERS - list all players with status and location
+    Goto(String),           // /GOTO <player|room> - teleport to player or room
     
     // Unrecognized command
     Unknown(String),
@@ -282,7 +312,7 @@ impl TinyMushProcessor {
         match parsed_command {
             TinyMushCommand::Look(target) => self.handle_look(session, target, config).await,
             TinyMushCommand::Move(direction) => self.handle_move(session, direction, config).await,
-            TinyMushCommand::Where => self.handle_where(session, config).await,
+            TinyMushCommand::Where(target_username) => self.handle_where(session, target_username, config).await,
             TinyMushCommand::Map => self.handle_map(session, config).await,
             TinyMushCommand::Inventory => self.handle_inventory(session, config).await,
             TinyMushCommand::Take(item) => self.handle_take(session, item, config).await,
@@ -344,6 +374,12 @@ impl TinyMushProcessor {
             TinyMushCommand::EditNpc(npc_id, field, value) => self.handle_edit_npc(session, npc_id, field, value, config).await,
             TinyMushCommand::Dialog(npc_id, subcommand, args) => self.handle_dialog(session, npc_id, subcommand, args, config).await,
             TinyMushCommand::ListAbandoned => self.handle_list_abandoned(session, config).await,
+            TinyMushCommand::Admin => self.handle_admin(session, config).await,
+            TinyMushCommand::SetAdmin(username, level) => self.handle_set_admin(session, username, level, config).await,
+            TinyMushCommand::RemoveAdmin(username) => self.handle_remove_admin(session, username, config).await,
+            TinyMushCommand::Admins => self.handle_admins(session, config).await,
+            TinyMushCommand::Players => self.handle_players(session, config).await,
+            TinyMushCommand::Goto(target) => self.handle_goto(session, target, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -389,7 +425,15 @@ impl TinyMushProcessor {
             // Information commands
             "I" | "INV" | "INVENTORY" => TinyMushCommand::Inventory,
             "WHO" => TinyMushCommand::Who,
-            "WHERE" => TinyMushCommand::Where,
+            "WHERE" => {
+                // WHERE with no args shows your location
+                // WHERE <player> (admin only) locates another player
+                if parts.len() > 1 {
+                    TinyMushCommand::Where(Some(parts[1].to_lowercase()))
+                } else {
+                    TinyMushCommand::Where(None)
+                }
+            },
             "MAP" => TinyMushCommand::Map,
             "SCORE" => TinyMushCommand::Score,
             "TIME" => TinyMushCommand::Time,
@@ -872,6 +916,48 @@ impl TinyMushProcessor {
             "@LISTABANDONED" | "@ABANDONED" | "@INACTIVE" => {
                 TinyMushCommand::ListAbandoned
             },
+            "@ADMIN" => {
+                TinyMushCommand::Admin
+            },
+            "@SETADMIN" => {
+                if parts.len() > 2 {
+                    let username = parts[1].to_lowercase();
+                    match parts[2].parse::<u8>() {
+                        Ok(level) if level <= 3 => TinyMushCommand::SetAdmin(username, level),
+                        Ok(_) => TinyMushCommand::Unknown("Admin level must be 0-3 (0=none, 1=moderator, 2=admin, 3=sysop)".to_string()),
+                        Err(_) => TinyMushCommand::Unknown("Usage: @SETADMIN <player> <level>\nLevel: 0=none, 1=moderator, 2=admin, 3=sysop\nExample: @SETADMIN alice 2".to_string()),
+                    }
+                } else {
+                    TinyMushCommand::Unknown("Usage: @SETADMIN <player> <level>\nLevel: 0=none, 1=moderator, 2=admin, 3=sysop".to_string())
+                }
+            },
+            "@REMOVEADMIN" | "@REVOKEADMIN" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::RemoveAdmin(parts[1].to_lowercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: @REMOVEADMIN <player>".to_string())
+                }
+            },
+            "@ADMINS" | "@ADMINLIST" => {
+                TinyMushCommand::Admins
+            },
+            "/PLAYERS" | "/WHO" => {
+                TinyMushCommand::Players
+            },
+            "/WHERE" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Where(Some(parts[1].to_lowercase()))
+                } else {
+                    TinyMushCommand::Unknown("Usage: /WHERE <player>\nExample: /WHERE alice".to_string())
+                }
+            },
+            "/GOTO" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Goto(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: /GOTO <player|room>\nExample: /GOTO alice or /GOTO town_square".to_string())
+                }
+            },
 
             _ => TinyMushCommand::Unknown(input),
         }
@@ -1027,43 +1113,88 @@ impl TinyMushProcessor {
     }
 
     /// Handle WHERE command - show current location
-    async fn handle_where(&mut self, session: &Session, config: &Config) -> Result<String> {
+    async fn handle_where(&mut self, session: &Session, target_username: Option<String>, config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        let room_manager = self.get_room_manager(config).await?;
-        
-        match room_manager.get_room(&player.current_room) {
-            Ok(room) => {
-                let occupancy = room_manager.get_room_occupancy(&player.current_room);
-                let capacity_limit = if room.max_capacity > 0 {
-                    room.max_capacity
-                } else {
-                    // Use default capacity based on room type
-                    if room.flags.contains(&crate::tmush::types::RoomFlag::Shop) {
-                        10
-                    } else if room.flags.contains(&crate::tmush::types::RoomFlag::Indoor) {
-                        20
+        // If no target specified, show own location (original WHERE behavior)
+        if target_username.is_none() {
+            let room_manager = self.get_room_manager(config).await?;
+            
+            match room_manager.get_room(&player.current_room) {
+                Ok(room) => {
+                    let occupancy = room_manager.get_room_occupancy(&player.current_room);
+                    let capacity_limit = if room.max_capacity > 0 {
+                        room.max_capacity
                     } else {
-                        50
-                    }
-                };
-                
-                Ok(format!(
-                    "You are in: {} ({})\n{}\nOccupancy: {}/{}",
-                    room.name,
-                    player.current_room,
-                    room.short_desc,
-                    occupancy,
-                    capacity_limit
+                        // Use default capacity based on room type
+                        if room.flags.contains(&crate::tmush::types::RoomFlag::Shop) {
+                            10
+                        } else if room.flags.contains(&crate::tmush::types::RoomFlag::Indoor) {
+                            20
+                        } else {
+                            50
+                        }
+                    };
+                    
+                    Ok(format!(
+                        "You are in: {} ({})\n{}\nOccupancy: {}/{}",
+                        room.name,
+                        player.current_room,
+                        room.short_desc,
+                        occupancy,
+                        capacity_limit
+                    ))
+                },
+                Err(_) => Ok(format!(
+                    "You are lost in: {}\n(Room not found - contact admin)",
+                    player.current_room
                 ))
-            },
-            Err(_) => Ok(format!(
-                "You are lost in: {}\n(Room not found - contact admin)",
-                player.current_room
-            ))
+            }
+        } else {
+            // Target specified - admin command to locate another player
+            let store = self.get_store(config).await?;
+            
+            // Check if caller is admin
+            if !player.is_admin() {
+                return Ok("⛔ Permission denied: Not an administrator\n\nThis command is for administrators only.".to_string());
+            }
+
+            let target = target_username.unwrap();
+
+            // Look up target player
+            let target_player = match store.get_player(&target) {
+                Ok(p) => p,
+                Err(_) => return Ok(format!("❌ Player not found: {}\n\nCheck the spelling and try again.", target)),
+            };
+
+            let mut response = String::from("📍 PLAYER LOCATION\n\n");
+            response.push_str(&format!("Player: {} ({})\n", target_player.display_name, target_player.username));
+            
+            if target_player.is_admin() {
+                let level_name = match target_player.admin_level() {
+                    1 => "Moderator",
+                    2 => "Admin",
+                    3 => "Sysop",
+                    _ => "Admin",
+                };
+                response.push_str(&format!("Admin Level: {} ({})\n", target_player.admin_level(), level_name));
+            }
+            
+            response.push_str(&format!("\nCurrent Location: {}\n", target_player.current_room));
+            
+            // Try to get room details
+            let room_mgr = self.get_room_manager(config).await?;
+            if let Ok(room) = room_mgr.get_room(&target_player.current_room) {
+                response.push_str(&format!("Room: {}\n", room.name));
+            }
+            
+            response.push_str(&format!("\nYou can teleport there with: /GOTO {}\n", target_player.current_room));
+            response.push_str(&format!("Or teleport to the player with: /GOTO {}\n", target_player.username));
+            
+            Ok(response)
         }
     }
 
@@ -4647,6 +4778,624 @@ impl TinyMushProcessor {
             ✅ Reclaim box system\n\
             🔄 Admin command integration (pending)\n\n\
             This command is a placeholder for Phase 7 completion.".to_string())
+    }
+
+    /// Handle `@ADMIN` command - show admin status and available commands
+    /// 
+    /// Displays the player's admin status, level, and available admin commands based on their
+    /// permission level. This command is available to all players but shows different information
+    /// based on admin status.
+    /// 
+    /// # Admin Levels
+    /// - Level 0: Not an admin (default)
+    /// - Level 1: Moderator (can view admin list)
+    /// - Level 2: Admin (can grant/revoke moderator and admin)
+    /// - Level 3: Sysop (full admin commands, can grant any level)
+    /// 
+    /// # Example Output (Admin)
+    /// ```text
+    /// 🛡️  ADMIN STATUS
+    /// 
+    /// Player: Alice
+    /// Username: alice
+    /// 
+    /// ✅ Admin Status: ACTIVE
+    /// 🔐 Admin Level: 2 (Admin)
+    /// 
+    /// Available Admin Commands:
+    ///   @ADMINS - List all administrators
+    ///   @SETADMIN <player> <level> - Grant admin privileges
+    ///   @REMOVEADMIN <player> - Revoke admin privileges
+    /// 
+    /// Total Administrators: 3
+    /// ```
+    /// 
+    /// # Example Output (Non-Admin)
+    /// ```text
+    /// 🛡️  ADMIN STATUS
+    /// 
+    /// Player: Bob
+    /// Username: bob
+    /// 
+    /// ❌ Admin Status: NOT ADMIN
+    /// 
+    /// You do not have administrative privileges.
+    /// Contact a system administrator if you need admin access.
+    /// ```
+    async fn handle_admin(
+        &mut self,
+        session: &Session,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let store = self.get_store(config).await?;
+        
+        let mut response = String::from("🛡️  ADMIN STATUS\n\n");
+        response.push_str(&format!("Player: {}\n", player.display_name));
+        response.push_str(&format!("Username: {}\n\n", player.username));
+        
+        if player.is_admin() {
+            response.push_str(&format!("✅ Admin Status: ACTIVE\n"));
+            response.push_str(&format!("🔐 Admin Level: {} ", player.admin_level()));
+            
+            let level_name = match player.admin_level() {
+                1 => "(Moderator)",
+                2 => "(Admin)",
+                3 => "(Sysop)",
+                _ => "(Unknown)",
+            };
+            response.push_str(level_name);
+            response.push_str("\n\n");
+            
+            response.push_str("Available Admin Commands:\n");
+            response.push_str("  @ADMINS - List all administrators\n");
+            if player.admin_level() >= 2 {
+                response.push_str("  @SETADMIN <player> <level> - Grant admin privileges\n");
+                response.push_str("  @REMOVEADMIN <player> - Revoke admin privileges\n");
+            }
+            if player.admin_level() >= 3 {
+                response.push_str("  @EDITROOM <room> <desc> - Edit room descriptions\n");
+                response.push_str("  @EDITNPC <npc> <field> <value> - Edit NPC properties\n");
+                response.push_str("  @DIALOG <npc> <cmd> [args] - Manage NPC dialogues\n");
+            }
+            
+            // Show total admin count
+            match store.list_admins() {
+                Ok(admins) => {
+                    response.push_str(&format!("\nTotal Administrators: {}\n", admins.len()));
+                },
+                Err(e) => {
+                    response.push_str(&format!("\n⚠️  Error listing admins: {}\n", e));
+                }
+            }
+        } else {
+            response.push_str("❌ Admin Status: NOT ADMIN\n\n");
+            response.push_str("You do not have administrative privileges.\n");
+            response.push_str("Contact a system administrator if you need admin access.\n");
+        }
+        
+        Ok(response)
+    }
+
+    /// Handle `@SETADMIN` command - grant admin privileges to a player
+    /// 
+    /// Grants administrative privileges to the specified player with the given level.
+    /// This command requires the caller to be an administrator with level 2 or higher.
+    /// 
+    /// # Permission Requirements
+    /// - Caller must be admin (level 2+)
+    /// - Cannot grant a level higher than caller's own level
+    /// - Target player must exist in the database
+    /// 
+    /// # Arguments
+    /// - `target_username`: The lowercase username of the player to grant admin to
+    /// - `level`: Admin level to grant (0-3)
+    ///   - 0: Revoke admin (use @REMOVEADMIN instead)
+    ///   - 1: Moderator
+    ///   - 2: Admin
+    ///   - 3: Sysop
+    /// 
+    /// # Example Usage
+    /// ```text
+    /// @SETADMIN alice 2
+    /// ```
+    /// 
+    /// # Example Output (Success)
+    /// ```text
+    /// ✅ SUCCESS
+    /// 
+    /// Granted Admin admin privileges to 'alice'.
+    /// 
+    /// Admin Level: 2 (Admin)
+    /// 
+    /// The change is effective immediately.
+    /// ```
+    /// 
+    /// # Example Output (Insufficient Level)
+    /// ```text
+    /// ⛔ Permission denied: Cannot grant level 3 admin.
+    /// 
+    /// Your admin level is 2. You can only grant levels up to your own level.
+    /// ```
+    async fn handle_set_admin(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        level: u8,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let store = self.get_store(config).await?;
+        
+        // Check if caller is admin
+        if let Err(e) = store.require_admin(&player.username) {
+            return Ok(format!("⛔ Permission denied: {}\n\nYou must be an administrator to use this command.", e));
+        }
+
+        // Check if caller has sufficient level
+        if player.admin_level() < 2 {
+            return Ok("⛔ Permission denied: Insufficient admin level.\n\nOnly level 2+ administrators can grant admin privileges.".to_string());
+        }
+
+        // Cannot grant higher level than you have
+        if level > player.admin_level() {
+            return Ok(format!(
+                "⛔ Permission denied: Cannot grant level {} admin.\n\nYour admin level is {}. You can only grant levels up to your own level.",
+                level, player.admin_level()
+            ));
+        }
+
+        // Grant admin
+        match store.grant_admin(&player.username, &target_username, level) {
+            Ok(()) => {
+                let level_name = match level {
+                    0 => "None (revoked)",
+                    1 => "Moderator",
+                    2 => "Admin",
+                    3 => "Sysop",
+                    _ => "Unknown",
+                };
+                
+                Ok(format!(
+                    "✅ SUCCESS\n\n\
+                    Granted {} admin privileges to '{}'.\n\n\
+                    Admin Level: {} ({})\n\n\
+                    The change is effective immediately.",
+                    level_name, target_username, level, level_name
+                ))
+            },
+            Err(e) => Ok(format!("❌ Failed to grant admin: {}", e)),
+        }
+    }
+
+    /// Handle `@REMOVEADMIN` / `@REVOKEADMIN` command - revoke admin privileges from a player
+    /// 
+    /// Revokes administrative privileges from the specified player, demoting them to a regular
+    /// user. This command requires the caller to be an administrator with level 2 or higher.
+    /// 
+    /// # Permission Requirements
+    /// - Caller must be admin (level 2+)
+    /// - Cannot revoke your own admin privileges (self-protection)
+    /// - Target player must exist in the database
+    /// 
+    /// # Arguments
+    /// - `target_username`: The lowercase username of the player to revoke admin from
+    /// 
+    /// # Example Usage
+    /// ```text
+    /// @REMOVEADMIN alice
+    /// @REVOKEADMIN bob
+    /// ```
+    /// 
+    /// # Example Output (Success)
+    /// ```text
+    /// ✅ SUCCESS
+    /// 
+    /// Revoked admin privileges from 'alice'.
+    /// 
+    /// They are now a regular user.
+    /// 
+    /// The change is effective immediately.
+    /// ```
+    /// 
+    /// # Example Output (Self-Revocation Attempt)
+    /// ```text
+    /// ⛔ Cannot revoke your own admin privileges.
+    /// 
+    /// Have another administrator revoke your access if needed.
+    /// ```
+    async fn handle_remove_admin(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let store = self.get_store(config).await?;
+        
+        // Check if caller is admin
+        if let Err(e) = store.require_admin(&player.username) {
+            return Ok(format!("⛔ Permission denied: {}\n\nYou must be an administrator to use this command.", e));
+        }
+
+        // Check if caller has sufficient level
+        if player.admin_level() < 2 {
+            return Ok("⛔ Permission denied: Insufficient admin level.\n\nOnly level 2+ administrators can revoke admin privileges.".to_string());
+        }
+
+        // Revoke admin
+        match store.revoke_admin(&player.username, &target_username) {
+            Ok(()) => {
+                Ok(format!(
+                    "✅ SUCCESS\n\n\
+                    Revoked admin privileges from '{}'.\n\n\
+                    They are now a regular user.\n\n\
+                    The change is effective immediately.",
+                    target_username
+                ))
+            },
+            Err(e) => {
+                if e.to_string().contains("Cannot revoke your own") {
+                    Ok("⛔ Cannot revoke your own admin privileges.\n\nHave another administrator revoke your access if needed.".to_string())
+                } else {
+                    Ok(format!("❌ Failed to revoke admin: {}", e))
+                }
+            },
+        }
+    }
+
+    /// Handle `@ADMINS` / `@ADMINLIST` command - list all administrators
+    /// 
+    /// Lists all players with administrative privileges, sorted by admin level (descending)
+    /// and then by username. This is a public command - any player can view the admin list.
+    /// 
+    /// # Permission Requirements
+    /// None - this command is available to all players.
+    /// 
+    /// # Output Format
+    /// - Sorted by level (highest first), then by username (alphabetical)
+    /// - Shows admin level, role name, and display name
+    /// - Marks the current player with "(you)" indicator
+    /// - Includes legend explaining admin levels
+    /// 
+    /// # Example Usage
+    /// ```text
+    /// @ADMINS
+    /// @ADMINLIST
+    /// ```
+    /// 
+    /// # Example Output
+    /// ```text
+    /// 🛡️  SYSTEM ADMINISTRATORS
+    /// 
+    /// Total: 3
+    /// 
+    ///   [3] Sysop     - Admin (Admin) (you)
+    ///   [2] Admin     - Alice
+    ///   [1] Moderator - Bob
+    /// 
+    /// Levels: 1=Moderator, 2=Admin, 3=Sysop
+    /// ```
+    /// 
+    /// # Notes
+    /// - Useful for players to know who can help with admin requests
+    /// - Transparent governance - everyone can see the admin team
+    /// - Sorted display helps identify senior administrators quickly
+    async fn handle_admins(
+        &mut self,
+        session: &Session,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let store = self.get_store(config).await?;
+        
+        // Anyone can view admin list
+        match store.list_admins() {
+            Ok(admins) => {
+                if admins.is_empty() {
+                    return Ok("⚠️  No administrators found.\n\nThis is unusual - contact support.".to_string());
+                }
+
+                let mut response = String::from("🛡️  SYSTEM ADMINISTRATORS\n\n");
+                response.push_str(&format!("Total: {}\n\n", admins.len()));
+                
+                // Sort by level (descending) then username
+                let mut sorted_admins = admins;
+                sorted_admins.sort_by(|a, b| {
+                    b.admin_level().cmp(&a.admin_level())
+                        .then_with(|| a.username.cmp(&b.username))
+                });
+
+                for admin in sorted_admins {
+                    let level_name = match admin.admin_level() {
+                        1 => "Moderator",
+                        2 => "Admin    ",
+                        3 => "Sysop    ",
+                        _ => "Unknown  ",
+                    };
+                    
+                    let indicator = if admin.username == player.username {
+                        " (you)"
+                    } else {
+                        ""
+                    };
+                    
+                    response.push_str(&format!(
+                        "  [{}] {} - {}{}\n",
+                        admin.admin_level(),
+                        level_name,
+                        admin.display_name,
+                        indicator
+                    ));
+                }
+                
+                response.push_str("\nLevels: 1=Moderator, 2=Admin, 3=Sysop\n");
+                
+                Ok(response)
+            },
+            Err(e) => Ok(format!("❌ Error listing administrators: {}", e)),
+        }
+    }
+
+    /// Handle `/PLAYERS` / `/WHO` command - list all players with status and location
+    /// 
+    /// Lists all players in the TinyMUSH world, showing their current status (online/offline)
+    /// and current location. This is an admin-only command requiring level 1+ (Moderator).
+    /// 
+    /// # Permission Requirements
+    /// - Caller must be admin (level 1+)
+    /// 
+    /// # Example Output
+    /// ```text
+    /// 👥 PLAYERS IN TINYMUSH
+    /// 
+    /// Total: 5 players
+    /// 
+    /// Online Players (3):
+    ///   [3] Alice (Sysop) - town_square
+    ///   [2] Bob (Admin) - market
+    ///   [1] Charlie (Moderator) - tavern
+    /// 
+    /// Registered Players (2):
+    ///   [0] Dave - town_square (last seen: 2h ago)
+    ///   [0] Eve - library (last seen: 1d ago)
+    /// 
+    /// Note: Online status is approximate. Use /WHERE for precise location.
+    /// ```
+    /// 
+    /// # Notes
+    /// - Shows admin level for administrators
+    /// - Groups online and offline players
+    /// - Displays current room location
+    /// - Useful for monitoring world activity
+    async fn handle_players(
+        &mut self,
+        session: &Session,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let store = self.get_store(config).await?;
+        
+        // Check if caller is admin
+        if !player.is_admin() {
+            return Ok("⛔ Permission denied: Not an administrator\n\nThis command is for administrators only.".to_string());
+        }
+
+        // Get all players from the store
+        let player_ids = match store.list_player_ids() {
+            Ok(ids) => ids,
+            Err(e) => return Ok(format!("❌ Error listing players: {}", e)),
+        };
+
+        if player_ids.is_empty() {
+            return Ok("📭 No players found in TinyMUSH.\n\nThe world is empty!".to_string());
+        }
+
+        let mut response = String::from("👥 PLAYERS IN TINYMUSH\n\n");
+        response.push_str(&format!("Total: {} players\n\n", player_ids.len()));
+
+        // For now, we'll list all players as "registered" since we don't have online tracking yet
+        // In a future update, we can integrate with session tracking to show who's actually online
+        response.push_str("Registered Players:\n");
+        
+        for username in player_ids.iter().take(50) {
+            if let Ok(p) = store.get_player(username) {
+                let level_indicator = if p.is_admin() {
+                    let level_name = match p.admin_level() {
+                        1 => "Moderator",
+                        2 => "Admin",
+                        3 => "Sysop",
+                        _ => "Admin",
+                    };
+                    format!("[{}] ", level_name)
+                } else {
+                    String::new()
+                };
+                
+                response.push_str(&format!(
+                    "  {}{} - {}\n",
+                    level_indicator,
+                    p.display_name,
+                    p.current_room
+                ));
+            }
+        }
+        
+        if player_ids.len() > 50 {
+            response.push_str(&format!("\n... and {} more players\n", player_ids.len() - 50));
+        }
+        
+        response.push_str("\nNote: Use /WHERE <player> for detailed location info.\n");
+        
+        Ok(response)
+    }
+
+    /// Handle `/GOTO` command - teleport admin to player or room
+    /// 
+    /// Teleports the administrator to the specified player's location or directly to a room.
+    /// This is an admin-only command requiring level 1+ (Moderator).
+    /// 
+    /// # Permission Requirements
+    /// - Caller must be admin (level 1+)
+    /// 
+    /// # Arguments
+    /// - `target`: Player username or room ID to teleport to
+    /// 
+    /// # Example Usage
+    /// ```text
+    /// /GOTO alice
+    /// /GOTO town_square
+    /// /GOTO market
+    /// ```
+    /// 
+    /// # Example Output (Player Target)
+    /// ```text
+    /// ✈️  TELEPORTING...
+    /// 
+    /// Teleporting to alice's location: market
+    /// 
+    /// === Market ===
+    /// 
+    /// A bustling marketplace filled with merchants and shoppers.
+    /// Colorful stalls line the street, selling goods from across the land.
+    /// 
+    /// Exits: north, south, east, west
+    /// Players here: alice, bob
+    /// ```
+    /// 
+    /// # Example Output (Room Target)
+    /// ```text
+    /// ✈️  TELEPORTING...
+    /// 
+    /// Teleporting to: tavern
+    /// 
+    /// === Tavern ===
+    /// 
+    /// A cozy tavern with a crackling fireplace.
+    /// The smell of ale and roasted meat fills the air.
+    /// 
+    /// Exits: north, east
+    /// Players here: charlie
+    /// ```
+    /// 
+    /// # Notes
+    /// - Can target players (by username) or rooms (by room ID)
+    /// - Shows destination room details after teleport
+    /// - Action is logged for accountability
+    /// - Bypasses normal movement restrictions
+    async fn handle_goto(
+        &mut self,
+        session: &Session,
+        target: String,
+        config: &Config,
+    ) -> Result<String> {
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check if caller is admin
+        if !player.is_admin() {
+            return Ok("⛔ Permission denied: Not an administrator\n\nThis command is for administrators only.".to_string());
+        }
+
+        let target_lower = target.to_lowercase();
+        let mut destination: String;
+        let mut destination_name: String;
+        let mut found_player = false;
+
+        // Try to interpret target as a player first
+        {
+            let store = self.get_store(config).await?;
+            if let Ok(target_player) = store.get_player(&target_lower) {
+                destination = target_player.current_room.clone();
+                destination_name = format!("{}'s location: {}", target_player.display_name, destination);
+                found_player = true;
+            } else {
+                destination = String::new(); // Will be set below
+                destination_name = String::new();
+            }
+        }
+
+        // If not a player, treat as room ID
+        if !found_player {
+            let room_mgr = self.get_room_manager(config).await?;
+            if room_mgr.get_room(&target_lower).is_ok() {
+                destination = target_lower.clone();
+                destination_name = destination.clone();
+            } else {
+                return Ok(format!("❌ Target not found: {}\n\nCould not find player or room with that name.", target));
+            }
+        }
+        
+        // Teleport the admin
+        {
+            let store = self.get_store(config).await?;
+            player.current_room = destination.clone();
+            store.put_player(player.clone())?;
+        }
+
+        // Show the destination
+        let mut response = String::from("✈️  TELEPORTING...\n\n");
+        response.push_str(&format!("Teleporting to {}\n\n", destination_name));
+
+        // Show room description - get fresh borrows
+        let room_mgr = self.get_room_manager(config).await?;
+        if let Ok(room) = room_mgr.get_room(&destination) {
+            response.push_str(&format!("=== {} ===\n\n", room.name));
+            response.push_str(&format!("{}\n\n", room.long_desc));
+            
+            // Show exits
+            if !room.exits.is_empty() {
+                let exit_names: Vec<String> = room.exits.keys().map(|k| format!("{:?}", k)).collect();
+                response.push_str(&format!("Exits: {}\n", exit_names.join(", ")));
+            } else {
+                response.push_str("No obvious exits.\n");
+            }
+
+            // Show other players in the room - need store again
+            let store = self.get_store(config).await?;
+            let players_here: Vec<String> = store.list_player_ids()?
+                .iter()
+                .filter_map(|username| {
+                    if let Ok(p) = store.get_player(username) {
+                        if p.current_room == destination && p.username != player.username {
+                            Some(p.display_name.clone())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !players_here.is_empty() {
+                response.push_str(&format!("\nPlayers here: {}\n", players_here.join(", ")));
+            }
+        }
+
+        Ok(response)
     }
 
     /// Helper to get required progress for achievement

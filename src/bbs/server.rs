@@ -1376,6 +1376,21 @@ impl BbsServer {
             .map(|_| ())
     }
     #[allow(dead_code)]
+    pub async fn test_tmush_grant_admin(&mut self, username: &str, level: u8) -> Result<()> {
+        use crate::tmush::storage::TinyMushStore;
+        let db_path = std::path::Path::new(&self.config.storage.data_dir).join("tinymush");
+        let store = TinyMushStore::open(&db_path).map_err(|e| anyhow::anyhow!("Failed to open TinyMUSH store: {}", e))?;
+        
+        // For test scenarios, directly modify the player record without permission checks
+        // This bypasses the require_admin check in grant_admin()
+        let mut player = store.get_player(username)
+            .map_err(|e| anyhow::anyhow!("Failed to get player: {}", e))?;
+        player.grant_admin(level);
+        store.put_player(player)
+            .map_err(|e| anyhow::anyhow!("Failed to save player: {}", e))?;
+        Ok(())
+    }
+    #[allow(dead_code)]
     pub async fn test_create_topic(
         &mut self,
         topic_id: &str,
