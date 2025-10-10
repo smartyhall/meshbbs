@@ -571,13 +571,18 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [x] WorldConfig messages for reclaim operations
       - [x] move_housing_to_reclaim_box() ready for future housing deletion command
       - [x] Ownership tracking integration (Reclaimed reason)
-    - [ ] **Phase 7: Abandonment/Cleanup**
-      - [ ] Track inactive_since when owner doesn't login
-      - [ ] Background task: check for 30-day inactive housing
-      - [ ] Move items to reclaim box at 30 days
-      - [ ] Mark housing for reclamation at 60 days
-      - [ ] Delete reclaim box items at 90 days (with warnings at 80 days)
-      - [ ] Admin command to view/manage abandoned housing
+    - [x] **Phase 7: Abandonment/Cleanup** (commit 2b19752)
+      - [x] housing_cleanup module with check_and_cleanup_housing()
+      - [x] list_abandoned_housing() for admin visibility  
+      - [x] @LISTABANDONED command (placeholder pending full Storage integration)
+      - [x] Track inactive_since when owner doesn't login (checked against last_login)
+      - [x] check_and_cleanup_housing() for periodic scans (30/60/80/90 day thresholds)
+      - [x] Mark housing inactive at 30 days (sets inactive_since, active=false)
+      - [x] Delete reclaim box items at 90 days (permanent deletion)
+      - [x] AbandonedHousingInfo struct with status_message() helper
+      - [x] CleanupConfig and CleanupStats for configuration and tracking
+      - [ ] Background task integration (scheduler/cron for automated checks)
+      - [ ] Notification system for warnings at 30/60/80 days
 - [ ] Integration tests for housing lifecycle (template → rent → customize → guest access)
 - [ ] Housing instance cleanup (inactive/abandoned housing reclamation)
 - [ ] Housing cost deduction and payment system (recurring_cost for rental tracking)
