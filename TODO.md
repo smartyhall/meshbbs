@@ -526,24 +526,29 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
     - [x] Add/remove from HousingInstance.guests list
     - [x] Prevent duplicate invitations and invalid removals
   - [ ] LOCK / UNLOCK - access control & object protection
-    - [ ] **Phase 1: Data Model Changes**
-      - [ ] Add ObjectRecord.owner field (Option<String>)
-      - [ ] Add ObjectRecord.locked field (bool, default false)
-      - [ ] Add ObjectRecord.ownership_history field (Vec<OwnershipTransfer>)
-      - [ ] Add RoomRecord.locked field (bool, default false)
-      - [ ] Add HousingInstance.reclaim_box field (Vec<String>)
-      - [ ] Add HousingInstance.inactive_since field (Option<DateTime<Utc>>)
-      - [ ] Create OwnershipTransfer struct (owner, timestamp, reason)
-    - [ ] **Phase 2: Room Access Control**
-      - [ ] LOCK command - lock current housing room (guests can't enter)
-      - [ ] UNLOCK command - unlock current housing room
-      - [ ] Check room.locked in movement validation
-      - [ ] WorldConfig messages for lock/unlock operations
-    - [ ] **Phase 3: Guest Management**
-      - [ ] KICK <player> - remove specific guest from current housing
-      - [ ] KICK ALL - remove all guests from current housing
-      - [ ] Teleport kicked players to town square or housing entry
-      - [ ] WorldConfig messages for kick operations
+    - [x] **Phase 1: Data Model Changes** (COMPLETE - commit 7714f5b)
+      - [x] Add ObjectRecord.owner field (Option<String>)
+      - [x] Add ObjectRecord.locked field (bool, default false)
+      - [x] Add ObjectRecord.ownership_history field (Vec<OwnershipTransfer>)
+      - [x] Add RoomRecord.locked field (bool, default false)
+      - [x] Add HousingInstance.reclaim_box field (Vec<String>)
+      - [x] Add HousingInstance.inactive_since field (Option<DateTime<Utc>>)
+      - [x] Create OwnershipTransfer struct (owner, timestamp, reason)
+      - [x] Create OwnershipReason enum (Created, Purchased, Traded, etc.)
+      - [x] Update all constructors and test helpers
+      - [x] All 124 library tests passing
+    - [x] **Phase 2: Room Access Control** (COMPLETE - commit a6a504a)
+      - [x] LOCK command - lock current housing room (guests can't enter)
+      - [x] UNLOCK command - unlock current housing room
+      - [x] Check room.locked in movement validation (can_enter_room)
+      - [x] Only owner and guests can enter locked rooms
+      - [x] Command parsing for LOCK/UNLOCK
+    - [x] **Phase 3: Guest Management** (COMPLETE - commit 1bfa0ae)
+      - [x] KICK <player> - remove specific guest from current housing
+      - [x] KICK ALL - remove all guests from current housing
+      - [x] Teleport kicked players to town square
+      - [x] Command parsing for KICK
+      - [x] Owner-only validation and informative messages
     - [ ] **Phase 4: Item Protection**
       - [ ] LOCK <item> - mark item as locked (guests can't take)
       - [ ] UNLOCK <item> - remove lock from item
