@@ -91,6 +91,41 @@ impl RoomManager {
             return Ok(false);
         }
 
+        // Check if room is locked (Phase 2: Housing Security)
+        if room.locked {
+            // Only owner and guests can enter locked housing rooms
+            match &room.owner {
+                crate::tmush::types::RoomOwner::Player { username } => {
+                    // Check if player is the owner
+                    if username == &player.username {
+                        return Ok(true);
+                    }
+                    
+                    // Check if player is a guest
+                    // Find the housing instance for this room
+                    let instances = self.store.get_player_housing_instances(username)?;
+                    for instance in instances {
+                        if instance.room_mappings.values().any(|id| id == room_id) {
+                            // This is the housing instance - check guest list
+                            if instance.guests.contains(&player.username) {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                    
+                    // Not owner or guest
+                    debug!("Player {} denied access to locked room {} (owner: {})", 
+                           player.username, room_id, username);
+                    return Ok(false);
+                }
+                crate::tmush::types::RoomOwner::World => {
+                    // World rooms shouldn't be locked, but if they are, allow access
+                    // (This would be for special event rooms controlled by admins)
+                    return Ok(true);
+                }
+            }
+        }
+
         // Check room permissions (for private rooms, etc.)
         if room.flags.contains(&RoomFlag::Private) {
             // Private rooms - only owner can enter

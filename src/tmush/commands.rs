@@ -103,6 +103,10 @@ pub enum TinyMushCommand {
     Uninvite(String),       // UNINVITE player - remove guest from housing
     Describe(Option<String>), // DESCRIBE <text> - edit current room description (housing only)
                             // DESCRIBE - show current description and permissions
+    Lock(Option<String>),   // LOCK - lock current room, LOCK <item> - lock item (Phase 2)
+    Unlock(Option<String>), // UNLOCK - unlock current room, UNLOCK <item> - unlock item (Phase 2)
+    Kick(Option<String>),   // KICK <player> - remove player from housing, KICK ALL (Phase 3)
+
     
     // System
     Help(Option<String>),   // HELP, HELP topic
@@ -322,6 +326,9 @@ impl TinyMushProcessor {
             TinyMushCommand::Invite(player) => self.handle_invite(session, player, config).await,
             TinyMushCommand::Uninvite(player) => self.handle_uninvite(session, player, config).await,
             TinyMushCommand::Describe(description) => self.handle_describe(session, description, config).await,
+            TinyMushCommand::Lock(target) => self.handle_lock(session, target, config).await,
+            TinyMushCommand::Unlock(target) => self.handle_unlock(session, target, config).await,
+            TinyMushCommand::Kick(target) => self.handle_kick(session, target, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
@@ -732,6 +739,36 @@ impl TinyMushProcessor {
                 } else {
                     // No args - show current description and permissions
                     TinyMushCommand::Describe(None)
+                }
+            },
+            "LOCK" => {
+                if parts.len() > 1 {
+                    // LOCK <item> - lock a specific item
+                    TinyMushCommand::Lock(Some(parts[1..].join(" ")))
+                } else {
+                    // LOCK - lock current room
+                    TinyMushCommand::Lock(None)
+                }
+            },
+            "UNLOCK" => {
+                if parts.len() > 1 {
+                    // UNLOCK <item> - unlock a specific item
+                    TinyMushCommand::Unlock(Some(parts[1..].join(" ")))
+                } else {
+                    // UNLOCK - unlock current room
+                    TinyMushCommand::Unlock(None)
+                }
+            },
+            "KICK" => {
+                if parts.len() > 1 {
+                    let target = parts[1].to_uppercase();
+                    if target == "ALL" {
+                        TinyMushCommand::Kick(Some("ALL".to_string()))
+                    } else {
+                        TinyMushCommand::Kick(Some(parts[1].to_lowercase()))
+                    }
+                } else {
+                    TinyMushCommand::Unknown("Usage: KICK <player> or KICK ALL".to_string())
                 }
             },
 
@@ -2962,6 +2999,109 @@ impl TinyMushProcessor {
         store.put_room(current_room)?;
         
         Ok(world_config.msg_describe_success.clone())
+    }
+
+    /// Handle LOCK command - lock room or item
+    async fn handle_lock(
+        &mut self,
+        session: &Session,
+        target: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        
+        // If target is None, lock current room
+        if target.is_none() {
+            // Check if player owns housing instances
+            let instances = store.get_player_housing_instances(&player.username)?;
+            if instances.is_empty() {
+                return Ok("You don't own any housing.".to_string());
+            }
+            
+            // Check if player is currently in one of their housing rooms
+            let current_instance = instances.iter().find(|inst| {
+                inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+            });
+            
+            if current_instance.is_none() {
+                return Ok("You can only lock rooms in your own housing.".to_string());
+            }
+            
+            // Get the current room
+            let mut current_room = store.get_room(&player.current_room)?;
+            
+            // Check if already locked
+            if current_room.locked {
+                return Ok("This room is already locked.".to_string());
+            }
+            
+            // Lock the room
+            current_room.locked = true;
+            store.put_room(current_room)?;
+            
+            return Ok("You lock the room. Only you and your guests can enter now.".to_string());
+        }
+        
+        // TODO: Phase 4 - Implement item locking
+        Ok("Item locking is not yet implemented.".to_string())
+    }
+
+    /// Handle UNLOCK command - unlock room or item
+    async fn handle_unlock(
+        &mut self,
+        session: &Session,
+        target: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        
+        // If target is None, unlock current room
+        if target.is_none() {
+            // Check if player owns housing instances
+            let instances = store.get_player_housing_instances(&player.username)?;
+            if instances.is_empty() {
+                return Ok("You don't own any housing.".to_string());
+            }
+            
+            // Check if player is currently in one of their housing rooms
+            let current_instance = instances.iter().find(|inst| {
+                inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+            });
+            
+            if current_instance.is_none() {
+                return Ok("You can only unlock rooms in your own housing.".to_string());
+            }
+            
+            // Get the current room
+            let mut current_room = store.get_room(&player.current_room)?;
+            
+            // Check if already unlocked
+            if !current_room.locked {
+                return Ok("This room is already unlocked.".to_string());
+            }
+            
+            // Unlock the room
+            current_room.locked = false;
+            store.put_room(current_room)?;
+            
+            return Ok("You unlock the room. Anyone can enter now.".to_string());
+        }
+        
+        // TODO: Phase 4 - Implement item unlocking
+        Ok("Item unlocking is not yet implemented.".to_string())
+    }
+
+    /// Handle KICK command - remove player from housing
+    async fn handle_kick(
+        &mut self,
+        _session: &Session,
+        _target: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        // TODO: Phase 3 - Implement KICK command
+        Ok("KICK command is not yet implemented.".to_string())
     }
 
     /// Handle @SETCONFIG command - set world configuration
