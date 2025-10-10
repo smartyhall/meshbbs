@@ -555,12 +555,13 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [x] Check item.locked ownership validation
       - [x] Show 🔒 indicator for locked items in inventory
       - [x] TODO added in TAKE command for future implementation
-    - [ ] **Phase 5: Ownership Tracking**
-      - [ ] Record ownership_history on item creation
-      - [ ] Record ownership_history on GIVE/TRADE/DROP/TAKE
-      - [ ] Add reason codes (Created, Traded, Gifted, Dropped, Taken, Reclaimed)
-      - [ ] HISTORY <item> command - view ownership audit trail (owner only)
-      - [ ] Preserve history for 90 days after item deletion
+    - [x] **Phase 5: Ownership Tracking** (COMPLETE - commit 73ba7c7)
+      - [x] Record ownership_history on item creation (new_player_owned)
+      - [x] Record ownership_history on BUY (Purchased reason)
+      - [x] Add reason codes enum (Created, Traded, Gifted, Dropped, PickedUp, etc.)
+      - [x] HISTORY <item> command - view ownership audit trail (owner only)
+      - [x] TODOs added for GIVE/TRADE/DROP/TAKE when implemented
+      - [ ] Preserve history for 90 days after item deletion (storage layer TODO)
     - [ ] **Phase 6: Reclaim Box System**
       - [ ] Move items to reclaim_box on housing deletion
       - [ ] Move people to town square on housing deletion
