@@ -3096,12 +3096,124 @@ impl TinyMushProcessor {
     /// Handle KICK command - remove player from housing
     async fn handle_kick(
         &mut self,
-        _session: &Session,
-        _target: Option<String>,
-        _config: &Config,
+        session: &Session,
+        target: Option<String>,
+        config: &Config,
     ) -> Result<String> {
-        // TODO: Phase 3 - Implement KICK command
-        Ok("KICK command is not yet implemented.".to_string())
+        let player = self.get_or_create_player(session).await?;
+        
+        let target = match target {
+            Some(t) => t,
+            None => return Ok("Usage: KICK <player> or KICK ALL".to_string()),
+        };
+        
+        // Get instances and housing rooms first (separate scope)
+        let (mut current_instance, housing_rooms) = {
+            let store = self.get_store(config).await?;
+            
+            // Check if player owns housing
+            let instances = store.get_player_housing_instances(&player.username)?;
+            if instances.is_empty() {
+                return Ok("You don't own any housing.".to_string());
+            }
+            
+            // Check if player is currently in one of their housing rooms
+            let current_instance = instances.iter().find(|inst| {
+                inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+            });
+            
+            let current_instance = match current_instance {
+                Some(inst) => inst.clone(),
+                None => return Ok("You can only kick players from your own housing.".to_string()),
+            };
+            
+            let housing_rooms: Vec<String> = current_instance.room_mappings.values().cloned().collect();
+            (current_instance, housing_rooms)
+        };
+        
+        // Handle KICK ALL
+        if target == "ALL" {
+            let guest_count = current_instance.guests.len();
+            
+            // Find all guests currently in the housing
+            let guests_to_kick = {
+                let room_manager = self.get_room_manager(config).await?;
+                let mut guests = Vec::new();
+                for room_id in &housing_rooms {
+                    let players_in_room = room_manager.get_players_in_room(room_id);
+                    for guest_username in players_in_room {
+                        if guest_username != player.username {
+                            guests.push(guest_username);
+                        }
+                    }
+                }
+                guests
+            };
+            
+            // Teleport them
+            for guest_username in guests_to_kick {
+                let store = self.get_store(config).await?;
+                if let Ok(mut guest_player) = store.get_player(&guest_username) {
+                    guest_player.current_room = "town_square".to_string();
+                    let _ = store.put_player(guest_player);
+                }
+            }
+            
+            // Clear guest list
+            current_instance.guests.clear();
+            let store = self.get_store(config).await?;
+            store.put_housing_instance(&current_instance)?;
+            
+            return Ok(format!(
+                "You kick all guests from your housing. {} guest(s) removed from guest list.",
+                guest_count
+            ));
+        }
+        
+        // Handle KICK <player>
+        if !current_instance.guests.contains(&target) {
+            return Ok(format!("{} is not on your guest list.", target));
+        }
+        
+        // Check if the player is currently in the housing
+        let was_in_housing = {
+            let room_manager = self.get_room_manager(config).await?;
+            let mut found = false;
+            for room_id in &housing_rooms {
+                let players_in_room = room_manager.get_players_in_room(room_id);
+                if players_in_room.contains(&target) {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        
+        // Teleport if in housing
+        if was_in_housing {
+            let store = self.get_store(config).await?;
+            if let Ok(mut target_player) = store.get_player(&target) {
+                target_player.current_room = "town_square".to_string();
+                store.put_player(target_player)?;
+            }
+        }
+        
+        // Remove from guest list
+        current_instance.guests.retain(|g| g != &target);
+        let store = self.get_store(config).await?;
+        store.put_housing_instance(&current_instance)?;
+        
+        if was_in_housing {
+            return Ok(format!(
+                "You kick {} from your housing. They have been teleported to town square.",
+                target
+            ));
+        }
+        
+        Ok(format!(
+            "You remove {} from your guest list. They can no longer enter your housing.",
+            target
+        ))
     }
 
     /// Handle @SETCONFIG command - set world configuration
