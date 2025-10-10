@@ -218,6 +218,45 @@ impl ObjectRecord {
             schema_version: OBJECT_SCHEMA_VERSION,
         }
     }
+
+    /// Create a new player-owned object with initial ownership tracking (Phase 5)
+    pub fn new_player_owned(
+        id: &str,
+        name: &str,
+        description: &str,
+        owner_username: &str,
+        reason: OwnershipReason,
+    ) -> Self {
+        let mut obj = Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            owner: ObjectOwner::Player {
+                username: owner_username.to_string(),
+            },
+            created_at: Utc::now(),
+            weight: 1,
+            currency_value: CurrencyAmount::default(),
+            value: 0,
+            takeable: true,
+            usable: false,
+            actions: HashMap::new(),
+            flags: Vec::new(),
+            locked: false,
+            ownership_history: Vec::new(),
+            schema_version: OBJECT_SCHEMA_VERSION,
+        };
+
+        // Record initial ownership transfer
+        obj.ownership_history.push(OwnershipTransfer {
+            from_owner: None, // Created from nothing
+            to_owner: owner_username.to_string(),
+            timestamp: Utc::now(),
+            reason,
+        });
+
+        obj
+    }
 }
 
 /// NPC (Non-Player Character) record for tutorial guides, quest givers, and vendors

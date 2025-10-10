@@ -13,7 +13,7 @@ use crate::logutil::escape_log;
 use crate::metrics;
 use crate::storage::Storage;
 use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord};
-use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection, RoomFlag, CurrencyAmount};
+use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection, RoomFlag, CurrencyAmount, ObjectRecord};
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
 use crate::tmush::inventory::format_inventory_compact;
@@ -106,6 +106,7 @@ pub enum TinyMushCommand {
     Lock(Option<String>),   // LOCK - lock current room, LOCK <item> - lock item (Phase 2)
     Unlock(Option<String>), // UNLOCK - unlock current room, UNLOCK <item> - unlock item (Phase 2)
     Kick(Option<String>),   // KICK <player> - remove player from housing, KICK ALL (Phase 3)
+    History(String),        // HISTORY <item> - view ownership audit trail (Phase 5)
 
     
     // System
@@ -329,6 +330,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Lock(target) => self.handle_lock(session, target, config).await,
             TinyMushCommand::Unlock(target) => self.handle_unlock(session, target, config).await,
             TinyMushCommand::Kick(target) => self.handle_kick(session, target, config).await,
+            TinyMushCommand::History(item_name) => self.handle_history(session, item_name, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
@@ -771,6 +773,13 @@ impl TinyMushProcessor {
                     TinyMushCommand::Unknown("Usage: KICK <player> or KICK ALL".to_string())
                 }
             },
+            "HISTORY" | "HIST" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::History(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown("Usage: HISTORY <item>".to_string())
+                }
+            },
 
             // Admin/debug
             "DEBUG" => {
@@ -1066,6 +1075,13 @@ impl TinyMushProcessor {
         // TODO: Implement room.contents and object lookup by name
         // TODO: Phase 4 - Check item.locked field and prevent taking locked items
         //       owned by other players. Message: "That item is locked by its owner."
+        // TODO: Phase 5 - Record ownership transfer when taking items:
+        //       TinyMushProcessor::record_ownership_transfer(
+        //           &mut item,
+        //           item.owner (as Option<String>),
+        //           player.username,
+        //           OwnershipReason::PickedUp
+        //       );
         
         Ok(format!(
             "You try to pick up '{}' (qty: {}) but room object scanning isn't implemented yet.\n\
@@ -1099,6 +1115,14 @@ impl TinyMushProcessor {
         // Find matching item in inventory (by object name lookup)
         // For now, return helpful message
         // TODO: Implement object name -> ID lookup and room transfer
+        // TODO: Phase 5 - Record ownership transfer when dropping items:
+        //       TinyMushProcessor::record_ownership_transfer(
+        //           &mut item,
+        //           Some(player.username),
+        //           "WORLD".to_string(),
+        //           OwnershipReason::Dropped
+        //       );
+        //       item.owner = ObjectOwner::World;
         
         Ok(format!(
             "You try to drop '{}' (qty: {}) but inventory -> room transfer isn't implemented yet.\n\
@@ -1211,6 +1235,20 @@ impl TinyMushProcessor {
                 use crate::tmush::types::InventoryConfig;
                 let config = InventoryConfig::default();
                 for _ in 0..actual_qty {
+                    // Clone the object and add ownership tracking (Phase 5)
+                    let mut owned_object = object.clone();
+                    owned_object.owner = crate::tmush::types::ObjectOwner::Player {
+                        username: player.username.clone(),
+                    };
+                    Self::record_ownership_transfer(
+                        &mut owned_object,
+                        None, // Purchased from shop
+                        player.username.clone(),
+                        crate::tmush::types::OwnershipReason::Purchased,
+                    );
+                    // TODO: Store the updated object with ownership history
+                    // self.store().put_object(owned_object)?;
+                    
                     add_item_to_inventory(&mut player, &object, 1, &config);
                 }
 
@@ -3635,6 +3673,87 @@ impl TinyMushProcessor {
             },
             Err(e) => Err(e),
         }
+    }
+
+    /// Helper: Record ownership transfer in item's history (Phase 5)
+    fn record_ownership_transfer(
+        item: &mut ObjectRecord,
+        from_owner: Option<String>,
+        to_owner: String,
+        reason: crate::tmush::types::OwnershipReason,
+    ) {
+        use chrono::Utc;
+        use crate::tmush::types::OwnershipTransfer;
+        
+        let transfer = OwnershipTransfer {
+            from_owner,
+            to_owner,
+            timestamp: Utc::now(),
+            reason,
+        };
+        
+        item.ownership_history.push(transfer);
+    }
+
+    /// Handle HISTORY command - view item ownership audit trail (Phase 5)
+    async fn handle_history(
+        &mut self,
+        session: &Session,
+        item_name: String,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        
+        let item_name_upper = item_name.to_uppercase();
+        
+        // Search for item in player's inventory
+        for item_id in &player.inventory {
+            if let Ok(item) = store.get_object(item_id) {
+                if item.name.to_uppercase() == item_name_upper {
+                    // Check if player owns this item
+                    match &item.owner {
+                        crate::tmush::types::ObjectOwner::Player { username } => {
+                            if username != &player.username {
+                                return Ok(format!("You don't own {}. Only the owner can view ownership history.", item.name));
+                            }
+                        }
+                        crate::tmush::types::ObjectOwner::World => {
+                            return Ok(format!("{} is a world item with no ownership history.", item.name));
+                        }
+                    }
+                    
+                    // Display ownership history
+                    let mut response = String::new();
+                    response.push_str(&format!("=== Ownership History: {} ===\n\n", item.name));
+                    
+                    if item.ownership_history.is_empty() {
+                        response.push_str("No ownership transfers recorded.\n");
+                        response.push_str("(This item may predate the ownership tracking system)\n");
+                    } else {
+                        for (idx, transfer) in item.ownership_history.iter().enumerate() {
+                            let from = transfer.from_owner.as_ref()
+                                .map(|s| s.as_str())
+                                .unwrap_or("WORLD");
+                            let to = &transfer.to_owner;
+                            let reason = format!("{:?}", transfer.reason);
+                            let timestamp = transfer.timestamp.format("%Y-%m-%d %H:%M:%S");
+                            
+                            response.push_str(&format!(
+                                "{}. {} → {} | {} | {}\n",
+                                idx + 1, from, to, reason, timestamp
+                            ));
+                        }
+                        
+                        response.push_str(&format!("\nTotal transfers: {}\n", item.ownership_history.len()));
+                    }
+                    
+                    return Ok(response);
+                }
+            }
+        }
+        
+        Ok(format!("You don't have '{}' in your inventory.", item_name))
     }
 
     /// Describe the current room (placeholder for Phase 3)
