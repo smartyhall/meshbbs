@@ -119,6 +119,7 @@ pub enum TinyMushCommand {
     Debug(String),          // DEBUG - admin diagnostics
     SetConfig(String, String), // @SETCONFIG field value - set world configuration
     GetConfig(Option<String>), // @GETCONFIG [field] - view world configuration
+    ListAbandoned,          // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
     
     // Unrecognized command
     Unknown(String),
@@ -335,6 +336,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Reclaim(item_name) => self.handle_reclaim(session, item_name, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
+            TinyMushCommand::ListAbandoned => self.handle_list_abandoned(session, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -815,6 +817,9 @@ impl TinyMushProcessor {
                 } else {
                     TinyMushCommand::GetConfig(None)
                 }
+            },
+            "@LISTABANDONED" | "@ABANDONED" | "@INACTIVE" => {
+                TinyMushCommand::ListAbandoned
             },
 
             _ => TinyMushCommand::Unknown(input),
@@ -3432,6 +3437,31 @@ impl TinyMushProcessor {
                 ))
             }
         }
+    }
+
+    /// Handle @LISTABANDONED command - view abandoned/at-risk housing (admin)
+    async fn handle_list_abandoned(
+        &mut self,
+        _session: &Session,
+        _config: &Config,
+    ) -> Result<String> {
+        // This is a placeholder command for Phase 7
+        // Full implementation requires integration with Storage for user last_login data
+        
+        Ok(format!(
+            "🏚️  ABANDONED HOUSING REPORT\n\n\
+            This command requires integration with the background cleanup task.\n\n\
+            To check housing status manually, use:\n\
+            - HOME LIST - view your own housing\n\
+            - HOME <id> - check specific housing instance\n\n\
+            Administrator tools will be added in a future update.\n\n\
+            Current implementation status:\n\
+            ✅ Background cleanup task (housing_cleanup.rs)\n\
+            ✅ Periodic checking (30/60/80/90 day thresholds)\n\
+            ✅ Reclaim box system\n\
+            🔄 Admin command integration (pending)\n\n\
+            This command is a placeholder for Phase 7 completion."
+        ))
     }
 
     /// Helper to get required progress for achievement

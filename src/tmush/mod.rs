@@ -8,6 +8,7 @@ pub mod commands;
 pub mod companion;
 pub mod currency;
 pub mod errors;
+pub mod housing_cleanup;
 pub mod inventory;
 pub mod quest;
 pub mod room_manager;
@@ -32,6 +33,9 @@ pub use currency::{
     parse_currency, STANDARD_CONVERSION_RATIO,
 };
 pub use errors::TinyMushError;
+pub use housing_cleanup::{
+    list_abandoned_housing, check_and_cleanup_housing, AbandonedHousingInfo, CleanupConfig, CleanupStats,
+};
 pub use inventory::{
     add_item_to_inventory, calculate_total_weight, can_add_item, format_inventory_compact,
     format_item_examination, get_item_quantity, has_item, remove_item_from_inventory,

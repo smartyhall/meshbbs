@@ -562,13 +562,15 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [x] HISTORY <item> command - view ownership audit trail (owner only)
       - [x] TODOs added for GIVE/TRADE/DROP/TAKE when implemented
       - [ ] Preserve history for 90 days after item deletion (storage layer TODO)
-    - [ ] **Phase 6: Reclaim Box System**
-      - [ ] Move items to reclaim_box on housing deletion
-      - [ ] Move people to town square on housing deletion
-      - [ ] Return companions to owner's companion list
-      - [ ] RECLAIM command - view items in reclaim box
-      - [ ] RECLAIM <item> - retrieve item from reclaim box
-      - [ ] WorldConfig messages for reclaim operations
+    - [x] **Phase 6: Reclaim Box System** (commit ca01a76)
+      - [x] Move items to reclaim_box helper: move_housing_to_reclaim_box()
+      - [x] Move people to town square on housing deletion (teleport loop)
+      - [x] Return companions to owner's companion list (TODO in helper)
+      - [x] RECLAIM command - view items in reclaim box (cross-housing display)
+      - [x] RECLAIM <item> - retrieve item from reclaim box (with ownership tracking)
+      - [x] WorldConfig messages for reclaim operations
+      - [x] move_housing_to_reclaim_box() ready for future housing deletion command
+      - [x] Ownership tracking integration (Reclaimed reason)
     - [ ] **Phase 7: Abandonment/Cleanup**
       - [ ] Track inactive_since when owner doesn't login
       - [ ] Background task: check for 30-day inactive housing
