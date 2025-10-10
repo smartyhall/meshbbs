@@ -50,6 +50,7 @@ pub enum RoomFlag {
     Instanced,
     Crowded,
     HousingOffice,  // Room provides housing rental/purchase services
+    NoTeleportOut,  // Players cannot teleport out of this room (PvP arenas, quest dungeons, etc.)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -1131,6 +1132,15 @@ pub struct PlayerRecord {
     /// Currently mounted companion (if any)
     #[serde(default)]
     pub mounted_companion: Option<String>,
+    /// Primary housing instance ID (for HOME command)
+    #[serde(default)]
+    pub primary_housing_id: Option<String>,
+    /// Last teleport timestamp (for cooldown enforcement)
+    #[serde(default)]
+    pub last_teleport: Option<DateTime<Utc>>,
+    /// Combat state (blocks teleportation when true)
+    #[serde(default)]
+    pub in_combat: bool,
     pub schema_version: u8,
 }
 
@@ -1156,6 +1166,9 @@ impl PlayerRecord {
             equipped_title: None,
             companions: Vec::new(),
             mounted_companion: None,
+            primary_housing_id: None,
+            last_teleport: None,
+            in_combat: false,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
@@ -1886,6 +1899,15 @@ pub struct WorldConfig {
     pub msg_housing_rented: String,
     pub msg_housing_list_header: String,
     
+    // === HOME/TELEPORT SYSTEM MESSAGES ===
+    pub err_teleport_in_combat: String,
+    pub err_teleport_restricted: String,
+    pub err_teleport_cooldown: String,
+    pub err_no_housing: String,
+    pub err_teleport_no_access: String,
+    pub msg_teleport_success: String,
+    pub home_cooldown_seconds: u64,
+    
     // === TECHNICAL/SYSTEM MESSAGES ===
     pub err_player_load_failed: String,
     pub err_shop_save_failed: String,
@@ -2076,6 +2098,15 @@ impl Default for WorldConfig {
             err_housing_template_not_found: "Housing template '{name}' not found. Type HOUSING LIST to see available options.".to_string(),
             msg_housing_rented: "Congratulations! You've acquired {name}.\nType HOME to visit your new space!".to_string(),
             msg_housing_list_header: "=== Available Housing ===\n\nType RENT <id> to acquire housing.\nType HOUSING INFO <id> for more details.".to_string(),
+            
+            // Home/teleport system messages
+            err_teleport_in_combat: "You can't teleport while in combat!".to_string(),
+            err_teleport_restricted: "You can't teleport from this location.".to_string(),
+            err_teleport_cooldown: "You must wait {time} before teleporting again.".to_string(),
+            err_no_housing: "You don't own any housing! Visit a housing office to rent a place.".to_string(),
+            err_teleport_no_access: "You no longer have access to that location.".to_string(),
+            msg_teleport_success: "You teleport to {name}...".to_string(),
+            home_cooldown_seconds: 300,  // 5 minutes default
             
             // Technical/system messages
             err_player_load_failed: "Error loading player: {error}".to_string(),

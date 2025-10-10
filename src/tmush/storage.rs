@@ -2150,6 +2150,18 @@ impl TinyMushStore {
             "msg_housing_rented" => config.msg_housing_rented = value.to_string(),
             "msg_housing_list_header" => config.msg_housing_list_header = value.to_string(),
             
+            // Home/teleport system messages
+            "err_teleport_in_combat" => config.err_teleport_in_combat = value.to_string(),
+            "err_teleport_restricted" => config.err_teleport_restricted = value.to_string(),
+            "err_teleport_cooldown" => config.err_teleport_cooldown = value.to_string(),
+            "err_no_housing" => config.err_no_housing = value.to_string(),
+            "err_teleport_no_access" => config.err_teleport_no_access = value.to_string(),
+            "msg_teleport_success" => config.msg_teleport_success = value.to_string(),
+            "home_cooldown_seconds" => {
+                config.home_cooldown_seconds = value.parse()
+                    .map_err(|_| TinyMushError::NotFound(format!("Invalid number for home_cooldown_seconds: {}", value)))?;
+            },
+            
             // Technical/system messages
             "err_player_load_failed" => config.err_player_load_failed = value.to_string(),
             "err_shop_save_failed" => config.err_shop_save_failed = value.to_string(),

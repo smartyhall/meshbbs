@@ -479,19 +479,19 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] HOUSING LIST - show available templates catalog (location-restricted to HousingOffice rooms)
   - [x] RENT <template_id> - clone template to create player instance (COMPLETE - full validation, currency handling, location restrictions)
   - [ ] HOME command (3-phase implementation):
-    - [ ] **Phase 1 (MVP)**: Basic teleport to primary housing
-      - [ ] Add PlayerRecord.primary_housing_id field
-      - [ ] Add PlayerRecord.last_teleport field for cooldown
-      - [ ] Add PlayerRecord.in_combat field
-      - [ ] Add RoomFlag::NoTeleportOut for teleport restrictions
-      - [ ] Add 6 WorldConfig teleport messages (err_teleport_in_combat, err_teleport_restricted, err_teleport_cooldown, err_no_housing, err_teleport_no_access, msg_teleport_success)
-      - [ ] HOME command: teleports to primary housing with validations
-      - [ ] Validation: Check in_combat flag → block with err_teleport_in_combat
-      - [ ] Validation: Check RoomFlag::NoTeleportOut → block with err_teleport_restricted
-      - [ ] Validation: Check cooldown (world_config.home_cooldown_seconds, default 300) → block with err_teleport_cooldown
-      - [ ] Validation: Check player has active housing → block with err_no_housing
-      - [ ] WorldConfig: home_cooldown_seconds field (default 300 = 5 minutes)
-      - [ ] Set last_teleport timestamp after successful teleport
+    - [x] **Phase 1 (MVP)**: Basic teleport to primary housing - COMPLETE
+      - [x] Add PlayerRecord.primary_housing_id field
+      - [x] Add PlayerRecord.last_teleport field for cooldown
+      - [x] Add PlayerRecord.in_combat field
+      - [x] Add RoomFlag::NoTeleportOut for teleport restrictions
+      - [x] Add 6 WorldConfig teleport messages (err_teleport_in_combat, err_teleport_restricted, err_teleport_cooldown, err_no_housing, err_teleport_no_access, msg_teleport_success)
+      - [x] HOME command: teleports to primary housing with validations
+      - [x] Validation: Check in_combat flag → block with err_teleport_in_combat
+      - [x] Validation: Check RoomFlag::NoTeleportOut → block with err_teleport_restricted
+      - [x] Validation: Check cooldown (world_config.home_cooldown_seconds, default 300) → block with err_teleport_cooldown
+      - [x] Validation: Check player has active housing → block with err_no_housing
+      - [x] WorldConfig: home_cooldown_seconds field (default 300 = 5 minutes)
+      - [x] Set last_teleport timestamp after successful teleport
     - [ ] **Phase 2 (Polish)**: Multi-home management
       - [ ] HOME LIST - show all accessible housing instances with status
       - [ ] Display format: [★ Primary] ID. Name (Category) - ACCESS_TYPE
