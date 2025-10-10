@@ -492,14 +492,15 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [x] Validation: Check player has active housing → block with err_no_housing
       - [x] WorldConfig: home_cooldown_seconds field (default 300 = 5 minutes)
       - [x] Set last_teleport timestamp after successful teleport
-    - [ ] **Phase 2 (Polish)**: Multi-home management
-      - [ ] HOME LIST - show all accessible housing instances with status
-      - [ ] Display format: [★ Primary] ID. Name (Category) - ACCESS_TYPE
-      - [ ] Show access types: OWNED, GUEST, GUILD, BUSINESS
-      - [ ] HOME <id> - teleport to specific housing instance by ID/number
-      - [ ] HOME SET <id> - designate a housing instance as primary home
-      - [ ] Update primary_housing_id when using HOME SET
-      - [ ] Auto-prompt if multiple housing and no primary set
+    - [x] **Phase 2 (Polish)**: Multi-home management - COMPLETE
+      - [x] HOME LIST - show all accessible housing instances with status
+      - [x] Display format: [★ Primary] ID. Name (Category) - ACCESS_TYPE
+      - [x] Show access types: OWNED, GUEST, GUILD, BUSINESS
+      - [x] HOME <id> - teleport to specific housing instance by ID/number
+      - [x] HOME SET <id> - designate a housing instance as primary home
+      - [x] Update primary_housing_id when using HOME SET
+      - [x] Auto-prompt if multiple housing and no primary set
+      - [x] Number-based selection (HOME 1, HOME 2) or ID-based (HOME studio_apt_123)
     - [ ] **Phase 3 (Advanced)**: Extended access types
       - [ ] Guest access tracking (show instances where player is on guests list)
       - [ ] Guild hall support (HousingInstance.access_type enum)

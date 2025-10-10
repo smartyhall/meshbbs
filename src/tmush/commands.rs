@@ -98,7 +98,7 @@ pub enum TinyMushCommand {
     // Housing commands (Phase 7 Week 1-2)
     Housing(Option<String>), // HOUSING, HOUSING LIST, HOUSING INFO - manage housing
     Rent(String),           // RENT template_id - rent/purchase housing from template
-    Home,                   // HOME - teleport to owned housing
+    Home(Option<String>),   // HOME, HOME LIST, HOME <id>, HOME SET <id> - teleport to housing
     Invite(String),         // INVITE player - add guest to housing
     Uninvite(String),       // UNINVITE player - remove guest from housing
     
@@ -316,7 +316,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Train(companion, skill) => self.handle_train(session, companion, skill, config).await,
             TinyMushCommand::Housing(subcommand) => self.handle_housing(session, subcommand, config).await,
             TinyMushCommand::Rent(template_id) => self.handle_rent(session, template_id, config).await,
-            TinyMushCommand::Home => self.handle_home(session, config).await,
+            TinyMushCommand::Home(subcommand) => self.handle_home(session, subcommand, config).await,
             TinyMushCommand::Invite(player) => self.handle_invite(session, player, config).await,
             TinyMushCommand::Uninvite(player) => self.handle_uninvite(session, player, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
@@ -700,7 +700,13 @@ impl TinyMushProcessor {
                     TinyMushCommand::Unknown("Usage: RENT <template_id>".to_string())
                 }
             },
-            "HOME" => TinyMushCommand::Home,
+            "HOME" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Home(Some(parts[1..].join(" ").to_uppercase()))
+                } else {
+                    TinyMushCommand::Home(None)
+                }
+            },
             "INVITE" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Invite(parts[1].to_lowercase())
@@ -2523,10 +2529,11 @@ impl TinyMushProcessor {
         Ok(format!("{}\n\nUse the HOME command to teleport to your new housing.", success_msg))
     }
 
-    /// Handle HOME command - teleport to owned housing
+    /// Handle HOME command - teleport to owned housing or manage homes
     async fn handle_home(
         &mut self,
         session: &Session,
+        subcommand: Option<String>,
         config: &Config,
     ) -> Result<String> {
         use chrono::Utc;
@@ -2535,85 +2542,239 @@ impl TinyMushProcessor {
         let store = self.get_store(config).await?;
         let world_config = store.get_world_config().unwrap_or_default();
         
-        // 1. Check if player is in combat
-        if player.in_combat {
-            return Ok(world_config.err_teleport_in_combat.clone());
-        }
-        
-        // 2. Check if current room allows teleportation out
-        let current_room = store.get_room(&player.current_room)?;
-        if current_room.flags.contains(&RoomFlag::NoTeleportOut) {
-            return Ok(world_config.err_teleport_restricted.clone());
-        }
-        
-        // 3. Check teleport cooldown
-        if let Some(last_teleport) = player.last_teleport {
-            let now = Utc::now();
-            let elapsed = (now - last_teleport).num_seconds() as u64;
-            let cooldown = world_config.home_cooldown_seconds;
+        match subcommand {
+            Some(ref cmd) if cmd == "LIST" => {
+                // HOME LIST - show all accessible housing
+                let instances = store.get_player_housing_instances(&player.username)?;
+                
+                if instances.is_empty() {
+                    return Ok("You don't own any housing yet.\nVisit a housing office to rent a place!".to_string());
+                }
+                
+                let mut output = String::from("=== Your Housing ===\n\n");
+                
+                for (idx, instance) in instances.iter().enumerate() {
+                    let template = store.get_housing_template(&instance.template_id)?;
+                    let num = idx + 1;
+                    
+                    // Check if this is primary
+                    let is_primary = player.primary_housing_id.as_ref() == Some(&instance.id);
+                    let primary_marker = if is_primary { "[★ Primary] " } else { "           " };
+                    
+                    // Access type (for now, all are OWNED)
+                    let access_type = "OWNED";
+                    
+                    output.push_str(&format!(
+                        "{}{}. {} ({})\n   Location: {} | Access: {}\n\n",
+                        primary_marker,
+                        num,
+                        template.name,
+                        template.category,
+                        instance.id,
+                        access_type
+                    ));
+                }
+                
+                output.push_str("Use 'HOME <number>' to travel to a specific property.\n");
+                output.push_str("Use 'HOME SET <number>' to change your primary home.");
+                
+                Ok(output)
+            },
             
-            if elapsed < cooldown {
-                let remaining = cooldown - elapsed;
-                let minutes = remaining / 60;
-                let seconds = remaining % 60;
-                let time_str = if minutes > 0 {
-                    format!("{} minute{} {} second{}", 
-                        minutes, if minutes == 1 { "" } else { "s" },
-                        seconds, if seconds == 1 { "" } else { "s" })
+            Some(ref cmd) if cmd.starts_with("SET ") => {
+                // HOME SET <id> - set primary housing
+                let id_or_num = cmd.strip_prefix("SET ").unwrap().trim().to_string();
+                let instances = store.get_player_housing_instances(&player.username)?;
+                
+                if instances.is_empty() {
+                    return Ok("You don't own any housing yet.".to_string());
+                }
+                
+                // Try to parse as number first
+                let target_instance = if let Ok(num) = id_or_num.parse::<usize>() {
+                    if num >= 1 && num <= instances.len() {
+                        Some(&instances[num - 1])
+                    } else {
+                        None
+                    }
                 } else {
-                    format!("{} second{}", seconds, if seconds == 1 { "" } else { "s" })
+                    // Try to match by ID
+                    instances.iter().find(|inst| inst.id == id_or_num)
                 };
                 
-                return Ok(world_config.err_teleport_cooldown.replace("{time}", &time_str));
+                let target_instance = match target_instance {
+                    Some(inst) => inst,
+                    None => {
+                        return Ok(format!("Housing '{}' not found. Use HOME LIST to see your properties.", id_or_num));
+                    }
+                };
+                
+                // Set as primary
+                player.primary_housing_id = Some(target_instance.id.clone());
+                player.touch();
+                store.put_player(player)?;
+                
+                let template = store.get_housing_template(&target_instance.template_id)?;
+                
+                Ok(format!("Primary home set to: {}\nUse HOME to teleport there.", template.name))
+            },
+            
+            Some(id_or_num) => {
+                // HOME <id> - teleport to specific housing by ID or number
+                let instances = store.get_player_housing_instances(&player.username)?;
+                
+                if instances.is_empty() {
+                    return Ok(world_config.err_no_housing.clone());
+                }
+                
+                // Try to parse as number first, then try as ID
+                let target_instance = if let Ok(num) = id_or_num.parse::<usize>() {
+                    if num >= 1 && num <= instances.len() {
+                        Some(&instances[num - 1])
+                    } else {
+                        None
+                    }
+                } else {
+                    instances.iter().find(|inst| inst.id == id_or_num)
+                };
+                
+                let target_instance = match target_instance {
+                    Some(inst) => inst,
+                    None => {
+                        return Ok(format!("Housing '{}' not found. Use HOME LIST to see your properties.", id_or_num));
+                    }
+                };
+                
+                // Validation checks
+                if player.in_combat {
+                    return Ok(world_config.err_teleport_in_combat.clone());
+                }
+                
+                let current_room = store.get_room(&player.current_room)?;
+                if current_room.flags.contains(&RoomFlag::NoTeleportOut) {
+                    return Ok(world_config.err_teleport_restricted.clone());
+                }
+                
+                if let Some(last_teleport) = player.last_teleport {
+                    let now = Utc::now();
+                    let elapsed = (now - last_teleport).num_seconds() as u64;
+                    let cooldown = world_config.home_cooldown_seconds;
+                    
+                    if elapsed < cooldown {
+                        let remaining = cooldown - elapsed;
+                        let minutes = remaining / 60;
+                        let seconds = remaining % 60;
+                        let time_str = if minutes > 0 {
+                            format!("{} minute{} {} second{}", 
+                                minutes, if minutes == 1 { "" } else { "s" },
+                                seconds, if seconds == 1 { "" } else { "s" })
+                        } else {
+                            format!("{} second{}", seconds, if seconds == 1 { "" } else { "s" })
+                        };
+                        
+                        return Ok(world_config.err_teleport_cooldown.replace("{time}", &time_str));
+                    }
+                }
+                
+                // Teleport
+                player.current_room = target_instance.entry_room_id.clone();
+                player.last_teleport = Some(Utc::now());
+                player.touch();
+                store.put_player(player.clone())?;
+                
+                let template = store.get_housing_template(&target_instance.template_id)?;
+                let success_msg = world_config.msg_teleport_success
+                    .replace("{name}", &template.name);
+                
+                let look_output = self.describe_current_room(&player).await?;
+                
+                Ok(format!("{}\n\n{}", success_msg, look_output))
+            },
+            
+            None => {
+                // HOME with no args - teleport to primary housing
+                
+                // 1. Check if player is in combat
+                if player.in_combat {
+                    return Ok(world_config.err_teleport_in_combat.clone());
+                }
+                
+                // 2. Check if current room allows teleportation out
+                let current_room = store.get_room(&player.current_room)?;
+                if current_room.flags.contains(&RoomFlag::NoTeleportOut) {
+                    return Ok(world_config.err_teleport_restricted.clone());
+                }
+                
+                // 3. Check teleport cooldown
+                if let Some(last_teleport) = player.last_teleport {
+                    let now = Utc::now();
+                    let elapsed = (now - last_teleport).num_seconds() as u64;
+                    let cooldown = world_config.home_cooldown_seconds;
+                    
+                    if elapsed < cooldown {
+                        let remaining = cooldown - elapsed;
+                        let minutes = remaining / 60;
+                        let seconds = remaining % 60;
+                        let time_str = if minutes > 0 {
+                            format!("{} minute{} {} second{}", 
+                                minutes, if minutes == 1 { "" } else { "s" },
+                                seconds, if seconds == 1 { "" } else { "s" })
+                        } else {
+                            format!("{} second{}", seconds, if seconds == 1 { "" } else { "s" })
+                        };
+                        
+                        return Ok(world_config.err_teleport_cooldown.replace("{time}", &time_str));
+                    }
+                }
+                
+                // 4. Check if player has housing
+                let instances = store.get_player_housing_instances(&player.username)?;
+                if instances.is_empty() {
+                    return Ok(world_config.err_no_housing.clone());
+                }
+                
+                // 5. Determine target housing instance
+                let target_instance = if let Some(primary_id) = &player.primary_housing_id {
+                    // Try to use primary housing
+                    instances.iter().find(|inst| &inst.id == primary_id)
+                        .or_else(|| instances.first())  // Fallback to first if primary not found
+                } else {
+                    // No primary set, use first instance
+                    instances.first()
+                };
+                
+                let target_instance = match target_instance {
+                    Some(inst) => inst,
+                    None => return Ok(world_config.err_no_housing.clone()),
+                };
+                
+                // Verify player still has access
+                if target_instance.owner != player.username {
+                    return Ok(world_config.err_teleport_no_access.clone());
+                }
+                
+                // 6. Teleport player to housing entry room
+                player.current_room = target_instance.entry_room_id.clone();
+                player.last_teleport = Some(Utc::now());
+                player.touch();
+                
+                // Save player
+                store.put_player(player.clone())?;
+                
+                // 7. Get the template name for success message
+                let template = store.get_housing_template(&target_instance.template_id)?;
+                let housing_name = template.name;
+                
+                // Build success message
+                let success_msg = world_config.msg_teleport_success
+                    .replace("{name}", &housing_name);
+                
+                // Get room description using describe_current_room
+                let look_output = self.describe_current_room(&player).await?;
+                
+                Ok(format!("{}\n\n{}", success_msg, look_output))
             }
         }
-        
-        // 4. Check if player has housing
-        let instances = store.get_player_housing_instances(&player.username)?;
-        if instances.is_empty() {
-            return Ok(world_config.err_no_housing.clone());
-        }
-        
-        // 5. Determine target housing instance
-        let target_instance = if let Some(primary_id) = &player.primary_housing_id {
-            // Try to use primary housing
-            instances.iter().find(|inst| &inst.id == primary_id)
-                .or_else(|| instances.first())  // Fallback to first if primary not found
-        } else {
-            // No primary set, use first instance
-            instances.first()
-        };
-        
-        let target_instance = match target_instance {
-            Some(inst) => inst,
-            None => return Ok(world_config.err_no_housing.clone()),
-        };
-        
-        // Verify player still has access
-        if target_instance.owner != player.username {
-            return Ok(world_config.err_teleport_no_access.clone());
-        }
-        
-        // 6. Teleport player to housing entry room
-        player.current_room = target_instance.entry_room_id.clone();
-        player.last_teleport = Some(Utc::now());
-        player.touch();
-        
-        // Save player
-        store.put_player(player.clone())?;
-        
-        // 7. Get the template name for success message
-        let template = store.get_housing_template(&target_instance.template_id)?;
-        let housing_name = template.name;
-        
-        // Build success message
-        let success_msg = world_config.msg_teleport_success
-            .replace("{name}", &housing_name);
-        
-        // Get room description using describe_current_room
-        let look_output = self.describe_current_room(&player).await?;
-        
-        Ok(format!("{}\n\n{}", success_msg, look_output))
     }
 
     /// Handle INVITE command - add guest to housing
