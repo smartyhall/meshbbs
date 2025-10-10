@@ -29,6 +29,21 @@ const TREE_CONFIG: &str = "tinymush_config";
 const TREE_HOUSING_TEMPLATES: &str = "tinymush_housing_templates";
 const TREE_HOUSING_INSTANCES: &str = "tinymush_housing_instances";
 
+// Secondary indexes for O(1) lookups (performance optimization for scale)
+const TREE_OBJECT_INDEX: &str = "tinymush_object_index";
+const TREE_HOUSING_GUESTS: &str = "tinymush_housing_guests";
+const TREE_PLAYER_TRADES: &str = "tinymush_player_trades";
+const TREE_TEMPLATE_INSTANCES: &str = "tinymush_template_instances";
+
+/// Statistics about secondary index sizes for monitoring
+#[derive(Debug, Clone)]
+pub struct IndexStats {
+    pub object_index_entries: usize,
+    pub housing_guest_entries: usize,
+    pub template_instance_entries: usize,
+    pub player_trade_entries: usize,
+}
+
 fn next_timestamp_nanos() -> i64 {
     let now = Utc::now();
     now.timestamp_nanos_opt()
@@ -83,6 +98,12 @@ pub struct TinyMushStore {
     config: sled::Tree,
     housing_templates: sled::Tree,
     housing_instances: sled::Tree,
+    
+    // Secondary indexes for O(1) lookups (performance optimization)
+    object_index: sled::Tree,           // oid:{id} → full_key
+    housing_guests: sled::Tree,         // guest:{username}:{instance_id} → ""
+    player_trades: sled::Tree,          // ptrade:{username} → session_id
+    template_instances: sled::Tree,     // tpl:{template_id}:{instance_id} → ""
 }
 
 impl TinyMushStore {
@@ -110,6 +131,13 @@ impl TinyMushStore {
         let config = db.open_tree(TREE_CONFIG)?;
         let housing_templates = db.open_tree(TREE_HOUSING_TEMPLATES)?;
         let housing_instances = db.open_tree(TREE_HOUSING_INSTANCES)?;
+        
+        // Open secondary index trees
+        let object_index = db.open_tree(TREE_OBJECT_INDEX)?;
+        let housing_guests = db.open_tree(TREE_HOUSING_GUESTS)?;
+        let player_trades = db.open_tree(TREE_PLAYER_TRADES)?;
+        let template_instances = db.open_tree(TREE_TEMPLATE_INSTANCES)?;
+        
         let store = Self {
             _db: db,
             primary,
@@ -126,6 +154,10 @@ impl TinyMushStore {
             config,
             housing_templates,
             housing_instances,
+            object_index,
+            housing_guests,
+            player_trades,
+            template_instances,
         };
 
         if seed_world {
@@ -255,12 +287,35 @@ impl TinyMushStore {
         object.schema_version = OBJECT_SCHEMA_VERSION;
         let key = Self::object_key(&object);
         let bytes = Self::serialize(&object)?;
-        self.objects.insert(key, bytes)?;
+        self.objects.insert(&key, bytes)?;
+        
+        // Maintain secondary index: oid:{id} → full_key
+        let index_key = format!("oid:{}", object.id);
+        self.object_index.insert(index_key.as_bytes(), key.as_slice())?;
+        
         self.objects.flush()?;
         Ok(())
     }
 
     pub fn get_object(&self, id: &str) -> Result<ObjectRecord, TinyMushError> {
+        // Use secondary index for O(1) lookup
+        let index_key = format!("oid:{}", id);
+        if let Some(full_key) = self.object_index.get(index_key.as_bytes())? {
+            // Index hit - direct lookup
+            if let Some(bytes) = self.objects.get(&full_key)? {
+                let object: ObjectRecord = Self::deserialize(bytes)?;
+                if object.schema_version != OBJECT_SCHEMA_VERSION {
+                    return Err(TinyMushError::SchemaMismatch {
+                        entity: "object",
+                        expected: OBJECT_SCHEMA_VERSION,
+                        found: object.schema_version,
+                    });
+                }
+                return Ok(object);
+            }
+        }
+        
+        // Fallback: scan for migration or index rebuild (legacy data)
         // Try world objects first
         let world_key = format!("objects:world:{}", id);
         if let Some(bytes) = self.objects.get(world_key.as_bytes())? {
@@ -272,13 +327,16 @@ impl TinyMushStore {
                     found: object.schema_version,
                 });
             }
+            // Rebuild index entry for this object
+            let index_key = format!("oid:{}", id);
+            let _ = self.object_index.insert(index_key.as_bytes(), world_key.as_bytes());
             return Ok(object);
         }
 
-        // Scan player-owned objects
+        // Scan player-owned objects (slowest fallback)
         let prefix = "objects:player:".to_string();
         for result in self.objects.scan_prefix(prefix.as_bytes()) {
-            let (_key, value) = result?;
+            let (key, value) = result?;
             let object: ObjectRecord = Self::deserialize(value)?;
             if object.id == id {
                 if object.schema_version != OBJECT_SCHEMA_VERSION {
@@ -288,6 +346,9 @@ impl TinyMushStore {
                         found: object.schema_version,
                     });
                 }
+                // Rebuild index entry for this object
+                let index_key = format!("oid:{}", id);
+                let _ = self.object_index.insert(index_key.as_bytes(), &key);
                 return Ok(object);
             }
         }
@@ -1262,6 +1323,16 @@ impl TinyMushStore {
         let key = format!("trade:{}", session.id);
         let value = bincode::serialize(session)?;
         self.trades.insert(key.as_bytes(), value)?;
+        
+        // Maintain player trade indexes for both participants
+        // Only index active (non-expired, non-completed) trades
+        if !session.is_expired() && session.completed_at.is_none() {
+            let p1_key = format!("ptrade:{}", session.player1.to_ascii_lowercase());
+            let p2_key = format!("ptrade:{}", session.player2.to_ascii_lowercase());
+            self.player_trades.insert(p1_key.as_bytes(), session.id.as_bytes())?;
+            self.player_trades.insert(p2_key.as_bytes(), session.id.as_bytes())?;
+        }
+        
         Ok(())
     }
 
@@ -1279,12 +1350,34 @@ impl TinyMushStore {
     /// Get active trade session for a player (either as initiator or recipient)
     pub fn get_player_active_trade(&self, username: &str) -> Result<Option<TradeSession>, TinyMushError> {
         let username_lower = username.to_ascii_lowercase();
+        
+        // Use secondary index for O(1) lookup
+        let index_key = format!("ptrade:{}", username_lower);
+        if let Some(session_id_bytes) = self.player_trades.get(index_key.as_bytes())? {
+            let session_id = String::from_utf8_lossy(&session_id_bytes).to_string();
+            if let Some(session) = self.get_trade_session(&session_id)? {
+                // Verify session is still active
+                if !session.is_expired() && session.completed_at.is_none() {
+                    return Ok(Some(session));
+                } else {
+                    // Clean up stale index entry
+                    let _ = self.player_trades.remove(index_key.as_bytes());
+                }
+            }
+        }
+        
+        // Fallback: scan for migration (rebuilds index automatically)
         for result in self.trades.iter() {
             let (_key, value) = result?;
             let session: TradeSession = bincode::deserialize(&value)?;
             if !session.is_expired() && session.completed_at.is_none()
                 && (session.player1.to_ascii_lowercase() == username_lower 
                     || session.player2.to_ascii_lowercase() == username_lower) {
+                    // Rebuild index entries
+                    let p1_key = format!("ptrade:{}", session.player1.to_ascii_lowercase());
+                    let p2_key = format!("ptrade:{}", session.player2.to_ascii_lowercase());
+                    let _ = self.player_trades.insert(p1_key.as_bytes(), session.id.as_bytes());
+                    let _ = self.player_trades.insert(p2_key.as_bytes(), session.id.as_bytes());
                     return Ok(Some(session));
                 }
         }
@@ -1293,6 +1386,14 @@ impl TinyMushStore {
 
     /// Delete a trade session (after completion or cancellation)
     pub fn delete_trade_session(&self, session_id: &str) -> Result<(), TinyMushError> {
+        // Get the session to clean up player indexes
+        if let Ok(Some(session)) = self.get_trade_session(session_id) {
+            let p1_key = format!("ptrade:{}", session.player1.to_ascii_lowercase());
+            let p2_key = format!("ptrade:{}", session.player2.to_ascii_lowercase());
+            let _ = self.player_trades.remove(p1_key.as_bytes());
+            let _ = self.player_trades.remove(p2_key.as_bytes());
+        }
+        
         let key = format!("trade:{}", session_id);
         self.trades.remove(key.as_bytes())?;
         Ok(())
@@ -1875,23 +1976,75 @@ impl TinyMushStore {
     
     /// Get all housing instances where the player is a guest
     pub fn get_guest_housing_instances(&self, username: &str) -> Result<Vec<HousingInstance>, TinyMushError> {
+        let username_lower = username.to_ascii_lowercase();
         let mut instances = Vec::new();
-        for item in self.housing_instances.scan_prefix(b"instance:") {
-            let (_, value) = item?;
-            let instance: HousingInstance = Self::deserialize(value)?;
-            // Check if this player is on the guest list
-            if instance.guests.contains(&username.to_string()) {
-                instances.push(instance);
+        
+        // Use secondary index for O(1) per-instance lookup
+        let prefix = format!("guest:{}:", username_lower);
+        for item in self.housing_guests.scan_prefix(prefix.as_bytes()) {
+            let (key, _) = item?;
+            let key_str = String::from_utf8_lossy(&key);
+            // Extract instance_id from key: guest:{username}:{instance_id}
+            if let Some(instance_id) = key_str.strip_prefix(&format!("guest:{}:", username_lower)) {
+                // Direct lookup of the instance
+                if let Ok(instance) = self.get_housing_instance(instance_id) {
+                    instances.push(instance);
+                }
             }
         }
+        
+        // Fallback: scan all instances for migration (rebuilds index automatically)
+        if instances.is_empty() {
+            for item in self.housing_instances.scan_prefix(b"instance:") {
+                let (_, value) = item?;
+                let instance: HousingInstance = Self::deserialize(value)?;
+                // Check if this player is on the guest list
+                if instance.guests.iter().any(|g| g.to_ascii_lowercase() == username_lower) {
+                    // Rebuild index entry
+                    let index_key = format!("guest:{}:{}", username_lower, instance.id);
+                    let _ = self.housing_guests.insert(index_key.as_bytes(), b"");
+                    instances.push(instance);
+                }
+            }
+        }
+        
         Ok(instances)
     }
 
     /// Save a housing instance
     pub fn put_housing_instance(&self, instance: &HousingInstance) -> Result<(), TinyMushError> {
+        // First, get old instance to clean up old guest indexes
+        if let Ok(old_instance) = self.get_housing_instance(&instance.id) {
+            // Remove old guest index entries
+            for old_guest in &old_instance.guests {
+                let old_key = format!("guest:{}:{}", old_guest.to_ascii_lowercase(), instance.id);
+                let _ = self.housing_guests.remove(old_key.as_bytes());
+            }
+            
+            // Remove old template instance index if template changed
+            if old_instance.template_id != instance.template_id {
+                let old_tpl_key = format!("tpl:{}:{}", old_instance.template_id, instance.id);
+                let _ = self.template_instances.remove(old_tpl_key.as_bytes());
+            }
+        }
+        
+        // Save the instance
         let key = format!("instance:{}", instance.id);
         let value = Self::serialize(instance)?;
         self.housing_instances.insert(key.as_bytes(), value)?;
+        
+        // Maintain guest indexes: guest:{username}:{instance_id} → ""
+        for guest in &instance.guests {
+            let guest_key = format!("guest:{}:{}", guest.to_ascii_lowercase(), instance.id);
+            self.housing_guests.insert(guest_key.as_bytes(), b"")?;
+        }
+        
+        // Maintain template instance index: tpl:{template_id}:{instance_id} → ""
+        if instance.active {
+            let tpl_key = format!("tpl:{}:{}", instance.template_id, instance.id);
+            self.template_instances.insert(tpl_key.as_bytes(), b"")?;
+        }
+        
         Ok(())
     }
 
@@ -1910,6 +2063,20 @@ impl TinyMushStore {
 
     /// Delete a housing instance
     pub fn delete_housing_instance(&self, instance_id: &str) -> Result<(), TinyMushError> {
+        // Get the instance to clean up indexes
+        if let Ok(instance) = self.get_housing_instance(instance_id) {
+            // Remove guest index entries
+            for guest in &instance.guests {
+                let guest_key = format!("guest:{}:{}", guest.to_ascii_lowercase(), instance_id);
+                let _ = self.housing_guests.remove(guest_key.as_bytes());
+            }
+            
+            // Remove template instance index
+            let tpl_key = format!("tpl:{}:{}", instance.template_id, instance_id);
+            let _ = self.template_instances.remove(tpl_key.as_bytes());
+        }
+        
+        // Delete the instance
         let key = format!("instance:{}", instance_id);
         self.housing_instances.remove(key.as_bytes())?;
         Ok(())
@@ -1917,13 +2084,24 @@ impl TinyMushStore {
 
     /// Count active instances of a template
     pub fn count_template_instances(&self, template_id: &str) -> Result<usize, TinyMushError> {
-        let mut count = 0;
-        for item in self.housing_instances.scan_prefix(b"instance:") {
-            let (_, value) = item?;
-            let instance: HousingInstance = Self::deserialize(value)?;
-            if instance.template_id == template_id && instance.active {
-                count += 1;
+        // Use secondary index for O(n_instances) instead of O(all_instances)
+        let prefix = format!("tpl:{}:", template_id);
+        let count = self.template_instances.scan_prefix(prefix.as_bytes()).count();
+        
+        // Fallback: rebuild index if empty but instances exist
+        if count == 0 {
+            let mut fallback_count = 0;
+            for item in self.housing_instances.scan_prefix(b"instance:") {
+                let (_, value) = item?;
+                let instance: HousingInstance = Self::deserialize(value)?;
+                if instance.template_id == template_id && instance.active {
+                    // Rebuild index entry
+                    let tpl_key = format!("tpl:{}:{}", template_id, instance.id);
+                    let _ = self.template_instances.insert(tpl_key.as_bytes(), b"");
+                    fallback_count += 1;
+                }
             }
+            return Ok(fallback_count);
         }
         Ok(count)
     }
@@ -2226,6 +2404,125 @@ impl TinyMushStore {
 
         self.put_world_config(&config)?;
         Ok(())
+    }
+    
+    // ============================================================================
+    // Index Management & Maintenance (Performance Optimization)
+    // ============================================================================
+    
+    /// Rebuild all secondary indexes from primary data.
+    /// Call this after database migration or if indexes become inconsistent.
+    pub fn rebuild_all_indexes(&self) -> Result<(), TinyMushError> {
+        self.rebuild_object_index()?;
+        self.rebuild_housing_guest_indexes()?;
+        self.rebuild_template_instance_indexes()?;
+        self.rebuild_player_trade_indexes()?;
+        Ok(())
+    }
+    
+    /// Rebuild object index: oid:{id} → full_key
+    pub fn rebuild_object_index(&self) -> Result<usize, TinyMushError> {
+        // Clear existing index
+        self.object_index.clear()?;
+        
+        let mut count = 0;
+        
+        // Index world objects
+        for result in self.objects.scan_prefix(b"objects:world:") {
+            let (key, value) = result?;
+            let object: ObjectRecord = Self::deserialize(value)?;
+            let index_key = format!("oid:{}", object.id);
+            self.object_index.insert(index_key.as_bytes(), &key)?;
+            count += 1;
+        }
+        
+        // Index player objects
+        for result in self.objects.scan_prefix(b"objects:player:") {
+            let (key, value) = result?;
+            let object: ObjectRecord = Self::deserialize(value)?;
+            let index_key = format!("oid:{}", object.id);
+            self.object_index.insert(index_key.as_bytes(), &key)?;
+            count += 1;
+        }
+        
+        self.object_index.flush()?;
+        Ok(count)
+    }
+    
+    /// Rebuild housing guest indexes: guest:{username}:{instance_id} → ""
+    pub fn rebuild_housing_guest_indexes(&self) -> Result<usize, TinyMushError> {
+        // Clear existing indexes
+        self.housing_guests.clear()?;
+        
+        let mut count = 0;
+        for item in self.housing_instances.scan_prefix(b"instance:") {
+            let (_, value) = item?;
+            let instance: HousingInstance = Self::deserialize(value)?;
+            
+            for guest in &instance.guests {
+                let guest_key = format!("guest:{}:{}", guest.to_ascii_lowercase(), instance.id);
+                self.housing_guests.insert(guest_key.as_bytes(), b"")?;
+                count += 1;
+            }
+        }
+        
+        self.housing_guests.flush()?;
+        Ok(count)
+    }
+    
+    /// Rebuild template instance indexes: tpl:{template_id}:{instance_id} → ""
+    pub fn rebuild_template_instance_indexes(&self) -> Result<usize, TinyMushError> {
+        // Clear existing indexes
+        self.template_instances.clear()?;
+        
+        let mut count = 0;
+        for item in self.housing_instances.scan_prefix(b"instance:") {
+            let (_, value) = item?;
+            let instance: HousingInstance = Self::deserialize(value)?;
+            
+            if instance.active {
+                let tpl_key = format!("tpl:{}:{}", instance.template_id, instance.id);
+                self.template_instances.insert(tpl_key.as_bytes(), b"")?;
+                count += 1;
+            }
+        }
+        
+        self.template_instances.flush()?;
+        Ok(count)
+    }
+    
+    /// Rebuild player trade indexes: ptrade:{username} → session_id
+    pub fn rebuild_player_trade_indexes(&self) -> Result<usize, TinyMushError> {
+        // Clear existing indexes
+        self.player_trades.clear()?;
+        
+        let mut count = 0;
+        for result in self.trades.iter() {
+            let (_, value) = result?;
+            let session: TradeSession = bincode::deserialize(&value)?;
+            
+            // Only index active trades
+            if !session.is_expired() && session.completed_at.is_none() {
+                let p1_key = format!("ptrade:{}", session.player1.to_ascii_lowercase());
+                let p2_key = format!("ptrade:{}", session.player2.to_ascii_lowercase());
+                self.player_trades.insert(p1_key.as_bytes(), session.id.as_bytes())?;
+                self.player_trades.insert(p2_key.as_bytes(), session.id.as_bytes())?;
+                count += 2;
+            }
+        }
+        
+        self.player_trades.flush()?;
+        Ok(count)
+    }
+    
+    /// Get index statistics for monitoring
+    pub fn get_index_stats(&self) -> Result<IndexStats, TinyMushError> {
+        Ok(IndexStats {
+            object_index_entries: self.object_index.len(),
+            housing_guest_entries: self.housing_guests.len(),
+            template_instance_entries: self.template_instances.len(),
+            player_trade_entries: self.player_trades.len(),
+        })
     }
 }
 

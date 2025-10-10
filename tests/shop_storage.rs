@@ -168,6 +168,8 @@ fn test_shop_update_and_persistence() {
         usable: false,
         actions: std::collections::HashMap::new(),
         flags: Vec::new(),
+        locked: false,
+        ownership_history: Vec::new(),
         schema_version: 1,
     };
     

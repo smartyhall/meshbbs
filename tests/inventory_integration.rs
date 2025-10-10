@@ -21,6 +21,8 @@ fn test_item(id: &str, name: &str, weight: u8, takeable: bool) -> ObjectRecord {
         usable: false,
         actions: HashMap::new(),
         flags: Vec::new(),
+        locked: false,
+        ownership_history: Vec::new(),
         schema_version: 1,
     }
 }
