@@ -89,7 +89,7 @@ impl ShopItem {
 
     /// Check if item is in stock
     pub fn in_stock(&self) -> bool {
-        self.quantity.map_or(true, |q| q > 0)
+        self.quantity.is_none_or(|q| q > 0)
     }
 
     /// Get available quantity (None = infinite)

@@ -2,7 +2,6 @@
 ///
 /// This module provides functions for achievement tracking including
 /// checking triggers, updating progress, and awarding achievements.
-
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
 use crate::tmush::types::{AchievementCategory, AchievementRecord, AchievementTrigger, PlayerAchievement};

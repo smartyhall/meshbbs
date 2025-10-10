@@ -397,7 +397,7 @@ impl TinyMushProcessor {
                     let message = parts[2..].join(" ");
                     TinyMushCommand::Whisper(target, message)
                 } else {
-                    TinyMushCommand::Unknown(format!("Usage: WHISPER <player> <message>"))
+                    TinyMushCommand::Unknown("Usage: WHISPER <player> <message>".to_string())
                 }
             },
             "EMOTE" | ":" => {
@@ -1786,11 +1786,9 @@ impl TinyMushProcessor {
                         return Ok(format!("Reward error: {}", e));
                     }
 
-                    return Ok(format!(
-                        "Mayor Thompson:\n'Welcome, citizen! Here's a starter purse and town map. \
+                    return Ok("Mayor Thompson:\n'Welcome, citizen! Here's a starter purse and town map. \
                         Good luck in Old Towne Mesh!'\n\n\
-                        [Tutorial Complete! Rewards granted.]"
-                    ));
+                        [Tutorial Complete! Rewards granted.]".to_string());
                 }
                 TutorialState::Completed { .. } => {
                     return Ok("Mayor Thompson: 'You've already completed the tutorial. Welcome back!'".to_string());
@@ -1851,7 +1849,7 @@ impl TinyMushProcessor {
                 output.push_str("\nQUEST <id> - View details\nQUEST LIST - Available quests");
                 Ok(output)
             }
-            Some(ref cmd) if cmd.starts_with("LIST") => {
+            Some(cmd) if cmd.starts_with("LIST") => {
                 // List available quests
                 let available = get_available_quests(self.store(), username)
                     .map_err(|e| anyhow::anyhow!("Failed to get available quests: {}", e))?;
@@ -1861,7 +1859,7 @@ impl TinyMushProcessor {
                 
                 Ok(messages.join("\n"))
             }
-            Some(ref cmd) if cmd.starts_with("ACCEPT ") => {
+            Some(cmd) if cmd.starts_with("ACCEPT ") => {
                 // Accept a quest by ID
                 let quest_id = cmd.strip_prefix("ACCEPT ").unwrap().trim().to_lowercase();
                 
@@ -1883,7 +1881,7 @@ impl TinyMushProcessor {
                     quest.objectives.len()
                 ))
             }
-            Some(ref cmd) if cmd.starts_with("COMPLETE") || cmd.starts_with("COMP") => {
+            Some(cmd) if cmd.starts_with("COMPLETE") || cmd.starts_with("COMP") => {
                 // Complete a quest
                 Ok("Quest completion is automatic when all objectives are met.\nTalk to the quest giver to turn in.".to_string())
             }
@@ -2033,11 +2031,11 @@ impl TinyMushProcessor {
                     return Ok(format!("No achievements found in category: {}", cat_name));
                 }
 
-                let mut output = String::from(format!("=== {} ACHIEVEMENTS ===\n", cat));
+                let mut output = format!("=== {} ACHIEVEMENTS ===\n", cat);
                 for (achievement, player_progress) in achievements {
                     let status = if let Some(pa) = player_progress {
                         if pa.earned {
-                            format!("[✓] EARNED")
+                            "[✓] EARNED".to_string()
                         } else {
                             format!("[{}/{}]", pa.progress, self.get_achievement_required(&achievement.trigger))
                         }
@@ -2085,7 +2083,7 @@ impl TinyMushProcessor {
                 let player = self.get_or_create_player(session).await?;
                 let equipped = player.equipped_title.as_deref().unwrap_or("None");
                 
-                let mut output = String::from(format!("=== YOUR TITLES ===\nCurrently equipped: {}\n\n", equipped));
+                let mut output = format!("=== YOUR TITLES ===\nCurrently equipped: {}\n\n", equipped);
                 for (idx, title) in titles.iter().enumerate() {
                     let marker = if Some(title.as_str()) == player.equipped_title.as_deref() {
                         "[*]"
@@ -2435,11 +2433,11 @@ impl TinyMushProcessor {
                 let instances = store.get_player_housing_instances(&player.username)?;
                 
                 if instances.is_empty() {
-                    Ok(format!("You don't own any housing yet.\n\n\
+                    Ok("You don't own any housing yet.\n\n\
                         Visit a housing office to rent or purchase a place!\n\
-                        Type HOUSING LIST to see available options."))
+                        Type HOUSING LIST to see available options.".to_string())
                 } else {
-                    let mut output = format!("=== YOUR HOUSING ===\n\n");
+                    let mut output = "=== YOUR HOUSING ===\n\n".to_string();
                     for instance in instances {
                         let template = store.get_housing_template(&instance.template_id)?;
                         let active_status = if instance.active { "✓ Active" } else { "✗ Inactive" };
@@ -2576,7 +2574,7 @@ impl TinyMushProcessor {
         
         // Check if player has sufficient funds (currency + bank)
         let total_funds = player.currency.base_value() + player.banked_currency.base_value();
-        let required = template.cost as i64;
+        let required = template.cost;
         
         if total_funds < required {
             let deficit = required - total_funds;
@@ -3444,8 +3442,7 @@ impl TinyMushProcessor {
         // This is a placeholder command for Phase 7
         // Full implementation requires integration with Storage for user last_login data
         
-        Ok(format!(
-            "🏚️  ABANDONED HOUSING REPORT\n\n\
+        Ok("🏚️  ABANDONED HOUSING REPORT\n\n\
             This command requires integration with the background cleanup task.\n\n\
             To check housing status manually, use:\n\
             - HOME LIST - view your own housing\n\
@@ -3456,8 +3453,7 @@ impl TinyMushProcessor {
             ✅ Periodic checking (30/60/80/90 day thresholds)\n\
             ✅ Reclaim box system\n\
             🔄 Admin command integration (pending)\n\n\
-            This command is a placeholder for Phase 7 completion."
-        ))
+            This command is a placeholder for Phase 7 completion.".to_string())
     }
 
     /// Helper to get required progress for achievement
@@ -3830,8 +3826,7 @@ impl TinyMushProcessor {
                         response.push_str("(This item may predate the ownership tracking system)\n");
                     } else {
                         for (idx, transfer) in item.ownership_history.iter().enumerate() {
-                            let from = transfer.from_owner.as_ref()
-                                .map(|s| s.as_str())
+                            let from = transfer.from_owner.as_deref()
                                 .unwrap_or("WORLD");
                             let to = &transfer.to_owner;
                             let reason = format!("{:?}", transfer.reason);
@@ -4433,7 +4428,7 @@ impl TinyMushProcessor {
 
         // Check if initiator already has an active trade
         if let Some(existing) = self.store().get_player_active_trade(&username)? {
-            let other = if existing.player1.to_ascii_lowercase() == username.to_ascii_lowercase() {
+            let other = if existing.player1.eq_ignore_ascii_case(&username) {
                 &existing.player2
             } else {
                 &existing.player1
@@ -4585,7 +4580,7 @@ impl TinyMushProcessor {
         };
 
         // Get the other player's name
-        let other_player = if trade.player1.to_ascii_lowercase() == username.to_ascii_lowercase() {
+        let other_player = if trade.player1.eq_ignore_ascii_case(&username) {
             &trade.player2
         } else {
             &trade.player1
@@ -4621,7 +4616,7 @@ impl TinyMushProcessor {
             // Determine direction and other party
             let (direction, other_party) = match (&tx.from, &tx.to) {
                 (Some(from), Some(to)) => {
-                    if from.to_ascii_lowercase() == username.to_ascii_lowercase() {
+                    if from.eq_ignore_ascii_case(&username) {
                         ("->", to.as_str())
                     } else {
                         ("<-", from.as_str())

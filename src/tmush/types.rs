@@ -860,7 +860,7 @@ impl Default for PlayerStats {
 }
 
 /// Quest system data structures for Phase 6 Week 2
-
+///
 /// Quest state tracking for player quest progress
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -927,6 +927,7 @@ impl QuestObjective {
 
 /// Quest rewards that can be granted upon completion
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default)]
 pub struct QuestRewards {
     #[serde(default)]
     pub currency: Option<CurrencyAmount>,
@@ -938,16 +939,6 @@ pub struct QuestRewards {
     pub reputation: HashMap<String, i32>, // Faction -> reputation change
 }
 
-impl Default for QuestRewards {
-    fn default() -> Self {
-        Self {
-            currency: None,
-            experience: 0,
-            items: Vec::new(),
-            reputation: HashMap::new(),
-        }
-    }
-}
 
 /// Quest record defining a quest template and player-specific progress
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1063,7 +1054,7 @@ impl PlayerQuest {
 }
 
 /// Achievement system data structures for Phase 6 Week 3
-
+///
 /// Achievement category for organization
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]

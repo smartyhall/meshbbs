@@ -276,7 +276,7 @@ impl TinyMushStore {
         }
 
         // Scan player-owned objects
-        let prefix = format!("objects:player:");
+        let prefix = "objects:player:".to_string();
         for result in self.objects.scan_prefix(prefix.as_bytes()) {
             let (_key, value) = result?;
             let object: ObjectRecord = Self::deserialize(value)?;
@@ -454,7 +454,7 @@ impl TinyMushStore {
         let key = format!("boards:{}", board_id).into_bytes();
         let bytes = self.bulletins.get(key)?
             .ok_or_else(|| TinyMushError::NotFound(format!("Bulletin board: {}", board_id)))?;
-        Ok(Self::deserialize(bytes)?)
+        Self::deserialize(bytes)
     }
 
     /// Post a message to a bulletin board
@@ -476,7 +476,7 @@ impl TinyMushStore {
         let key = format!("messages:{}:{:020}", board_id, message_id).into_bytes();
         let bytes = self.bulletins.get(key)?
             .ok_or_else(|| TinyMushError::NotFound(format!("Bulletin message: {}", message_id)))?;
-        Ok(Self::deserialize(bytes)?)
+        Self::deserialize(bytes)
     }
 
     /// List bulletin messages for a board with pagination
@@ -1282,12 +1282,11 @@ impl TinyMushStore {
         for result in self.trades.iter() {
             let (_key, value) = result?;
             let session: TradeSession = bincode::deserialize(&value)?;
-            if !session.is_expired() && session.completed_at.is_none() {
-                if session.player1.to_ascii_lowercase() == username_lower 
-                    || session.player2.to_ascii_lowercase() == username_lower {
+            if !session.is_expired() && session.completed_at.is_none()
+                && (session.player1.to_ascii_lowercase() == username_lower 
+                    || session.player2.to_ascii_lowercase() == username_lower) {
                     return Ok(Some(session));
                 }
-            }
         }
         Ok(None)
     }

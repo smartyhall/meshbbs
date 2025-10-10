@@ -2,7 +2,6 @@
 ///
 /// This module provides functions for companion management including
 /// taming, feeding, bonding, mounting, and auto-follow mechanics.
-
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
 use crate::tmush::types::{CompanionRecord, CompanionType};
