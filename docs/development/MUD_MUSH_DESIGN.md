@@ -1347,6 +1347,66 @@ Must be:
 (~150 bytes)
 ```
 
+### Housing Security & Object Protection
+
+**Philosophy**: Not stealing is a social convention. Owners are responsible for locking their property, just like locking a house door.
+
+**Object Ownership & Forensics:**
+- All objects have `owner` field (who created/acquired it)
+- All objects maintain `ownership_history` - indelible audit trail
+- History persists even after deletion (90-day retention)
+- Enables theft investigation and item recovery
+
+**Default Behavior (Option A - Trust with Control):**
+- Items are **unlocked by default** (social, friendly)
+- Guests can take unlocked items (trusting environment)
+- Owner can **LOCK** specific items to prevent taking
+- Locked items show 🔒 indicator
+- Owner responsible for securing valuables
+
+**Room Access Control:**
+```
+LOCK              Lock current room
+UNLOCK            Unlock room
+KICK <player>     Remove guest
+KICK ALL          Clear all guests
+
+Locked room: Guests can't enter
+even if on guest list.
+(~140 bytes)
+```
+
+**Item Protection:**
+```
+LOCK <item>       Prevent taking
+UNLOCK <item>     Allow taking
+
+Locked items show: 🔒
+Only owner can take locked items.
+(~110 bytes)
+```
+
+**Housing Deletion Safety:**
+
+When housing deleted (admin/expiration):
+1. **People**: Auto-teleport to town square
+2. **Items**: Move to owner's Reclaim Box
+3. **Companions**: Return to companion list
+4. **Quest items**: Priority to inventory
+
+```
+RECLAIM           View reclaim box
+RECLAIM <item>    Retrieve item
+
+Items kept 90 days, then culled.
+(~100 bytes)
+```
+
+**Abandonment Policy:**
+- 30 days inactive: Items → reclaim box
+- 60 days inactive: Housing reclaimed
+- 90 days inactive: Items deleted
+
 ### Object Builder Commands
 
 ```

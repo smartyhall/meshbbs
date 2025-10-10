@@ -525,7 +525,51 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
     - [x] Check target player exists
     - [x] Add/remove from HousingInstance.guests list
     - [x] Prevent duplicate invitations and invalid removals
-  - [ ] LOCK / UNLOCK - access control
+  - [ ] LOCK / UNLOCK - access control & object protection
+    - [ ] **Phase 1: Data Model Changes**
+      - [ ] Add ObjectRecord.owner field (Option<String>)
+      - [ ] Add ObjectRecord.locked field (bool, default false)
+      - [ ] Add ObjectRecord.ownership_history field (Vec<OwnershipTransfer>)
+      - [ ] Add RoomRecord.locked field (bool, default false)
+      - [ ] Add HousingInstance.reclaim_box field (Vec<String>)
+      - [ ] Add HousingInstance.inactive_since field (Option<DateTime<Utc>>)
+      - [ ] Create OwnershipTransfer struct (owner, timestamp, reason)
+    - [ ] **Phase 2: Room Access Control**
+      - [ ] LOCK command - lock current housing room (guests can't enter)
+      - [ ] UNLOCK command - unlock current housing room
+      - [ ] Check room.locked in movement validation
+      - [ ] WorldConfig messages for lock/unlock operations
+    - [ ] **Phase 3: Guest Management**
+      - [ ] KICK <player> - remove specific guest from current housing
+      - [ ] KICK ALL - remove all guests from current housing
+      - [ ] Teleport kicked players to town square or housing entry
+      - [ ] WorldConfig messages for kick operations
+    - [ ] **Phase 4: Item Protection**
+      - [ ] LOCK <item> - mark item as locked (guests can't take)
+      - [ ] UNLOCK <item> - remove lock from item
+      - [ ] Check item.locked in TAKE command validation
+      - [ ] Show 🔒 indicator for locked items in room/inventory
+      - [ ] WorldConfig messages for item lock/unlock
+    - [ ] **Phase 5: Ownership Tracking**
+      - [ ] Record ownership_history on item creation
+      - [ ] Record ownership_history on GIVE/TRADE/DROP/TAKE
+      - [ ] Add reason codes (Created, Traded, Gifted, Dropped, Taken, Reclaimed)
+      - [ ] HISTORY <item> command - view ownership audit trail (owner only)
+      - [ ] Preserve history for 90 days after item deletion
+    - [ ] **Phase 6: Reclaim Box System**
+      - [ ] Move items to reclaim_box on housing deletion
+      - [ ] Move people to town square on housing deletion
+      - [ ] Return companions to owner's companion list
+      - [ ] RECLAIM command - view items in reclaim box
+      - [ ] RECLAIM <item> - retrieve item from reclaim box
+      - [ ] WorldConfig messages for reclaim operations
+    - [ ] **Phase 7: Abandonment/Cleanup**
+      - [ ] Track inactive_since when owner doesn't login
+      - [ ] Background task: check for 30-day inactive housing
+      - [ ] Move items to reclaim box at 30 days
+      - [ ] Mark housing for reclamation at 60 days
+      - [ ] Delete reclaim box items at 90 days (with warnings at 80 days)
+      - [ ] Admin command to view/manage abandoned housing
 - [ ] Integration tests for housing lifecycle (template → rent → customize → guest access)
 - [ ] Housing instance cleanup (inactive/abandoned housing reclamation)
 - [ ] Housing cost deduction and payment system (recurring_cost for rental tracking)
