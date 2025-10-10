@@ -267,7 +267,9 @@ pub struct NpcRecord {
     pub title: String,
     pub description: String,
     pub room_id: String,
-    pub dialog: HashMap<String, String>, // key -> response text
+    pub dialog: HashMap<String, String>, // Simple key -> response text
+    #[serde(default)]
+    pub dialog_tree: HashMap<String, DialogNode>, // Advanced branching dialogue
     #[serde(default)]
     pub flags: Vec<NpcFlag>,
     pub created_at: DateTime<Utc>,
@@ -283,6 +285,7 @@ impl NpcRecord {
             description: description.to_string(),
             room_id: room_id.to_string(),
             dialog: HashMap::new(),
+            dialog_tree: HashMap::new(),
             flags: Vec::new(),
             created_at: Utc::now(),
             schema_version: 1,
@@ -299,6 +302,168 @@ impl NpcRecord {
             self.flags.push(flag);
         }
         self
+    }
+}
+
+/// Conversation state tracking for player-NPC interactions (Phase 8.5)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConversationState {
+    pub npc_id: String,
+    pub player_id: String,
+    pub topics_discussed: Vec<String>,
+    pub last_topic: Option<String>,
+    pub conversation_flags: HashMap<String, bool>,
+    pub last_conversation_time: DateTime<Utc>,
+    pub first_conversation_time: DateTime<Utc>,
+    pub total_conversations: u32,
+}
+
+impl ConversationState {
+    pub fn new(player_id: &str, npc_id: &str) -> Self {
+        Self {
+            npc_id: npc_id.to_string(),
+            player_id: player_id.to_string(),
+            topics_discussed: Vec::new(),
+            last_topic: None,
+            conversation_flags: HashMap::new(),
+            last_conversation_time: Utc::now(),
+            first_conversation_time: Utc::now(),
+            total_conversations: 0,
+        }
+    }
+
+    pub fn discuss_topic(&mut self, topic: &str) {
+        let topic = topic.to_lowercase();
+        if !self.topics_discussed.contains(&topic) {
+            self.topics_discussed.push(topic.clone());
+        }
+        self.last_topic = Some(topic);
+        self.last_conversation_time = Utc::now();
+        self.total_conversations += 1;
+    }
+
+    pub fn has_discussed(&self, topic: &str) -> bool {
+        self.topics_discussed.contains(&topic.to_lowercase())
+    }
+
+    pub fn set_flag(&mut self, flag: &str, value: bool) {
+        self.conversation_flags.insert(flag.to_string(), value);
+    }
+
+    pub fn get_flag(&self, flag: &str) -> bool {
+        self.conversation_flags.get(flag).copied().unwrap_or(false)
+    }
+}
+
+/// Dialogue tree node for branching conversations (Phase 8.5)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DialogNode {
+    pub text: String,
+    #[serde(default)]
+    pub choices: Vec<DialogChoice>,
+}
+
+impl DialogNode {
+    pub fn new(text: &str) -> Self {
+        Self {
+            text: text.to_string(),
+            choices: Vec::new(),
+        }
+    }
+
+    pub fn with_choice(mut self, choice: DialogChoice) -> Self {
+        self.choices.push(choice);
+        self
+    }
+}
+
+/// Choice in a dialogue tree
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DialogChoice {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub goto: Option<String>,
+    #[serde(default)]
+    pub exit: bool,
+}
+
+impl DialogChoice {
+    pub fn new(label: &str) -> Self {
+        Self {
+            label: label.to_string(),
+            goto: None,
+            exit: false,
+        }
+    }
+
+    pub fn goto(mut self, node_id: &str) -> Self {
+        self.goto = Some(node_id.to_string());
+        self.exit = false;
+        self
+    }
+
+    pub fn exit(mut self) -> Self {
+        self.exit = true;
+        self.goto = None;
+        self
+    }
+}
+
+/// Active dialogue session tracking
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DialogSession {
+    pub player_id: String,
+    pub npc_id: String,
+    pub current_node: String,
+    pub dialog_tree: HashMap<String, DialogNode>,
+    pub node_history: Vec<String>,
+    pub started_at: DateTime<Utc>,
+}
+
+impl DialogSession {
+    pub fn new(player_id: &str, npc_id: &str, start_node: &str, tree: HashMap<String, DialogNode>) -> Self {
+        Self {
+            player_id: player_id.to_string(),
+            npc_id: npc_id.to_string(),
+            current_node: start_node.to_string(),
+            dialog_tree: tree,
+            node_history: vec![start_node.to_string()],
+            started_at: Utc::now(),
+        }
+    }
+
+    pub fn navigate_to(&mut self, node_id: &str) -> bool {
+        if self.dialog_tree.contains_key(node_id) {
+            self.node_history.push(node_id.to_string());
+            self.current_node = node_id.to_string();
+            
+            // Prevent infinite loops - max 10 depth
+            if self.node_history.len() > 10 {
+                return false;
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        self.node_history.len() > 1
+    }
+
+    pub fn go_back(&mut self) -> bool {
+        if self.can_go_back() {
+            self.node_history.pop();
+            if let Some(prev_node) = self.node_history.last() {
+                self.current_node = prev_node.clone();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn get_current_node(&self) -> Option<&DialogNode> {
+        self.dialog_tree.get(&self.current_node)
     }
 }
 
@@ -2041,13 +2206,17 @@ impl Default for WorldConfig {
             updated_by: "system".to_string(),
             
             // Branding
-            welcome_message: "=== WELCOME TO OLD TOWNE MESH ===\n".to_string() +
-                "You find yourself at the Script Gazebo...\n\n" +
-                "This tutorial will guide you through\n" +
-                "the basics of exploring our world.\n\n" +
-                "Type LOOK to see your surroundings.\n" +
-                "Type HELP for more commands.\n" +
-                "Type TUTORIAL to check your progress.",
+            welcome_message: "╔════════════════════════════════════╗\n".to_string() +
+                "║   WELCOME TO OLD TOWNE MESH!     ║\n" +
+                "╚════════════════════════════════════╝\n\n" +
+                "You've arrived at the Landing Gazebo.\n" +
+                "This tutorial will teach you the basics.\n\n" +
+                "📋 GETTING STARTED:\n" +
+                "  LOOK or L     - See your surroundings\n" +
+                "  N/S/E/W       - Move (North/South/East/West)\n" +
+                "  TUTORIAL      - Check your progress\n" +
+                "  HELP          - View all commands\n\n" +
+                "💡 TIP: Start by typing LOOK to explore!",
             motd: "Welcome to Old Towne Mesh!\nType HELP for commands.".to_string(),
             world_name: "Old Towne Mesh".to_string(),
             world_description: "A mesh-networked MUD adventure".to_string(),

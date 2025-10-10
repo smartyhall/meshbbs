@@ -35,9 +35,13 @@ pub fn canonical_world_seed(now: DateTime<Utc>) -> Vec<RoomRecord> {
     let landing = RoomRecord::world(
         REQUIRED_LANDING_LOCATION_ID,
         "Landing Gazebo",
-        "A quiet gazebo overlooking Old Towne Mesh.",
-        "Soft mesh lanterns line the gazebo railing while onboarding scripts hum to life.
-Wizards finalize character details here before stepping into the public square.",
+        "A welcoming gazebo where new arrivals first materialize.",
+        "You stand in an octagonal gazebo with polished wooden railings. Soft mesh lanterns \
+cast a warm glow, and a carved wooden sign reads 'Welcome to Old Towne Mesh!' \
+Through the northern archway, you can see the bustling Town Square. This is a \
+safe place to learn the basics - try typing LOOK to examine your surroundings, \
+INVENTORY to check what you're carrying, or HELP to see available commands. \
+When ready, head NORTH to begin your adventure!",
     )
     .with_created_at(now)
     .with_exit(Direction::North, REQUIRED_START_LOCATION_ID)
@@ -426,4 +430,146 @@ pub fn seed_starter_companions() -> Vec<crate::tmush::types::CompanionRecord> {
     );
 
     companions
+}
+
+/// Seed starter NPCs for Old Towne Mesh
+pub fn seed_starter_npcs() -> Vec<crate::tmush::types::NpcRecord> {
+    use crate::tmush::types::NpcRecord;
+
+    let mut npcs = Vec::new();
+
+    // Mayor Thompson - Tutorial completion NPC
+    let mayor = NpcRecord::new(
+        "mayor_thompson",
+        "Mayor Thompson",
+        "Mayor of Old Towne Mesh",
+        "A distinguished figure in formal attire. Mayor Thompson greets visitors with \
+a warm smile and firm handshake. Years of network administration show in the \
+confident way he discusses mesh topology.",
+        "mayor_office",
+    )
+    .with_dialog(
+        "greeting",
+        "Welcome to Old Towne Mesh! I'm Mayor Thompson. \
+I oversee the network operations here. How can I help you today?",
+    )
+    .with_dialog(
+        "tutorial_complete",
+        "Excellent work completing the tutorial! You've learned the basics of navigating \
+our world. Here's a small reward to get you started on your adventures. \
+Welcome to Old Towne Mesh, citizen!",
+    )
+    .with_dialog(
+        "quest_welcome",
+        "Looking for something to do? I have some tasks that could use a capable \
+adventurer like yourself. Check back when you're ready for a challenge!",
+    );
+    
+    npcs.push(mayor);
+
+    // City Hall Clerk - Administrative help
+    let clerk = NpcRecord::new(
+        "city_clerk",
+        "City Clerk",
+        "Administrative Clerk",
+        "A busy clerk with wire-rimmed glasses shuffles through papers. She looks up \
+with a professional smile, ready to assist with administrative matters.",
+        "city_hall_lobby",
+    )
+    .with_dialog(
+        "greeting",
+        "Welcome to City Hall! I handle administrative matters. If you need help \
+understanding how things work around here, just ask!",
+    )
+    .with_dialog(
+        "help",
+        "Old Towne Mesh operates on a mesh network. You can explore the town, \
+complete quests, trade with others, and even claim housing! Type HELP for commands.",
+    )
+    .with_flag(crate::tmush::types::NpcFlag::TutorialNpc);
+    
+    npcs.push(clerk);
+
+    // Gate Guard - Security and direction
+    let guard = NpcRecord::new(
+        "gate_guard",
+        "Gate Guard",
+        "North Gate Guard",
+        "A weathered guard in practical gear stands watch. Years of patrol have given \
+her a keen eye for travelers. She nods in acknowledgment as you approach.",
+        "north_gate",
+    )
+    .with_dialog(
+        "greeting",
+        "Greetings, traveler. I keep watch over the northern approach. Beyond lies \
+the wilderness - beautiful but dangerous for the unprepared.",
+    )
+    .with_dialog(
+        "warning",
+        "If you venture beyond the gate, be sure you're properly equipped. The mesh \
+signal weakens past the ridge, and you'll be on your own out there.",
+    )
+    .with_flag(crate::tmush::types::NpcFlag::Guard);
+    
+    npcs.push(guard);
+
+    // Market Vendor - Trading and commerce
+    let vendor = NpcRecord::new(
+        "market_vendor",
+        "Mira the Vendor",
+        "South Market Trader",
+        "A cheerful vendor behind a stall piled with mesh hardware and local goods. \
+Mira has a reputation for fair prices and interesting stories about the items she sells.",
+        "south_market",
+    )
+    .with_dialog(
+        "greeting",
+        "Welcome to my stall! I've got the finest mesh components and supplies in \
+Old Towne. Looking for anything particular?",
+    )
+    .with_dialog(
+        "wares",
+        "I stock everything from basic antennas to rare modules salvaged from old nodes. \
+Right now I'm running low on inventory, but check back soon - I restock regularly!",
+    )
+    .with_dialog(
+        "story",
+        "This stall has been in my family for three generations. My grandmother was one \
+of the original mesh pioneers. These goods carry that legacy!",
+    )
+    .with_flag(crate::tmush::types::NpcFlag::Vendor);
+    
+    npcs.push(vendor);
+
+    // Museum Curator - Lore and history
+    let curator = NpcRecord::new(
+        "museum_curator",
+        "Dr. Reeves",
+        "Museum Curator",
+        "An elderly scholar with kind eyes and countless stories. Dr. Reeves has \
+dedicated decades to preserving the history of the mesh network.",
+        "mesh_museum",
+    )
+    .with_dialog(
+        "greeting",
+        "Ah, welcome to the Mesh Museum! I'm Dr. Reeves, curator and historian. \
+Every artifact here tells a story of our network's resilience.",
+    )
+    .with_dialog(
+        "history",
+        "This museum chronicles the early days of the mesh - the pioneers who kept \
+packets flowing through blizzards and power outages. Each node had a story, \
+each relay a hero behind it.",
+    )
+    .with_dialog(
+        "exhibit",
+        "That display there? That's the original relay from Winter Storm '19. \
+It ran for 72 hours on backup power, keeping the southern district connected. \
+Legendary piece of equipment.",
+    )
+    .with_flag(crate::tmush::types::NpcFlag::TutorialNpc);
+    
+    npcs.push(curator);
+
+    npcs
 }

@@ -48,8 +48,8 @@ pub use quest::{
 pub use shop::{format_shop_listing, format_shop_item_detail, ShopConfig, ShopItem, ShopRecord};
 pub use state::{
     canonical_world_seed, seed_starter_achievements, seed_starter_companions,
-    seed_starter_quests, OLD_TOWNE_WORLD_ROOM_IDS, REQUIRED_LANDING_LOCATION_ID,
-    REQUIRED_START_LOCATION_ID,
+    seed_starter_npcs, seed_starter_quests, OLD_TOWNE_WORLD_ROOM_IDS,
+    REQUIRED_LANDING_LOCATION_ID, REQUIRED_START_LOCATION_ID,
 };
 pub use storage::{TinyMushStore, TinyMushStoreBuilder};
 pub use tutorial::{

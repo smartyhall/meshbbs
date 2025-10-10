@@ -218,13 +218,13 @@ pub fn distribute_tutorial_rewards(
 pub fn get_tutorial_hint(step: &TutorialStep) -> &'static str {
     match step {
         TutorialStep::WelcomeAtGazebo => {
-            "Try LOOK to examine your surroundings, then move NORTH to Town Square."
+            "🎯 STEP 1: Try typing 'LOOK' or 'L' to see around you, then go NORTH."
         }
         TutorialStep::NavigateToCityHall => {
-            "Navigate to City Hall. Use WHERE to check location, NORTH to move."
+            "🎯 STEP 2: Head to City Hall. Use 'WHERE' to check your location, then go NORTH."
         }
         TutorialStep::MeetTheMayor => {
-            "Go NORTH from City Hall Lobby. Use TALK MAYOR to complete tutorial."
+            "🎯 STEP 3: Find the Mayor's Office. Go NORTH from the lobby, then type 'TALK MAYOR'."
         }
     }
 }

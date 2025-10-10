@@ -77,7 +77,8 @@ pub enum TinyMushCommand {
     
     // Tutorial & NPC commands (Phase 6 Week 1)
     Tutorial(Option<String>), // TUTORIAL, TUTORIAL SKIP, TUTORIAL RESTART - manage tutorial
-    Talk(String),          // TALK npc - interact with NPC
+    Talk(String, Option<String>), // TALK npc [topic] - interact with NPC, optionally specify topic
+    Talked(Option<String>), // TALKED [npc] - view conversation history with NPCs
     
     // Quest commands (Phase 6 Week 2)
     Quest(Option<String>), // QUEST, QUEST LIST, QUEST ACCEPT id - manage quests
@@ -119,6 +120,8 @@ pub enum TinyMushCommand {
     Debug(String),          // DEBUG - admin diagnostics
     SetConfig(String, String), // @SETCONFIG field value - set world configuration
     GetConfig(Option<String>), // @GETCONFIG [field] - view world configuration
+    EditRoom(String, String), // @EDITROOM <room_id> <description> - edit any room description (admin only)
+    EditNpc(String, String, String), // @EDITNPC <npc_id> <field> <value> - edit NPC properties (admin only)
     ListAbandoned,          // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
     
     // Unrecognized command
@@ -213,10 +216,26 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Player initialization failed: {}", e)),
         };
 
-        // Show welcome message and initial look
+        // Show welcome message - use tutorial welcome for new players
         let mut response = String::new();
-        response.push_str("*** Welcome to TinyMUSH! ***\n");
-        response.push_str("Type HELP for commands, B or QUIT to exit.\n\n");
+        
+        if crate::tmush::tutorial::should_auto_start_tutorial(&player) {
+            // New player - start tutorial and show tutorial welcome
+            use crate::tmush::tutorial::start_tutorial;
+            if let Err(e) = start_tutorial(self.store(), &player.username) {
+                return Ok(format!("Tutorial start failed: {}", e));
+            }
+            
+            // Show tutorial welcome message from world config
+            if let Ok(world_config) = self.store().get_world_config() {
+                response.push_str(&world_config.welcome_message);
+                response.push_str("\n\n");
+            }
+        } else {
+            // Returning player - show standard welcome
+            response.push_str("*** Welcome back to TinyMUSH! ***\n");
+            response.push_str("Type HELP for commands, B or QUIT to exit.\n\n");
+        }
         
         // Add initial room description
         if let Ok(room) = self.store().get_room(&player.current_room) {
@@ -250,19 +269,6 @@ impl TinyMushProcessor {
         // Ensure store is initialized
         if let Err(e) = self.get_store(config).await {
             return Ok(format!("TinyMUSH unavailable: {}", e));
-        }
-
-        // Auto-start tutorial for new players (first command only)
-        let player = self.get_or_create_player(session).await?;
-        if crate::tmush::tutorial::should_auto_start_tutorial(&player) {
-            use crate::tmush::tutorial::start_tutorial;
-            
-            // Start the tutorial
-            start_tutorial(self.store(), &player.username)?;
-            
-            // Show welcome message from world config
-            let config = self.store().get_world_config()?;
-            return Ok(config.welcome_message);
         }
 
         let parsed_command = self.parse_command(command);
@@ -308,7 +314,8 @@ impl TinyMushProcessor {
             TinyMushCommand::Reject => self.handle_reject(session, config).await,
             TinyMushCommand::TradeHistory => self.handle_trade_history(session, config).await,
             TinyMushCommand::Tutorial(subcommand) => self.handle_tutorial(session, subcommand, config).await,
-            TinyMushCommand::Talk(npc) => self.handle_talk(session, npc, config).await,
+            TinyMushCommand::Talk(npc, topic) => self.handle_talk(session, npc, topic, config).await,
+            TinyMushCommand::Talked(npc) => self.handle_talked(session, npc, config).await,
             TinyMushCommand::Quest(subcommand) => self.handle_quest(session, subcommand, config).await,
             TinyMushCommand::Abandon(quest_id) => self.handle_abandon(session, quest_id, config).await,
             TinyMushCommand::Achievements(subcommand) => self.handle_achievements(session, subcommand, config).await,
@@ -332,6 +339,8 @@ impl TinyMushProcessor {
             TinyMushCommand::Reclaim(item_name) => self.handle_reclaim(session, item_name, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
+            TinyMushCommand::EditRoom(room_id, description) => self.handle_edit_room(session, room_id, description, config).await,
+            TinyMushCommand::EditNpc(npc_id, field, value) => self.handle_edit_npc(session, npc_id, field, value, config).await,
             TinyMushCommand::ListAbandoned => self.handle_list_abandoned(session, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
@@ -618,10 +627,21 @@ impl TinyMushProcessor {
                 }
             },
             "TALK" | "GREET" => {
-                if parts.len() > 1 {
-                    TinyMushCommand::Talk(parts[1].to_uppercase())
+                if parts.len() > 2 {
+                    // TALK NPC TOPIC
+                    TinyMushCommand::Talk(parts[1].to_uppercase(), Some(parts[2].to_uppercase()))
+                } else if parts.len() > 1 {
+                    // TALK NPC
+                    TinyMushCommand::Talk(parts[1].to_uppercase(), None)
                 } else {
-                    TinyMushCommand::Unknown("Usage: TALK <npc>".to_string())
+                    TinyMushCommand::Unknown("Usage: TALK <npc> [topic]".to_string())
+                }
+            },
+            "TALKED" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Talked(Some(parts[1].to_uppercase()))
+                } else {
+                    TinyMushCommand::Talked(None)
                 }
             },
 
@@ -807,6 +827,25 @@ impl TinyMushProcessor {
                     TinyMushCommand::Unknown("Usage: @SETCONFIG <field> <value>\nFields: welcome_message, motd, world_name, world_description".to_string())
                 }
             },
+            "@EDITROOM" => {
+                if parts.len() > 2 {
+                    let room_id = parts[1].to_string();
+                    let description = parts[2..].join(" ");
+                    TinyMushCommand::EditRoom(room_id, description)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @EDITROOM <room_id> <description>\nExample: @EDITROOM gazebo_landing A new description here".to_string())
+                }
+            },
+            "@EDITNPC" => {
+                if parts.len() > 3 {
+                    let npc_id = parts[1].to_string();
+                    let field = parts[2].to_lowercase();
+                    let value = parts[3..].join(" ");
+                    TinyMushCommand::EditNpc(npc_id, field, value)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @EDITNPC <npc_id> <field> <value>\nFields: dialog.<key>, description, room\nExample: @EDITNPC mayor_thompson dialog.greeting Hello there!".to_string())
+                }
+            },
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
                 if parts.len() > 1 {
                     TinyMushCommand::GetConfig(Some(parts[1].to_lowercase()))
@@ -915,6 +954,46 @@ impl TinyMushProcessor {
             return Ok(format!("Movement failed to save: {}", e));
         }
 
+        // Check for tutorial progression after movement
+        use crate::tmush::tutorial::{
+            advance_tutorial_step, can_advance_from_location, get_tutorial_hint
+        };
+        use crate::tmush::types::TutorialState;
+        
+        let mut tutorial_message = String::new();
+        if let TutorialState::InProgress { step } = &player.tutorial_state {
+            // Check if this movement advances the tutorial
+            if can_advance_from_location(step, destination_id) {
+                let current_step = step.clone();
+                match advance_tutorial_step(self.store(), &player.username, current_step) {
+                    Ok(new_state) => {
+                        match new_state {
+                            TutorialState::InProgress { step: new_step } => {
+                                tutorial_message = format!(
+                                    "\n🎯 Tutorial Progress!\n{}\n",
+                                    get_tutorial_hint(&new_step)
+                                );
+                            }
+                            TutorialState::Completed { .. } => {
+                                // Tutorial completed - rewards are given when talking to mayor
+                                tutorial_message = "\n✨ Tutorial area complete! Great job!\n".to_string();
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Tutorial advancement error: {}", e);
+                    }
+                }
+            } else {
+                // Still in same step - show reminder hint
+                tutorial_message = format!(
+                    "\n💡 Tutorial: {}\n",
+                    get_tutorial_hint(step)
+                );
+            }
+        }
+
         // Show the new room
         let mut response = String::new();
         response.push_str(&format!("You go {}.\n\n", format!("{:?}", direction).to_lowercase()));
@@ -924,6 +1003,9 @@ impl TinyMushProcessor {
             Ok(desc) => response.push_str(&desc),
             Err(_) => response.push_str("The room description is unavailable."),
         }
+        
+        // Add tutorial hint if in progress
+        response.push_str(&tutorial_message);
 
         Ok(response)
     }
@@ -1726,12 +1808,13 @@ impl TinyMushProcessor {
         &mut self,
         session: &Session,
         npc_name: String,
+        topic: Option<String>,
         _config: &Config,
     ) -> Result<String> {
         use crate::tmush::tutorial::{
             advance_tutorial_step, distribute_tutorial_rewards,
         };
-        use crate::tmush::types::{TutorialState, TutorialStep};
+        use crate::tmush::types::{DialogSession, TutorialState, TutorialStep};
 
         let username = session.node_id.to_string();
         let player = match self.get_or_create_player(session).await {
@@ -1760,6 +1843,87 @@ impl TinyMushProcessor {
                 available.join(", ")
             ));
         };
+
+        // Check if there's an active dialog session (branching dialogue)
+        if let Some(mut dialog_session) = self.store().get_dialog_session(&username, &npc.id)? {
+            // Player is in an active conversation
+            if let Some(ref input) = topic {
+                // Check for special keywords
+                match input.as_str() {
+                    "EXIT" | "QUIT" | "BYE" => {
+                        self.store().delete_dialog_session(&username, &npc.id)?;
+                        return Ok(format!("You end your conversation with {}.", npc.name));
+                    }
+                    "BACK" => {
+                        if dialog_session.go_back() {
+                            self.store().put_dialog_session(dialog_session.clone())?;
+                            return self.render_dialog_node(&npc.name, &dialog_session);
+                        } else {
+                            return Ok("You're at the start of the conversation.".to_string());
+                        }
+                    }
+                    _ => {}
+                }
+
+                // Try to parse as choice number
+                if let Ok(choice_num) = input.parse::<usize>() {
+                    let goto_node = {
+                        let node = dialog_session.get_current_node();
+                        if let Some(node) = node {
+                            if choice_num > 0 && choice_num <= node.choices.len() {
+                                let choice = &node.choices[choice_num - 1];
+                                
+                                if choice.exit {
+                                    self.store().delete_dialog_session(&username, &npc.id)?;
+                                    return Ok(format!("You end your conversation with {}.", npc.name));
+                                }
+                                
+                                choice.goto.clone()
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
+                    
+                    if let Some(goto_node) = goto_node {
+                        if dialog_session.navigate_to(&goto_node) {
+                            self.store().put_dialog_session(dialog_session.clone())?;
+                            return self.render_dialog_node(&npc.name, &dialog_session);
+                        } else {
+                            self.store().delete_dialog_session(&username, &npc.id)?;
+                            return Ok("Conversation error - dialogue tree too deep.".to_string());
+                        }
+                    }
+                    
+                    return Ok("Invalid choice number.".to_string());
+                }
+            }
+            
+            // No input or invalid input - show current node again
+            return self.render_dialog_node(&npc.name, &dialog_session);
+        }
+
+        // Handle LIST keyword to show available topics
+        if let Some(ref t) = topic {
+            if t == "LIST" {
+                let topics: Vec<_> = npc.dialog.keys()
+                    .filter(|k| *k != "default")
+                    .map(|k| k.as_str())
+                    .collect();
+                
+                if topics.is_empty() {
+                    return Ok(format!("{} doesn't have any specific topics to discuss.", npc.name));
+                }
+                
+                return Ok(format!(
+                    "{} can talk about:\n  {}",
+                    npc.name,
+                    topics.join(", ")
+                ));
+            }
+        }
 
         // Tutorial-specific NPC dialogs
         if npc.id == "mayor_thompson" {
@@ -1799,13 +1963,180 @@ impl TinyMushProcessor {
             }
         }
 
-        // Generic NPC dialog
-        let dialog = npc.dialog.get("default")
-            .or_else(|| npc.dialog.get("greeting"))
-            .map(|s| s.as_str())
-            .unwrap_or("...");
+        // Check if NPC has a dialog tree - start branching conversation
+        if !npc.dialog_tree.is_empty() && topic.is_none() {
+            // Start new dialog session
+            let start_node = "greeting";
+            if npc.dialog_tree.contains_key(start_node) {
+                let dialog_session = DialogSession::new(
+                    &username,
+                    &npc.id,
+                    start_node,
+                    npc.dialog_tree.clone(),
+                );
+                self.store().put_dialog_session(dialog_session.clone())?;
+                return self.render_dialog_node(&npc.name, &dialog_session);
+            }
+        }
+
+        // Fall back to simple topic-based dialog
+        let (dialog_text, actual_topic) = if let Some(topic_name) = topic {
+            // Try to find the specific topic (case-insensitive)
+            let topic_key = npc.dialog.keys()
+                .find(|k| k.to_uppercase() == topic_name)
+                .cloned();
+            
+            if let Some(key) = topic_key {
+                (npc.dialog.get(&key).map(|s| s.as_str()), Some(key))
+            } else {
+                // Topic not found, suggest available topics
+                let topics: Vec<_> = npc.dialog.keys()
+                    .filter(|k| *k != "default" && *k != "greeting")
+                    .map(|k| k.as_str())
+                    .collect();
+                
+                if topics.is_empty() {
+                    return Ok(format!(
+                        "{} doesn't know about '{}'.",
+                        npc.name,
+                        topic_name
+                    ));
+                } else {
+                    return Ok(format!(
+                        "{} doesn't know about '{}'.\nTry: {}",
+                        npc.name,
+                        topic_name,
+                        topics.join(", ")
+                    ));
+                }
+            }
+        } else {
+            // No topic specified, use greeting or default
+            let greeting_key = if npc.dialog.contains_key("greeting") {
+                Some("greeting".to_string())
+            } else {
+                Some("default".to_string())
+            };
+            (npc.dialog.get("greeting")
+                .or_else(|| npc.dialog.get("default"))
+                .map(|s| s.as_str()), greeting_key)
+        };
+
+        let dialog = dialog_text.unwrap_or("...");
+
+        // Track conversation state (Phase 8.5)
+        if let Some(topic) = actual_topic {
+            use crate::tmush::types::ConversationState;
+            
+            let mut conv_state = self.store()
+                .get_conversation_state(&username, &npc.id)?
+                .unwrap_or_else(|| ConversationState::new(&username, &npc.id));
+            
+            conv_state.discuss_topic(&topic);
+            
+            if let Err(e) = self.store().put_conversation_state(conv_state) {
+                eprintln!("Warning: Failed to save conversation state: {}", e);
+            }
+        }
 
         Ok(format!("{}: '{}'", npc.name, dialog))
+    }
+
+    /// Render a dialog node with choices for branching conversations
+    fn render_dialog_node(
+        &self,
+        npc_name: &str,
+        session: &crate::tmush::types::DialogSession,
+    ) -> Result<String> {
+        let node = session.get_current_node()
+            .ok_or_else(|| anyhow::anyhow!("Dialog node not found"))?;
+
+        let mut response = format!("{}: '{}'\n", npc_name, node.text);
+
+        if !node.choices.is_empty() {
+            response.push('\n');
+            for (i, choice) in node.choices.iter().enumerate() {
+                response.push_str(&format!("{}) {}\n", i + 1, choice.label));
+            }
+            
+            if session.can_go_back() {
+                response.push_str("\nType BACK to return, EXIT to end conversation.");
+            } else {
+                response.push_str("\nType EXIT to end conversation.");
+            }
+        }
+
+        Ok(response)
+    }
+
+    /// Handle TALKED command - view conversation history
+    async fn handle_talked(
+        &mut self,
+        session: &Session,
+        npc_filter: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.node_id.to_string();
+        
+        // Get all conversation states for this player
+        let states = self.store().get_player_conversation_states(&username)?;
+        
+        if states.is_empty() {
+            return Ok("You haven't talked to anyone yet.".to_string());
+        }
+
+        // If specific NPC requested, filter to that one
+        let filtered_states: Vec<_> = if let Some(npc_name) = npc_filter {
+            // Find NPC by name
+            let npc_ids = self.store().list_npc_ids()?;
+            let mut matching_npc_id = None;
+            
+            for npc_id in npc_ids {
+                if let Ok(npc) = self.store().get_npc(&npc_id) {
+                    if npc.name.to_uppercase().contains(&npc_name) || npc.id.to_uppercase().contains(&npc_name) {
+                        matching_npc_id = Some(npc.id.clone());
+                        break;
+                    }
+                }
+            }
+            
+            if let Some(npc_id) = matching_npc_id {
+                states.into_iter().filter(|s| s.npc_id == npc_id).collect()
+            } else {
+                return Ok(format!("You haven't talked to '{}'.", npc_name));
+            }
+        } else {
+            states
+        };
+
+        if filtered_states.is_empty() {
+            return Ok("No conversation history found.".to_string());
+        }
+
+        // Build response
+        let mut response = String::from("📜 Conversation History:\n\n");
+        
+        for state in filtered_states {
+            // Get NPC name
+            let npc_name = match self.store().get_npc(&state.npc_id) {
+                Ok(npc) => npc.name,
+                Err(_) => state.npc_id.clone(),
+            };
+            
+            response.push_str(&format!("🗣️  {} ({} conversations)\n", npc_name, state.total_conversations));
+            response.push_str(&format!("   Last talked: {}\n", 
+                state.last_conversation_time.format("%Y-%m-%d %H:%M")));
+            
+            if !state.topics_discussed.is_empty() {
+                response.push_str("   Topics: ");
+                response.push_str(&state.topics_discussed.join(", "));
+                response.push('\n');
+            }
+            
+            response.push('\n');
+        }
+
+        Ok(response)
     }
 
     /// Handle QUEST command - manage quests (list, accept, status)
@@ -2425,7 +2756,7 @@ impl TinyMushProcessor {
         let world_config = store.get_world_config()?;
         
         // Get current room to check for HousingOffice flag
-        let current_room = store.get_room(&player.current_room)?;
+        let current_room = store.get_room_async(&player.current_room).await?;
         
         match subcommand.as_deref() {
             None | Some("") => {
@@ -2464,7 +2795,7 @@ impl TinyMushProcessor {
                 }
                 
                 // Get all templates
-                let all_template_ids = store.list_housing_templates()?;
+                let all_template_ids = store.list_housing_templates_async().await?;
                 
                 if all_template_ids.is_empty() {
                     return Ok(world_config.err_housing_no_templates.clone());
@@ -2542,7 +2873,7 @@ impl TinyMushProcessor {
         let world_config = store.get_world_config().unwrap_or_default();
         
         // Get current room to check if we're at a housing office
-        let current_room = store.get_room(&player.current_room)?;
+        let current_room = store.get_room_async(&player.current_room).await?;
         
         // Check if current location is a housing office
         if !current_room.flags.contains(&RoomFlag::HousingOffice) {
@@ -2619,7 +2950,7 @@ impl TinyMushProcessor {
         }
         
         // Save updated player
-        store.put_player(player)?;
+        store.put_player_async(player).await?;
         
         // Return success message with HOME hint
         let success_msg = world_config.msg_housing_rented
@@ -2725,7 +3056,7 @@ impl TinyMushProcessor {
                 // Set as primary
                 player.primary_housing_id = Some(target_instance.id.clone());
                 player.touch();
-                store.put_player(player)?;
+                store.put_player_async(player).await?;
                 
                 let template = store.get_housing_template(&target_instance.template_id)?;
                 
@@ -2768,7 +3099,7 @@ impl TinyMushProcessor {
                     return Ok(world_config.err_teleport_in_combat.clone());
                 }
                 
-                let current_room = store.get_room(&player.current_room)?;
+                let current_room = store.get_room_async(&player.current_room).await?;
                 if current_room.flags.contains(&RoomFlag::NoTeleportOut) {
                     return Ok(world_config.err_teleport_restricted.clone());
                 }
@@ -2798,7 +3129,7 @@ impl TinyMushProcessor {
                 player.current_room = target_instance.entry_room_id.clone();
                 player.last_teleport = Some(Utc::now());
                 player.touch();
-                store.put_player(player.clone())?;
+                store.put_player_async(player.clone()).await?;
                 
                 let template = store.get_housing_template(&target_instance.template_id)?;
                 let success_msg = world_config.msg_teleport_success
@@ -2818,7 +3149,7 @@ impl TinyMushProcessor {
                 }
                 
                 // 2. Check if current room allows teleportation out
-                let current_room = store.get_room(&player.current_room)?;
+                let current_room = store.get_room_async(&player.current_room).await?;
                 if current_room.flags.contains(&RoomFlag::NoTeleportOut) {
                     return Ok(world_config.err_teleport_restricted.clone());
                 }
@@ -2877,7 +3208,7 @@ impl TinyMushProcessor {
                 player.touch();
                 
                 // Save player
-                store.put_player(player.clone())?;
+                store.put_player_async(player.clone()).await?;
                 
                 // 7. Get the template name for success message
                 let template = store.get_housing_template(&target_instance.template_id)?;
@@ -2923,7 +3254,7 @@ impl TinyMushProcessor {
         };
         
         // Validate target player exists
-        let target = store.get_player(&player_name);
+        let target = store.get_player_async(&player_name).await;
         if target.is_err() {
             return Ok(world_config.err_invite_player_not_found.replace("{name}", &player_name));
         }
@@ -3022,7 +3353,7 @@ impl TinyMushProcessor {
         
         // If no description provided, show current description and permissions
         if description.is_none() {
-            let current_room = store.get_room(&player.current_room)?;
+            let current_room = store.get_room_async(&player.current_room).await?;
             let desc = if current_room.long_desc.is_empty() {
                 "Empty room."
             } else {
@@ -3044,9 +3375,9 @@ impl TinyMushProcessor {
         }
         
         // Update the room
-        let mut current_room = store.get_room(&player.current_room)?;
+        let mut current_room = store.get_room_async(&player.current_room).await?;
         current_room.long_desc = new_desc;
-        store.put_room(current_room)?;
+        store.put_room_async(current_room).await?;
         
         Ok(world_config.msg_describe_success.clone())
     }
@@ -3079,7 +3410,7 @@ impl TinyMushProcessor {
             }
             
             // Get the current room
-            let mut current_room = store.get_room(&player.current_room)?;
+            let mut current_room = store.get_room_async(&player.current_room).await?;
             
             // Check if already locked
             if current_room.locked {
@@ -3088,7 +3419,7 @@ impl TinyMushProcessor {
             
             // Lock the room
             current_room.locked = true;
-            store.put_room(current_room)?;
+            store.put_room_async(current_room).await?;
             
             return Ok("You lock the room. Only you and your guests can enter now.".to_string());
         }
@@ -3157,7 +3488,7 @@ impl TinyMushProcessor {
             }
             
             // Get the current room
-            let mut current_room = store.get_room(&player.current_room)?;
+            let mut current_room = store.get_room_async(&player.current_room).await?;
             
             // Check if already unlocked
             if !current_room.locked {
@@ -3166,7 +3497,7 @@ impl TinyMushProcessor {
             
             // Unlock the room
             current_room.locked = false;
-            store.put_room(current_room)?;
+            store.put_room_async(current_room).await?;
             
             return Ok("You unlock the room. Anyone can enter now.".to_string());
         }
@@ -3267,9 +3598,9 @@ impl TinyMushProcessor {
             // Teleport them
             for guest_username in guests_to_kick {
                 let store = self.get_store(config).await?;
-                if let Ok(mut guest_player) = store.get_player(&guest_username) {
+                if let Ok(mut guest_player) = store.get_player_async(&guest_username).await {
                     guest_player.current_room = "town_square".to_string();
-                    let _ = store.put_player(guest_player);
+                    let _ = store.put_player_async(guest_player).await;
                 }
             }
             
@@ -3306,9 +3637,9 @@ impl TinyMushProcessor {
         // Teleport if in housing
         if was_in_housing {
             let store = self.get_store(config).await?;
-            if let Ok(mut target_player) = store.get_player(&target) {
+            if let Ok(mut target_player) = store.get_player_async(&target).await {
                 target_player.current_room = "town_square".to_string();
-                store.put_player(target_player)?;
+                store.put_player_async(target_player).await?;
             }
         }
         
@@ -3431,6 +3762,174 @@ impl TinyMushProcessor {
                 ))
             }
         }
+    }
+
+    /// Handle @EDITROOM command - edit any room description (admin only)
+    async fn handle_edit_room(
+        &mut self,
+        session: &Session,
+        room_id: String,
+        new_description: String,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        
+        // TODO: Add proper role-based permissions when admin system is implemented
+        // For now, allowing any authenticated user for testing
+        
+        let store = self.get_store(config).await?;
+        
+        // Validate description length (500 char max)
+        const MAX_DESC_LENGTH: usize = 500;
+        if new_description.len() > MAX_DESC_LENGTH {
+            return Ok(format!(
+                "Description too long: {} chars (max {})",
+                new_description.len(),
+                MAX_DESC_LENGTH
+            ));
+        }
+        
+        // Try to get the room
+        let mut room = match store.get_room_async(&room_id).await {
+            Ok(room) => room,
+            Err(_) => {
+                return Ok(format!(
+                    "Room '{}' not found.\n\n\
+                    Common room IDs:\n\
+                    - gazebo_landing (Landing Gazebo)\n\
+                    - town_square (Old Towne Square)\n\
+                    - city_hall_lobby (City Hall Lobby)\n\
+                    - mayor_office (Mayor's Office)\n\
+                    - mesh_museum (Mesh Museum)\n\
+                    - north_gate (Northern Gate)\n\
+                    - south_market (Southern Market)",
+                    room_id
+                ));
+            }
+        };
+        
+        // Store old description for confirmation
+        let old_desc = room.long_desc.clone();
+        
+        // Update the description
+        room.long_desc = new_description.clone();
+        
+        // Save to database
+        store.put_room_async(room).await?;
+        
+        Ok(format!(
+            "Room '{}' description updated by {}.\n\n\
+            OLD:\n{}\n\n\
+            NEW:\n{}",
+            room_id,
+            player.username,
+            if old_desc.is_empty() { "(empty)" } else { &old_desc },
+            new_description
+        ))
+    }
+
+    /// Handle @EDITNPC command - edit NPC properties (admin only)
+    async fn handle_edit_npc(
+        &mut self,
+        session: &Session,
+        npc_id: String,
+        field: String,
+        value: String,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        
+        // TODO: Add proper role-based permissions
+        // For now, allowing any authenticated user for alpha testing
+        
+        let store = self.get_store(config).await?;
+        
+        // Get the NPC
+        let mut npc = match store.get_npc(&npc_id) {
+            Ok(npc) => npc,
+            Err(_) => {
+                return Ok(format!(
+                    "NPC '{}' not found.\n\n\
+                    Available NPCs:\n\
+                    - mayor_thompson (Mayor's Office)\n\
+                    - city_clerk (City Hall Lobby)\n\
+                    - gate_guard (North Gate)\n\
+                    - market_vendor (South Market)\n\
+                    - museum_curator (Mesh Museum)",
+                    npc_id
+                ));
+            }
+        };
+        
+        let old_value: String;
+        
+        // Parse field and update
+        if field.starts_with("dialog.") {
+            // Edit dialog entry
+            let dialog_key = field.strip_prefix("dialog.").unwrap();
+            old_value = npc.dialog.get(dialog_key)
+                .cloned()
+                .unwrap_or_else(|| "(not set)".to_string());
+            
+            // Validate length
+            const MAX_DIALOG_LENGTH: usize = 500;
+            if value.len() > MAX_DIALOG_LENGTH {
+                return Ok(format!(
+                    "Dialog too long: {} chars (max {})",
+                    value.len(),
+                    MAX_DIALOG_LENGTH
+                ));
+            }
+            
+            npc.dialog.insert(dialog_key.to_string(), value.clone());
+        } else if field == "description" {
+            old_value = npc.description.clone();
+            
+            // Validate length
+            const MAX_DESC_LENGTH: usize = 500;
+            if value.len() > MAX_DESC_LENGTH {
+                return Ok(format!(
+                    "Description too long: {} chars (max {})",
+                    value.len(),
+                    MAX_DESC_LENGTH
+                ));
+            }
+            
+            npc.description = value.clone();
+        } else if field == "room" {
+            old_value = npc.room_id.clone();
+            
+            // Verify room exists
+            if store.get_room(&value).is_err() {
+                return Ok(format!("Room '{}' not found.", value));
+            }
+            
+            npc.room_id = value.clone();
+        } else {
+            return Ok(format!(
+                "Unknown field: {}\n\n\
+                Supported fields:\n\
+                - dialog.<key> - Edit dialog entry (e.g., dialog.greeting)\n\
+                - description - Edit NPC description\n\
+                - room - Move NPC to different room",
+                field
+            ));
+        }
+        
+        // Save updated NPC
+        store.put_npc(npc)?;
+        
+        Ok(format!(
+            "NPC '{}' updated by {}.\n\
+            Field: {}\n\n\
+            OLD: {}\n\n\
+            NEW: {}",
+            npc_id,
+            player.username,
+            field,
+            old_value,
+            value
+        ))
     }
 
     /// Handle @LISTABANDONED command - view abandoned/at-risk housing (admin)
@@ -3632,7 +4131,7 @@ impl TinyMushProcessor {
         );
 
         // Post the message
-        match self.store().post_bulletin(bulletin) {
+        match self.store().post_bulletin_async(bulletin).await {
             Ok(message_id) => {
                 // Clean up old messages if needed
                 let _ = self.store().cleanup_bulletins("stump", 50);
@@ -3741,14 +4240,14 @@ impl TinyMushProcessor {
         {
             let store = self.get_store(config).await?;
             for room_id in instance.room_mappings.values() {
-                if let Ok(mut room) = store.get_room(room_id) {
+                if let Ok(mut room) = store.get_room_async(room_id).await {
                     // Move all items to reclaim box
                     for item_id in &room.items {
                         instance.reclaim_box.push(item_id.clone());
                         items_moved += 1;
                     }
                     room.items.clear();
-                    store.put_room(room)?;
+                    store.put_room_async(room).await?;
                 }
             }
         }
@@ -3770,9 +4269,9 @@ impl TinyMushProcessor {
         // Now teleport them
         for username in players_to_teleport {
             let store = self.get_store(config).await?;
-            if let Ok(mut player) = store.get_player(&username) {
+            if let Ok(mut player) = store.get_player_async(&username).await {
                 player.current_room = "town_square".to_string();
-                store.put_player(player)?;
+                store.put_player_async(player).await?;
                 players_teleported += 1;
             }
         }
@@ -3942,7 +4441,7 @@ impl TinyMushProcessor {
                 // Add to player inventory
                 let mut updated_player = player.clone();
                 updated_player.inventory.push(item_id);
-                store.put_player(updated_player)?;
+                store.put_player_async(updated_player).await?;
                 
                 // Save updated housing instance
                 store.put_housing_instance(&instance)?;
@@ -3978,6 +4477,13 @@ impl TinyMushProcessor {
                     exit_names.sort(); // Consistent ordering
                     response.push_str(&exit_names.join(", "));
                     response.push('\n');
+                }
+                
+                // Show tutorial hint if in progress
+                use crate::tmush::tutorial::get_tutorial_hint;
+                use crate::tmush::types::TutorialState;
+                if let TutorialState::InProgress { step } = &player.tutorial_state {
+                    response.push_str(&format!("\n💡 Tutorial: {}\n", get_tutorial_hint(step)));
                 }
                 
                 // Show other players (Phase 4 feature - placeholder for now)
@@ -4157,7 +4663,7 @@ impl TinyMushProcessor {
         );
 
         // Send the message
-        match self.store().send_mail(mail) {
+        match self.store().send_mail_async(mail).await {
             Ok(message_id) => {
                 // Enforce mail quota for recipient
                 let _ = self.store().enforce_mail_quota(&recipient_lower, 100);
@@ -4179,15 +4685,15 @@ impl TinyMushProcessor {
         };
 
         // Try to find the message in inbox first, then sent
-        let message = match self.store().get_mail("inbox", &player.username, message_id) {
+        let message = match self.store().get_mail_async("inbox", &player.username, message_id).await {
             Ok(msg) => {
                 // Mark as read if it's in the inbox
-                let _ = self.store().mark_mail_read("inbox", &player.username, message_id);
+                let _ = self.store().mark_mail_read_async("inbox", &player.username, message_id).await;
                 msg
             },
             Err(TinyMushError::NotFound(_)) => {
                 // Try sent folder
-                match self.store().get_mail("sent", &player.username, message_id) {
+                match self.store().get_mail_async("sent", &player.username, message_id).await {
                     Ok(msg) => msg,
                     Err(TinyMushError::NotFound(_)) => {
                         return Ok(format!("No mail message with ID {}.\nUse MAIL to see available messages.", message_id));
@@ -4226,13 +4732,13 @@ impl TinyMushProcessor {
         };
 
         // Try to delete from inbox first, then sent
-        match self.store().delete_mail("inbox", &player.username, message_id) {
+        match self.store().delete_mail_async("inbox", &player.username, message_id).await {
             Ok(()) => {
                 Ok(format!("Mail message {} deleted from inbox.", message_id))
             },
             Err(TinyMushError::NotFound(_)) => {
                 // Try sent folder
-                match self.store().delete_mail("sent", &player.username, message_id) {
+                match self.store().delete_mail_async("sent", &player.username, message_id).await {
                     Ok(()) => {
                         Ok(format!("Mail message {} deleted from sent folder.", message_id))
                     },

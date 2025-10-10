@@ -42,4 +42,8 @@ pub enum TinyMushError {
     /// UTF-8 encoding error
     #[error("utf-8 error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
+    
+    /// Internal error (task join errors, unexpected conditions)
+    #[error("internal error: {0}")]
+    Internal(String),
 }

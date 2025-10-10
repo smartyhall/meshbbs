@@ -165,6 +165,7 @@ impl TinyMushStore {
             store.seed_quests_if_needed()?;
             store.seed_achievements_if_needed()?;
             store.seed_companions_if_needed()?;
+            store.seed_npcs_if_needed()?;
             store.seed_housing_templates_if_needed()?;
         }
 
@@ -463,6 +464,120 @@ impl TinyMushStore {
     /// Delete an NPC by ID
     pub fn delete_npc(&self, npc_id: &str) -> Result<(), TinyMushError> {
         let key = format!("npcs:{}", npc_id).into_bytes();
+        self.npcs.remove(key)?;
+        self.npcs.flush()?;
+        Ok(())
+    }
+
+    // ============================================================================
+    // Conversation State Storage (Phase 8.5)
+    // ============================================================================
+
+    /// Store or update conversation state for a player-NPC pair
+    pub fn put_conversation_state(
+        &self,
+        state: crate::tmush::types::ConversationState,
+    ) -> Result<(), TinyMushError> {
+        let key = format!("conversation:{}:{}", state.player_id, state.npc_id).into_bytes();
+        let value = Self::serialize(&state)?;
+        self.npcs.insert(key, value)?;
+        self.npcs.flush()?;
+        Ok(())
+    }
+
+    /// Get conversation state for a player-NPC pair
+    pub fn get_conversation_state(
+        &self,
+        player_id: &str,
+        npc_id: &str,
+    ) -> Result<Option<crate::tmush::types::ConversationState>, TinyMushError> {
+        let key = format!("conversation:{}:{}", player_id, npc_id).into_bytes();
+        match self.npcs.get(key)? {
+            Some(data) => {
+                let state: crate::tmush::types::ConversationState = Self::deserialize(data)?;
+                Ok(Some(state))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get all conversation states for a player (across all NPCs)
+    pub fn get_player_conversation_states(
+        &self,
+        player_id: &str,
+    ) -> Result<Vec<crate::tmush::types::ConversationState>, TinyMushError> {
+        let prefix = format!("conversation:{}:", player_id).into_bytes();
+        let mut states = Vec::new();
+        for item in self.npcs.scan_prefix(&prefix) {
+            let (_, value) = item?;
+            let state: crate::tmush::types::ConversationState = Self::deserialize(value)?;
+            states.push(state);
+        }
+        Ok(states)
+    }
+
+    /// Delete old conversation states (older than days)
+    pub fn cleanup_old_conversations(&self, days: i64) -> Result<usize, TinyMushError> {
+        use chrono::Duration;
+        let cutoff = Utc::now() - Duration::days(days);
+        let mut deleted = 0;
+
+        let mut to_delete = Vec::new();
+        for item in self.npcs.scan_prefix(b"conversation:") {
+            let (key, value) = item?;
+            let state: crate::tmush::types::ConversationState = Self::deserialize(value)?;
+            if state.last_conversation_time < cutoff {
+                to_delete.push(key.to_vec());
+            }
+        }
+
+        for key in to_delete {
+            self.npcs.remove(key)?;
+            deleted += 1;
+        }
+
+        if deleted > 0 {
+            self.npcs.flush()?;
+        }
+
+        Ok(deleted)
+    }
+
+    // ============================================================================
+    // Dialog Session Storage (Phase 8.5)
+    // ============================================================================
+
+    /// Store an active dialog session
+    pub fn put_dialog_session(
+        &self,
+        session: crate::tmush::types::DialogSession,
+    ) -> Result<(), TinyMushError> {
+        let key = format!("dialog_session:{}:{}", session.player_id, session.npc_id).into_bytes();
+        let value = Self::serialize(&session)?;
+        self.npcs.insert(key, value)?;
+        self.npcs.flush()?;
+        Ok(())
+    }
+
+    /// Get active dialog session for player-NPC pair
+    pub fn get_dialog_session(
+        &self,
+        player_id: &str,
+        npc_id: &str,
+    ) -> Result<Option<crate::tmush::types::DialogSession>, TinyMushError> {
+        let key = format!("dialog_session:{}:{}", player_id, npc_id).into_bytes();
+        match self.npcs.get(key)? {
+            Some(data) => {
+                let session: crate::tmush::types::DialogSession = Self::deserialize(data)?;
+                Ok(Some(session))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Delete a dialog session (when conversation ends)
+    pub fn delete_dialog_session(&self, player_id: &str, npc_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("dialog_session:{}:{}", player_id, npc_id).into_bytes();
         self.npcs.remove(key)?;
         self.npcs.flush()?;
         Ok(())
@@ -1654,6 +1769,19 @@ impl TinyMushStore {
         Ok(inserted)
     }
 
+    pub fn seed_npcs_if_needed(&self) -> Result<usize, TinyMushError> {
+        if self.npcs.iter().next().is_some() {
+            return Ok(0);
+        }
+        let npcs = crate::tmush::seed_starter_npcs();
+        let mut inserted = 0usize;
+        for npc in npcs {
+            self.put_npc(npc)?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
     // ========================
     // World Configuration
     // ========================
@@ -2523,6 +2651,328 @@ impl TinyMushStore {
             template_instance_entries: self.template_instances.len(),
             player_trade_entries: self.player_trades.len(),
         })
+    }
+}
+
+// ============================================================================
+// Async Wrappers for Non-Blocking Database Operations
+// ============================================================================
+//
+// These async methods wrap the synchronous Sled operations with spawn_blocking
+// to prevent blocking Tokio async worker threads. This is critical for handling
+// 500-1000 concurrent users without latency spikes.
+//
+// Pattern: Clone self, move into blocking closure, await result
+// This works because TinyMushStore::clone() is cheap (Arc-based internally)
+
+impl TinyMushStore {
+    // ===== Player Operations =====
+    
+    /// Async version of put_player - saves player record without blocking
+    pub async fn put_player_async(&self, player: PlayerRecord) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.put_player(player))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_player - retrieves player record without blocking
+    pub async fn get_player_async(&self, username: &str) -> Result<PlayerRecord, TinyMushError> {
+        let store = self.clone();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.get_player(&username))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of list_player_ids
+    pub async fn list_player_ids_async(&self) -> Result<Vec<String>, TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.list_player_ids())
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Room Operations =====
+    
+    /// Async version of put_room
+    pub async fn put_room_async(&self, room: RoomRecord) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.put_room(room))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_room
+    pub async fn get_room_async(&self, room_id: &str) -> Result<RoomRecord, TinyMushError> {
+        let store = self.clone();
+        let room_id = room_id.to_string();
+        tokio::task::spawn_blocking(move || store.get_room(&room_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Object Operations =====
+    
+    /// Async version of put_object
+    pub async fn put_object_async(&self, object: ObjectRecord) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.put_object(object))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_object
+    pub async fn get_object_async(&self, id: &str) -> Result<ObjectRecord, TinyMushError> {
+        let store = self.clone();
+        let id = id.to_string();
+        tokio::task::spawn_blocking(move || store.get_object(&id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Currency Operations =====
+    
+    /// Async version of transfer_item
+    pub async fn transfer_item_async(
+        &self,
+        from_username: &str,
+        to_username: &str,
+        item: &str,
+        quantity: u32,
+        config: &crate::tmush::types::InventoryConfig,
+    ) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let from = from_username.to_string();
+        let to = to_username.to_string();
+        let item = item.to_string();
+        let config = config.clone();
+        tokio::task::spawn_blocking(move || store.transfer_item(&from, &to, &item, quantity, &config))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Trade Operations =====
+    
+    /// Async version of put_trade_session
+    pub async fn put_trade_session_async(&self, session: &TradeSession) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let session = session.clone();
+        tokio::task::spawn_blocking(move || store.put_trade_session(&session))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_trade_session
+    pub async fn get_trade_session_async(&self, session_id: &str) -> Result<Option<TradeSession>, TinyMushError> {
+        let store = self.clone();
+        let session_id = session_id.to_string();
+        tokio::task::spawn_blocking(move || store.get_trade_session(&session_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_player_active_trade
+    pub async fn get_player_active_trade_async(&self, username: &str) -> Result<Option<TradeSession>, TinyMushError> {
+        let store = self.clone();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.get_player_active_trade(&username))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of delete_trade_session
+    pub async fn delete_trade_session_async(&self, session_id: &str) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let session_id = session_id.to_string();
+        tokio::task::spawn_blocking(move || store.delete_trade_session(&session_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Housing Operations =====
+    
+    /// Async version of get_housing_template
+    pub async fn get_housing_template_async(&self, template_id: &str) -> Result<HousingTemplate, TinyMushError> {
+        let store = self.clone();
+        let template_id = template_id.to_string();
+        tokio::task::spawn_blocking(move || store.get_housing_template(&template_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of list_housing_templates
+    pub async fn list_housing_templates_async(&self) -> Result<Vec<String>, TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.list_housing_templates())
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_housing_instance
+    pub async fn get_housing_instance_async(&self, instance_id: &str) -> Result<HousingInstance, TinyMushError> {
+        let store = self.clone();
+        let instance_id = instance_id.to_string();
+        tokio::task::spawn_blocking(move || store.get_housing_instance(&instance_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of put_housing_instance
+    pub async fn put_housing_instance_async(&self, instance: &HousingInstance) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let instance = instance.clone();
+        tokio::task::spawn_blocking(move || store.put_housing_instance(&instance))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_player_housing_instances
+    pub async fn get_player_housing_instances_async(&self, owner: &str) -> Result<Vec<HousingInstance>, TinyMushError> {
+        let store = self.clone();
+        let owner = owner.to_string();
+        tokio::task::spawn_blocking(move || store.get_player_housing_instances(&owner))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_guest_housing_instances
+    pub async fn get_guest_housing_instances_async(&self, username: &str) -> Result<Vec<HousingInstance>, TinyMushError> {
+        let store = self.clone();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.get_guest_housing_instances(&username))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of delete_housing_instance
+    pub async fn delete_housing_instance_async(&self, instance_id: &str) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let instance_id = instance_id.to_string();
+        tokio::task::spawn_blocking(move || store.delete_housing_instance(&instance_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of count_template_instances
+    pub async fn count_template_instances_async(&self, template_id: &str) -> Result<usize, TinyMushError> {
+        let store = self.clone();
+        let template_id = template_id.to_string();
+        tokio::task::spawn_blocking(move || store.count_template_instances(&template_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Mail Operations =====
+    
+    /// Async version of send_mail - creates and sends a mail message
+    pub async fn send_mail_async(
+        &self,
+        message: MailMessage,
+    ) -> Result<u64, TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.send_mail(message))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_mail
+    pub async fn get_mail_async(&self, folder: &str, username: &str, message_id: u64) -> Result<MailMessage, TinyMushError> {
+        let store = self.clone();
+        let folder = folder.to_string();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.get_mail(&folder, &username, message_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of list_mail
+    pub async fn list_mail_async(&self, folder: &str, username: &str, offset: usize, limit: usize) -> Result<Vec<MailMessage>, TinyMushError> {
+        let store = self.clone();
+        let folder = folder.to_string();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.list_mail(&folder, &username, offset, limit))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of mark_mail_read
+    pub async fn mark_mail_read_async(&self, folder: &str, username: &str, message_id: u64) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let folder = folder.to_string();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.mark_mail_read(&folder, &username, message_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of delete_mail
+    pub async fn delete_mail_async(&self, folder: &str, username: &str, message_id: u64) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let folder = folder.to_string();
+        let username = username.to_string();
+        tokio::task::spawn_blocking(move || store.delete_mail(&folder, &username, message_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Bulletin Board Operations =====
+    
+    /// Async version of get_bulletin_board
+    pub async fn get_bulletin_board_async(&self, board_id: &str) -> Result<BulletinBoard, TinyMushError> {
+        let store = self.clone();
+        let board_id = board_id.to_string();
+        tokio::task::spawn_blocking(move || store.get_bulletin_board(&board_id))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of post_bulletin - posts a bulletin message
+    pub async fn post_bulletin_async(
+        &self,
+        message: BulletinMessage,
+    ) -> Result<u64, TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.post_bulletin(message))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== World Configuration =====
+    
+    /// Async version of get_world_config
+    pub async fn get_world_config_async(&self) -> Result<WorldConfig, TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.get_world_config())
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of put_world_config
+    pub async fn put_world_config_async(&self, config: &WorldConfig) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        let config = config.clone();
+        tokio::task::spawn_blocking(move || store.put_world_config(&config))
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    // ===== Index Maintenance =====
+    
+    /// Async version of rebuild_all_indexes
+    pub async fn rebuild_all_indexes_async(&self) -> Result<(), TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.rebuild_all_indexes())
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
+    }
+    
+    /// Async version of get_index_stats
+    pub async fn get_index_stats_async(&self) -> Result<IndexStats, TinyMushError> {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.get_index_stats())
+            .await
+            .map_err(|e| TinyMushError::Internal(format!("Task join error: {}", e)))?
     }
 }
 
