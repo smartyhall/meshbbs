@@ -2544,16 +2544,18 @@ impl TinyMushProcessor {
         
         match subcommand {
             Some(ref cmd) if cmd == "LIST" => {
-                // HOME LIST - show all accessible housing
-                let instances = store.get_player_housing_instances(&player.username)?;
+                // HOME LIST - show all accessible housing (owned + guest access)
+                let owned_instances = store.get_player_housing_instances(&player.username)?;
+                let guest_instances = store.get_guest_housing_instances(&player.username)?;
                 
-                if instances.is_empty() {
+                if owned_instances.is_empty() && guest_instances.is_empty() {
                     return Ok(world_config.msg_home_list_empty.clone());
                 }
                 
                 let mut output = format!("{}\n\n", world_config.msg_home_list_header);
                 
-                for (idx, instance) in instances.iter().enumerate() {
+                // Show owned housing first
+                for (idx, instance) in owned_instances.iter().enumerate() {
                     let template = store.get_housing_template(&instance.template_id)?;
                     let num = idx + 1;
                     
@@ -2561,17 +2563,28 @@ impl TinyMushProcessor {
                     let is_primary = player.primary_housing_id.as_ref() == Some(&instance.id);
                     let primary_marker = if is_primary { "[★ Primary] " } else { "           " };
                     
-                    // Access type (for now, all are OWNED)
-                    let access_type = "OWNED";
-                    
                     output.push_str(&format!(
-                        "{}{}. {} ({})\n   Location: {} | Access: {}\n\n",
+                        "{}{}. {} ({})\n   Location: {} | Access: OWNED\n\n",
                         primary_marker,
                         num,
                         template.name,
                         template.category,
-                        instance.id,
-                        access_type
+                        instance.id
+                    ));
+                }
+                
+                // Show guest housing
+                let owned_count = owned_instances.len();
+                for (idx, instance) in guest_instances.iter().enumerate() {
+                    let template = store.get_housing_template(&instance.template_id)?;
+                    let num = owned_count + idx + 1;
+                    
+                    output.push_str(&format!(
+                        "           {}. {} ({})\n   Owner: {} | Access: GUEST\n\n",
+                        num,
+                        template.name,
+                        template.category,
+                        instance.owner
                     ));
                 }
                 
@@ -2621,21 +2634,26 @@ impl TinyMushProcessor {
             
             Some(id_or_num) => {
                 // HOME <id> - teleport to specific housing by ID or number
-                let instances = store.get_player_housing_instances(&player.username)?;
+                let owned_instances = store.get_player_housing_instances(&player.username)?;
+                let guest_instances = store.get_guest_housing_instances(&player.username)?;
                 
-                if instances.is_empty() {
+                // Combine owned + guest for unified numbering
+                let mut all_instances = owned_instances.clone();
+                all_instances.extend(guest_instances.clone());
+                
+                if all_instances.is_empty() {
                     return Ok(world_config.err_no_housing.clone());
                 }
                 
                 // Try to parse as number first, then try as ID
                 let target_instance = if let Ok(num) = id_or_num.parse::<usize>() {
-                    if num >= 1 && num <= instances.len() {
-                        Some(&instances[num - 1])
+                    if num >= 1 && num <= all_instances.len() {
+                        Some(&all_instances[num - 1])
                     } else {
                         None
                     }
                 } else {
-                    instances.iter().find(|inst| inst.id == id_or_num)
+                    all_instances.iter().find(|inst| inst.id == id_or_num)
                 };
                 
                 let target_instance = match target_instance {

@@ -508,7 +508,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [ ] Quest-based teleport restrictions (Quest.restrictions.allow_teleport)
       - [ ] Area-specific teleport rules (RoomFlag::QuestRestricted)
   - [ ] DESCRIBE HOME <text> - customize room description (if can_edit_description)
-  - [ ] INVITE <player> / UNINVITE <player> - guest management (if can_invite_guests)
+  - [x] INVITE <player> / UNINVITE <player> - guest management (COMPLETE - commit 42f0ca1)
+    - [x] Add 7 WorldConfig fields for guest management messages
+    - [x] Validate player owns housing and is in housing room
+    - [x] Check target player exists
+    - [x] Add/remove from HousingInstance.guests list
+    - [x] Prevent duplicate invitations and invalid removals
   - [ ] LOCK / UNLOCK - access control
 - [ ] Integration tests for housing lifecycle (template → rent → customize → guest access)
 - [ ] Housing instance cleanup (inactive/abandoned housing reclamation)

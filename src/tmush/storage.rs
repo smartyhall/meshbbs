@@ -1867,6 +1867,20 @@ impl TinyMushStore {
         }
         Ok(instances)
     }
+    
+    /// Get all housing instances where the player is a guest
+    pub fn get_guest_housing_instances(&self, username: &str) -> Result<Vec<HousingInstance>, TinyMushError> {
+        let mut instances = Vec::new();
+        for item in self.housing_instances.scan_prefix(b"instance:") {
+            let (_, value) = item?;
+            let instance: HousingInstance = Self::deserialize(value)?;
+            // Check if this player is on the guest list
+            if instance.guests.contains(&username.to_string()) {
+                instances.push(instance);
+            }
+        }
+        Ok(instances)
+    }
 
     /// Save a housing instance
     pub fn put_housing_instance(&self, instance: &HousingInstance) -> Result<(), TinyMushError> {
