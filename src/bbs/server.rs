@@ -1390,6 +1390,51 @@ impl BbsServer {
             .map_err(|e| anyhow::anyhow!("Failed to save player: {}", e))?;
         Ok(())
     }
+    
+    /// Test helper to force TinyMUSH player record creation.
+    /// 
+    /// Call this IMMEDIATELY after route_test_text_direct("G2") to directly
+    /// create a TinyMUSH player record. This bypasses lazy initialization
+    /// so subsequent operations (like test_tmush_grant_admin) can find it.
+    /// 
+    /// # Arguments
+    /// * `node_key` - The session node key
+    /// 
+    /// # Returns
+    /// * `Ok(())` if player record was created successfully
+    /// * `Err` if the session wasn't found or creation failed
+    #[allow(dead_code)]
+    pub async fn test_tmush_ensure_player_exists(&mut self, node_key: &str) -> Result<()> {
+        use crate::tmush::storage::TinyMushStore;
+        use crate::tmush::types::PlayerRecord;
+        
+        // Get the username from the session
+        let session = self.sessions.get(node_key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
+        let username = session.display_name();
+        
+        // Open TinyMUSH store and create player directly
+        let db_path = std::path::Path::new(&self.config.storage.data_dir).join("tinymush");
+        let store = TinyMushStore::open(&db_path)
+            .map_err(|e| anyhow::anyhow!("Failed to open TinyMUSH store: {}", e))?;
+        
+        // Check if player already exists
+        if store.get_player(&username).is_ok() {
+            return Ok(()); // Player already exists, nothing to do
+        }
+        
+        // Create new player at landing location (gazebo)
+        let player = PlayerRecord::new(
+            &username,
+            &username, // Use username as display name
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+        );
+        
+        store.put_player(player)
+            .map_err(|e| anyhow::anyhow!("Failed to create player: {}", e))?;
+        
+        Ok(())
+    }
     #[allow(dead_code)]
     pub async fn test_create_topic(
         &mut self,
