@@ -1064,6 +1064,8 @@ impl TinyMushProcessor {
         // Find object by name in the current room (future: scan room contents)
         // For now, we'll return a helpful message
         // TODO: Implement room.contents and object lookup by name
+        // TODO: Phase 4 - Check item.locked field and prevent taking locked items
+        //       owned by other players. Message: "That item is locked by its owner."
         
         Ok(format!(
             "You try to pick up '{}' (qty: {}) but room object scanning isn't implemented yet.\n\
@@ -3043,8 +3045,40 @@ impl TinyMushProcessor {
             return Ok("You lock the room. Only you and your guests can enter now.".to_string());
         }
         
-        // TODO: Phase 4 - Implement item locking
-        Ok("Item locking is not yet implemented.".to_string())
+        // Phase 4: Item locking
+        let target_name = target.unwrap().to_uppercase();
+        
+        // Search for item in player's inventory
+        for item_id in &player.inventory {
+            if let Ok(mut item) = store.get_object(item_id) {
+                if item.name.to_uppercase() == target_name {
+                    // Check if player owns this item
+                    match &item.owner {
+                        crate::tmush::types::ObjectOwner::Player { username } => {
+                            if username != &player.username {
+                                return Ok(format!("You don't own {}.", item.name));
+                            }
+                        }
+                        crate::tmush::types::ObjectOwner::World => {
+                            return Ok(format!("{} is a world item and cannot be locked.", item.name));
+                        }
+                    }
+                    
+                    // Check if already locked
+                    if item.locked {
+                        return Ok(format!("{} is already locked.", item.name));
+                    }
+                    
+                    // Lock the item
+                    item.locked = true;
+                    store.put_object(item.clone())?;
+                    
+                    return Ok(format!("You lock {}. It cannot be taken by others.", item.name));
+                }
+            }
+        }
+        
+        Ok(format!("You don't have '{}' in your inventory.", target_name))
     }
 
     /// Handle UNLOCK command - unlock room or item
@@ -3089,8 +3123,40 @@ impl TinyMushProcessor {
             return Ok("You unlock the room. Anyone can enter now.".to_string());
         }
         
-        // TODO: Phase 4 - Implement item unlocking
-        Ok("Item unlocking is not yet implemented.".to_string())
+        // Phase 4: Item unlocking
+        let target_name = target.unwrap().to_uppercase();
+        
+        // Search for item in player's inventory
+        for item_id in &player.inventory {
+            if let Ok(mut item) = store.get_object(item_id) {
+                if item.name.to_uppercase() == target_name {
+                    // Check if player owns this item
+                    match &item.owner {
+                        crate::tmush::types::ObjectOwner::Player { username } => {
+                            if username != &player.username {
+                                return Ok(format!("You don't own {}.", item.name));
+                            }
+                        }
+                        crate::tmush::types::ObjectOwner::World => {
+                            return Ok(format!("{} is a world item and cannot be unlocked.", item.name));
+                        }
+                    }
+                    
+                    // Check if already unlocked
+                    if !item.locked {
+                        return Ok(format!("{} is already unlocked.", item.name));
+                    }
+                    
+                    // Unlock the item
+                    item.locked = false;
+                    store.put_object(item.clone())?;
+                    
+                    return Ok(format!("You unlock {}. Others can take it now.", item.name));
+                }
+            }
+        }
+        
+        Ok(format!("You don't have '{}' in your inventory.", target_name))
     }
 
     /// Handle KICK command - remove player from housing

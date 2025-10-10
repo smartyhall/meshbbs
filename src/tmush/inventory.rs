@@ -186,7 +186,12 @@ pub fn format_inventory_compact(
             } else {
                 String::new()
             };
-            lines.push(format!("{}. {}{}{}", idx + 1, qty_str, item.name, weight_str));
+            let lock_str = if item.locked {
+                " 🔒"
+            } else {
+                ""
+            };
+            lines.push(format!("{}. {}{}{}{}", idx + 1, qty_str, item.name, weight_str, lock_str));
         }
     }
 
