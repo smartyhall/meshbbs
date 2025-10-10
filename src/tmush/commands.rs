@@ -107,6 +107,7 @@ pub enum TinyMushCommand {
     Unlock(Option<String>), // UNLOCK - unlock current room, UNLOCK <item> - unlock item (Phase 2)
     Kick(Option<String>),   // KICK <player> - remove player from housing, KICK ALL (Phase 3)
     History(String),        // HISTORY <item> - view ownership audit trail (Phase 5)
+    Reclaim(Option<String>), // RECLAIM - view reclaim box, RECLAIM <item> - retrieve item (Phase 6)
 
     
     // System
@@ -331,6 +332,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Unlock(target) => self.handle_unlock(session, target, config).await,
             TinyMushCommand::Kick(target) => self.handle_kick(session, target, config).await,
             TinyMushCommand::History(item_name) => self.handle_history(session, item_name, config).await,
+            TinyMushCommand::Reclaim(item_name) => self.handle_reclaim(session, item_name, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
@@ -778,6 +780,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::History(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Unknown("Usage: HISTORY <item>".to_string())
+                }
+            },
+            "RECLAIM" => {
+                if parts.len() > 1 {
+                    // RECLAIM <item> - retrieve specific item
+                    TinyMushCommand::Reclaim(Some(parts[1..].join(" ")))
+                } else {
+                    // RECLAIM - view reclaim box contents
+                    TinyMushCommand::Reclaim(None)
                 }
             },
 
@@ -3695,6 +3706,67 @@ impl TinyMushProcessor {
         item.ownership_history.push(transfer);
     }
 
+    /// Helper: Move housing items to reclaim box on deletion (Phase 6)
+    /// TODO: Call this when implementing housing deletion command
+    #[allow(dead_code)]
+    async fn move_housing_to_reclaim_box(
+        &mut self,
+        instance: &mut crate::tmush::types::HousingInstance,
+        config: &Config,
+    ) -> Result<String> {
+        // 1. Collect all items from all housing rooms
+        let mut items_moved = 0;
+        {
+            let store = self.get_store(config).await?;
+            for room_id in instance.room_mappings.values() {
+                if let Ok(mut room) = store.get_room(room_id) {
+                    // Move all items to reclaim box
+                    for item_id in &room.items {
+                        instance.reclaim_box.push(item_id.clone());
+                        items_moved += 1;
+                    }
+                    room.items.clear();
+                    store.put_room(room)?;
+                }
+            }
+        }
+        
+        // 2. Teleport all occupants to town square
+        let housing_rooms: Vec<String> = instance.room_mappings.values().cloned().collect();
+        let mut players_teleported = 0;
+        
+        // Collect all players to teleport
+        let mut players_to_teleport = Vec::new();
+        {
+            let room_manager = self.get_room_manager(config).await?;
+            for room_id in &housing_rooms {
+                let players_in_room = room_manager.get_players_in_room(room_id);
+                players_to_teleport.extend(players_in_room);
+            }
+        }
+        
+        // Now teleport them
+        for username in players_to_teleport {
+            let store = self.get_store(config).await?;
+            if let Ok(mut player) = store.get_player(&username) {
+                player.current_room = "town_square".to_string();
+                store.put_player(player)?;
+                players_teleported += 1;
+            }
+        }
+        
+        // 3. TODO: Return companions to owner's companion list
+        // This will be implemented when companion system is fully integrated
+        
+        // 4. Mark instance as inactive for Phase 7 cleanup
+        instance.inactive_since = Some(chrono::Utc::now());
+        
+        Ok(format!(
+            "Housing contents moved to reclaim box: {} item(s). {} player(s) teleported to town square.",
+            items_moved, players_teleported
+        ))
+    }
+
     /// Handle HISTORY command - view item ownership audit trail (Phase 5)
     async fn handle_history(
         &mut self,
@@ -3754,6 +3826,114 @@ impl TinyMushProcessor {
         }
         
         Ok(format!("You don't have '{}' in your inventory.", item_name))
+    }
+
+    /// Handle RECLAIM command - retrieve items from reclaim box (Phase 6)
+    async fn handle_reclaim(
+        &mut self,
+        session: &Session,
+        item_name: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        
+        // Get all player's housing instances (including those with reclaim boxes)
+        let instances = store.get_player_housing_instances(&player.username)?;
+        
+        // Find instances with non-empty reclaim boxes
+        let reclaim_instances: Vec<_> = instances.into_iter()
+            .filter(|inst| !inst.reclaim_box.is_empty())
+            .collect();
+        
+        if reclaim_instances.is_empty() {
+            return Ok("Your reclaim box is empty.".to_string());
+        }
+        
+        // If no item specified, list reclaim box contents
+        if item_name.is_none() {
+            let mut response = String::new();
+            response.push_str("=== Reclaim Box ===\n\n");
+            response.push_str("Items available for recovery:\n\n");
+            
+            let mut item_count = 0;
+            for instance in &reclaim_instances {
+                for item_id in &instance.reclaim_box {
+                    if let Ok(item) = store.get_object(item_id) {
+                        item_count += 1;
+                        response.push_str(&format!("{}. {} - {}\n", 
+                            item_count, item.name, item.description));
+                    }
+                }
+            }
+            
+            if item_count == 0 {
+                response.push_str("(No valid items found)\n");
+            } else {
+                response.push_str(&format!("\nTotal: {} item(s)\n", item_count));
+                response.push_str("Use RECLAIM <item> to retrieve an item.\n");
+            }
+            
+            return Ok(response);
+        }
+        
+        // Retrieve specific item from reclaim box
+        let item_name_upper = item_name.unwrap().to_uppercase();
+        
+        for mut instance in reclaim_instances {
+            // Find matching item and get its index
+            let mut found_idx = None;
+            let mut found_item_id = None;
+            
+            for (idx, item_id) in instance.reclaim_box.iter().enumerate() {
+                if let Ok(item) = store.get_object(item_id) {
+                    if item.name.to_uppercase() == item_name_upper {
+                        found_idx = Some(idx);
+                        found_item_id = Some(item_id.clone());
+                        break;
+                    }
+                }
+            }
+            
+            if let (Some(idx), Some(item_id)) = (found_idx, found_item_id) {
+                // Found the item! Get it and update
+                let mut item = store.get_object(&item_id)?;
+                
+                // Remove from reclaim box
+                instance.reclaim_box.remove(idx);
+                
+                // Record ownership transfer (Phase 5)
+                Self::record_ownership_transfer(
+                    &mut item,
+                    Some("RECLAIM_BOX".to_string()),
+                    player.username.clone(),
+                    crate::tmush::types::OwnershipReason::Reclaimed,
+                );
+                
+                // Update ownership
+                item.owner = crate::tmush::types::ObjectOwner::Player {
+                    username: player.username.clone(),
+                };
+                
+                // Save updated item
+                store.put_object(item.clone())?;
+                
+                // Add to player inventory
+                let mut updated_player = player.clone();
+                updated_player.inventory.push(item_id);
+                store.put_player(updated_player)?;
+                
+                // Save updated housing instance
+                store.put_housing_instance(&instance)?;
+                
+                return Ok(format!(
+                    "You reclaim {} from the reclaim box. It's now in your inventory.",
+                    item.name
+                ));
+            }
+        }
+        
+        Ok(format!("'{}' not found in your reclaim box.", item_name_upper))
     }
 
     /// Describe the current room (placeholder for Phase 3)
