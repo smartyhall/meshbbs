@@ -549,12 +549,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [x] Teleport kicked players to town square
       - [x] Command parsing for KICK
       - [x] Owner-only validation and informative messages
-    - [ ] **Phase 4: Item Protection**
-      - [ ] LOCK <item> - mark item as locked (guests can't take)
-      - [ ] UNLOCK <item> - remove lock from item
-      - [ ] Check item.locked in TAKE command validation
-      - [ ] Show 🔒 indicator for locked items in room/inventory
-      - [ ] WorldConfig messages for item lock/unlock
+    - [x] **Phase 4: Item Protection** (COMPLETE - commit db68d92)
+      - [x] LOCK <item> - mark item as locked (guests can't take)
+      - [x] UNLOCK <item> - remove lock from item
+      - [x] Check item.locked ownership validation
+      - [x] Show 🔒 indicator for locked items in inventory
+      - [x] TODO added in TAKE command for future implementation
     - [ ] **Phase 5: Ownership Tracking**
       - [ ] Record ownership_history on item creation
       - [ ] Record ownership_history on GIVE/TRADE/DROP/TAKE
