@@ -61,6 +61,12 @@ impl TinyMushStoreBuilder {
 }
 
 /// Sled-backed persistence for TinyMUSH world data and player state.
+/// TinyMUSH persistent storage layer built on top of Sled.
+/// 
+/// This struct is cheap to clone - all internal Sled types (Db, Tree) are Arc-based,
+/// so cloning creates a new handle to the same underlying database. This allows
+/// multiple command processors to safely share the same database without lock conflicts.
+#[derive(Clone)]
 pub struct TinyMushStore {
     _db: sled::Db,
     primary: sled::Tree,

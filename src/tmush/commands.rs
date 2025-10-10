@@ -171,15 +171,11 @@ impl TinyMushProcessor {
     /// Initialize or get the room manager for this session
     async fn get_room_manager(&mut self, config: &Config) -> Result<&mut RoomManager, TinyMushError> {
         if self.room_manager.is_none() {
-            // Ensure store is initialized first
-            let _ = self.get_store(config).await?;
+            // Ensure store is initialized first, then clone it for the room manager
+            // Cloning TinyMushStore is cheap - all internal Sled types are Arc-based
+            let store = self.get_store(config).await?.clone();
             
-            let db_path = config.games.tinymush_db_path
-                .as_deref()
-                .unwrap_or("data/tinymush");
-            
-            debug!("Opening TinyMUSH room manager at: {}", db_path);
-            let store = TinyMushStore::open(db_path)?;
+            debug!("Creating TinyMUSH room manager (reusing existing store)");
             let room_manager = RoomManager::new(store);
             self.room_manager = Some(room_manager);
         }
