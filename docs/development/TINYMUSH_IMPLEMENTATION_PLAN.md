@@ -327,20 +327,27 @@ Created comprehensive tutorial system with location-based progression, NPC inter
 
 **Objectives**
 - Deliver apartment/hotel instancing with personalization.
-- Implement builder permissions, `/dig`, `/link`, `/describe` commands.
+- Implement housing customization via context-aware `DESCRIBE` command.
+- Implement builder permissions, `/dig`, `/link`, `/describe` commands (admin/builder-only).
 - Provide trigger scripting (simple event-action system as per spec).
 
 **Tasks**
 1. Housing manager for instanced spaces with persistence and quotas.
-2. Builder role enforcement (Architect/Creator permissions).
-3. Trigger engine with safe sandbox (limited scripting DSL).
-4. Abuse prevention: rate limits, resource quotas, moderation hooks.
-5. Tests for housing decoration, trigger creation, security boundaries.
+2. Housing customization: `DESCRIBE` command (context-aware, works in owned housing).
+3. Builder role enforcement (Architect/Creator permissions).
+4. Trigger engine with safe sandbox (limited scripting DSL).
+5. Abuse prevention: rate limits, resource quotas, moderation hooks.
+6. Tests for housing decoration, trigger creation, security boundaries.
 
 **Exit Criteria**
+- Players can customize their housing room descriptions via `DESCRIBE`.
 - Builders can create rooms/objects within quotas; admins can audit.
 - Trigger engine handles sample scenarios ("feep" button) safely.
 - Housing data backed up and restorable via admin tools.
+
+**Command Distinction**:
+- `DESCRIBE <text>` - Player housing customization (context-aware, permission-checked)
+- `DESCRIBE ROOM <text>` or `/describe` - Builder command (requires builder permissions)
 
 ## Phase 8 – Admin/GM Tooling & Observability (Weeks 11-12)
 

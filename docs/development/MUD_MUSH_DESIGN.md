@@ -902,7 +902,7 @@ pub enum MudCommand {
     
     // MUSH Builder Commands
     CreateRoom(String),                  // CREATE ROOM name
-    DescribeRoom(String),                // DESCRIBE ROOM description
+    DescribeRoom(String),                // DESCRIBE ROOM description (builder-only)
     RenameRoom(String),                  // RENAME ROOM new_name
     DeleteRoom,                          // DELETE ROOM (current)
     LinkExit(Direction, String),         // LINK EXIT direction TO room_id
@@ -913,6 +913,10 @@ pub enum MudCommand {
     RemoveVisitor(String),               // REMOVE VISITOR username
     LockRoom,                            // LOCK ROOM
     UnlockRoom,                          // UNLOCK ROOM
+    
+    // Housing Customization Commands
+    Describe(Option<String>),            // DESCRIBE <text> - edit current housing room description (context-aware)
+                                         // DESCRIBE (no args) - show description and permissions
     
     CreateObject(String),                // CREATE OBJECT name
     DescribeObject(String, String),      // DESCRIBE OBJECT name description
@@ -1302,6 +1306,45 @@ ON_USE: *sings melody* Feel peaceful
 Builder Level Required: 2+
 Max rooms per player: 5
 (~195 bytes)
+```
+
+### Housing Customization Commands
+
+**Player housing uses a simpler, context-aware DESCRIBE command:**
+
+```
+=== HOUSING DESCRIBE ===
+
+When you're in your housing:
+→ DESCRIBE
+Current: "Cozy studio apartment."
+You have permission to edit.
+
+→ DESCRIBE A warm, inviting space
+filled with personal treasures.
+
+✓ Description updated!
+(~140 bytes)
+```
+
+**Key Differences from Builder Commands:**
+
+- **DESCRIBE** (no "ROOM") - context-aware, only works in owned housing
+- No gold cost - customizing your home is free
+- Checks `HousingPermissions.can_edit_description` flag
+- Simpler workflow: be in room → DESCRIBE → done
+- Works for all housing rooms (living room, bedroom, etc.)
+
+**Usage:**
+```
+DESCRIBE <text>       Edit current room
+DESCRIBE              View current & perms
+
+Must be:
+- In your housing instance
+- Owner or have permissions
+- Room allows editing
+(~150 bytes)
 ```
 
 ### Object Builder Commands

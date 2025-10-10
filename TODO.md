@@ -511,7 +511,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [ ] Business property support (owned businesses accessible via HOME)
       - [ ] Quest-based teleport restrictions (Quest.restrictions.allow_teleport)
       - [ ] Area-specific teleport rules (RoomFlag::QuestRestricted)
-  - [ ] DESCRIBE HOME <text> - customize room description (if can_edit_description)
+  - [ ] DESCRIBE <text> - customize current room description (context-aware)
+    - [ ] Check player is in a housing room they own
+    - [ ] Check HousingPermissions.can_edit_description flag
+    - [ ] Update RoomRecord.long_desc for current room
+    - [ ] Validate description length (reasonable limit)
+    - [ ] DESCRIBE (no args) - show current description and edit permissions
   - [x] INVITE <player> / UNINVITE <player> - guest management (COMPLETE - commit 42f0ca1)
     - [x] Add 7 WorldConfig fields for guest management messages
     - [x] Validate player owns housing and is in housing room
