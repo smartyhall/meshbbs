@@ -1465,6 +1465,12 @@ pub struct PlayerRecord {
     /// Combat state (blocks teleportation when true)
     #[serde(default)]
     pub in_combat: bool,
+    /// Admin/moderator flag (grants access to admin commands)
+    #[serde(default)]
+    pub is_admin: bool,
+    /// Admin level for future role hierarchy (0=none, 1=moderator, 2=admin, 3=sysop)
+    #[serde(default)]
+    pub admin_level: Option<u8>,
     pub schema_version: u8,
 }
 
@@ -1493,12 +1499,42 @@ impl PlayerRecord {
             primary_housing_id: None,
             last_teleport: None,
             in_combat: false,
+            is_admin: false,
+            admin_level: None,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
 
     pub fn touch(&mut self) {
         self.updated_at = Utc::now();
+    }
+
+    /// Check if player has admin privileges
+    pub fn is_admin(&self) -> bool {
+        self.is_admin
+    }
+
+    /// Grant admin privileges to this player
+    pub fn grant_admin(&mut self, level: u8) {
+        self.is_admin = true;
+        self.admin_level = Some(level);
+        self.touch();
+    }
+
+    /// Revoke admin privileges from this player
+    pub fn revoke_admin(&mut self) {
+        self.is_admin = false;
+        self.admin_level = None;
+        self.touch();
+    }
+
+    /// Get admin level (0 if not admin)
+    pub fn admin_level(&self) -> u8 {
+        if self.is_admin {
+            self.admin_level.unwrap_or(1)
+        } else {
+            0
+        }
     }
 }
 

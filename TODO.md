@@ -1,8 +1,8 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-10 (Phase 8.5 Complete + NPC Dialogue Content Seeding!)
+**Last Updated**: 2025-10-10 (Phase 9.1 Admin Permissions Complete!)
 
-**Recent Achievement**: All 5 NPCs now have complete dialogue trees (47 nodes total) that automatically seed on database initialization. No manual setup required - dialogues are version-controlled and deploy seamlessly!
+**Recent Achievement**: Admin permission system implemented! PlayerRecord now has `is_admin` and `admin_level` fields with full permission checking. 9 comprehensive tests verify grant/revoke, self-protection, and level hierarchy. Foundation ready for admin command handlers.
 
 ## Development Standards
 
@@ -857,8 +857,22 @@ At 1000 users with 10 objects each (10,000 objects total):
 ## Phase 9 — Admin/GM Tooling, Observability & World Management
 (Ref: Plan §Phase 8, Design §§Admin Tools, Logging, Backup & Recovery, Mesh Resilience)
 
+### Phase 9.1 — Admin Permission System ✅ COMPLETE
+- [x] Add `is_admin` and `admin_level` fields to PlayerRecord
+- [x] Implement helper methods (is_admin, grant_admin, revoke_admin, admin_level)
+- [x] Add storage methods (is_admin, require_admin, grant_admin, revoke_admin, list_admins)
+- [x] Add PermissionDenied error type
+- [x] Comprehensive test suite (9 tests, all passing)
+- [x] Documentation: `docs/development/TMUSH_ADMIN_PERMISSIONS.md`
+
+**Status**: Admin permission foundation complete! Players can now be granted admin privileges with levels (1=moderator, 2=admin, 3=sysop). All admin operations are permission-checked and cannot self-revoke.
+
 ### Admin Console Commands (Week 1)
-- [ ] Admin permission system (admin rank/flag)
+- [ ] Admin command handlers:
+  - [ ] `@ADMIN` - Show admin status
+  - [ ] `@SETADMIN <player> <level>` - Grant admin privileges
+  - [ ] `@REMOVEADMIN <player>` - Revoke admin privileges
+  - [ ] `@ADMINS` - List all admins
 - [ ] Player monitoring commands:
   - [ ] `/PLAYERS` - list all online players
   - [ ] `/WHERE <player>` - locate player

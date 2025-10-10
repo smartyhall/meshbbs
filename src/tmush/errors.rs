@@ -43,6 +43,10 @@ pub enum TinyMushError {
     #[error("utf-8 error: {0}")]
     Utf8(#[from] std::str::Utf8Error),
     
+    /// Permission denied (admin-only command)
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
+    
     /// Internal error (task join errors, unexpected conditions)
     #[error("internal error: {0}")]
     Internal(String),

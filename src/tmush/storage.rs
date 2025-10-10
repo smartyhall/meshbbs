@@ -261,6 +261,79 @@ impl TinyMushStore {
         Ok(ids)
     }
 
+    // ============================================================================
+    // Admin Helper Functions
+    // ============================================================================
+
+    /// Check if a player has admin privileges
+    pub fn is_admin(&self, username: &str) -> Result<bool, TinyMushError> {
+        let player = self.get_player(username)?;
+        Ok(player.is_admin())
+    }
+
+    /// Require admin privileges, return PermissionDenied error if not admin
+    pub fn require_admin(&self, username: &str) -> Result<(), TinyMushError> {
+        if !self.is_admin(username)? {
+            return Err(TinyMushError::PermissionDenied(
+                "This command requires admin privileges".to_string()
+            ));
+        }
+        Ok(())
+    }
+
+    /// Grant admin privileges to a player (requires caller to be admin)
+    pub fn grant_admin(&self, granter: &str, target: &str, level: u8) -> Result<(), TinyMushError> {
+        // Verify granter has permission
+        self.require_admin(granter)?;
+        
+        // Grant admin to target
+        let mut player = self.get_player(target)?;
+        player.grant_admin(level);
+        self.put_player(player)?;
+        
+        Ok(())
+    }
+
+    /// Revoke admin privileges from a player (requires caller to be admin)
+    pub fn revoke_admin(&self, revoker: &str, target: &str) -> Result<(), TinyMushError> {
+        // Verify revoker has permission
+        self.require_admin(revoker)?;
+        
+        // Cannot revoke your own admin
+        if revoker == target {
+            return Err(TinyMushError::PermissionDenied(
+                "Cannot revoke your own admin privileges".to_string()
+            ));
+        }
+        
+        // Revoke admin from target
+        let mut player = self.get_player(target)?;
+        player.revoke_admin();
+        self.put_player(player)?;
+        
+        Ok(())
+    }
+
+    /// List all admin players
+    pub fn list_admins(&self) -> Result<Vec<PlayerRecord>, TinyMushError> {
+        let mut admins = Vec::new();
+        let player_ids = self.list_player_ids()?;
+        
+        for username in player_ids {
+            if let Ok(player) = self.get_player(&username) {
+                if player.is_admin() {
+                    admins.push(player);
+                }
+            }
+        }
+        
+        Ok(admins)
+    }
+
+    // ============================================================================
+    // Room Storage
+    // ============================================================================
+
     /// Insert or update a room record.
     pub fn put_room(&self, mut room: RoomRecord) -> Result<(), TinyMushError> {
         room.schema_version = ROOM_SCHEMA_VERSION;
