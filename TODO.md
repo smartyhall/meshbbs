@@ -501,8 +501,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
       - [x] Update primary_housing_id when using HOME SET
       - [x] Auto-prompt if multiple housing and no primary set
       - [x] Number-based selection (HOME 1, HOME 2) or ID-based (HOME studio_apt_123)
-    - [ ] **Phase 3 (Advanced)**: Extended access types
-      - [ ] Guest access tracking (show instances where player is on guests list)
+    - [ ] **Phase 3 (Advanced)**: Extended access types — IN PROGRESS
+      - [x] Guest access tracking (show instances where player is on guests list) - COMPLETE (commit 7f49cc3)
+        - [x] get_guest_housing_instances() storage method
+        - [x] HOME LIST shows owned + guest housing with unified numbering
+        - [x] HOME <id> supports teleporting to guest housing
+        - [x] Access type clearly marked: OWNED vs GUEST
       - [ ] Guild hall support (HousingInstance.access_type enum)
       - [ ] Business property support (owned businesses accessible via HOME)
       - [ ] Quest-based teleport restrictions (Quest.restrictions.allow_teleport)
