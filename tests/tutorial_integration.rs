@@ -46,6 +46,7 @@ fn seed_tutorial_npcs(store: &TinyMushStore) {
         description: "A friendly mayor reviewing network maps.".to_string(),
         room_id: "mayor_office".to_string(),
         dialog,
+        dialog_tree: HashMap::new(), // Empty dialog tree (tests use old dialog system)
         flags: vec![NpcFlag::TutorialNpc, NpcFlag::QuestGiver],
         created_at: chrono::Utc::now(),
         schema_version: 1,

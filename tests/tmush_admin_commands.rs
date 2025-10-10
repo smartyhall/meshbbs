@@ -153,10 +153,11 @@ fn admin_list_admins() {
     // List admins
     let admins = store.list_admins().expect("list admins");
     
-    // Should have exactly 2 admins
-    assert_eq!(admins.len(), 2);
+    // Should have exactly 3 admins (auto-seeded "admin" + sysop + alice)
+    assert_eq!(admins.len(), 3);
     
     let admin_names: Vec<&str> = admins.iter().map(|p| p.username.as_str()).collect();
+    assert!(admin_names.contains(&"admin"), "should have auto-seeded admin");
     assert!(admin_names.contains(&"sysop"));
     assert!(admin_names.contains(&"alice"));
     assert!(!admin_names.contains(&"bob"));

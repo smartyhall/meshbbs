@@ -1,8 +1,8 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-10 (Phase 9.1 Admin Permissions Complete!)
+**Last Updated**: 2025-10-10 (Phase 9.1 Complete - Admin Bootstrap!)
 
-**Recent Achievement**: Admin permission system implemented! PlayerRecord now has `is_admin` and `admin_level` fields with full permission checking. 9 comprehensive tests verify grant/revoke, self-protection, and level hierarchy. Foundation ready for admin command handlers.
+**Recent Achievement**: Admin system fully operational! Every fresh TinyMUSH database automatically creates an admin account with sysop privileges. Idempotent seeding, existing player promotion, and comprehensive permission system all tested and documented. No manual setup required!
 
 ## Development Standards
 
@@ -862,10 +862,14 @@ At 1000 users with 10 objects each (10,000 objects total):
 - [x] Implement helper methods (is_admin, grant_admin, revoke_admin, admin_level)
 - [x] Add storage methods (is_admin, require_admin, grant_admin, revoke_admin, list_admins)
 - [x] Add PermissionDenied error type
+- [x] **Automatic admin account seeding on database initialization**
+- [x] Admin bootstrap with configurable username
+- [x] Existing player promotion support
 - [x] Comprehensive test suite (9 tests, all passing)
 - [x] Documentation: `docs/development/TMUSH_ADMIN_PERMISSIONS.md`
+- [x] Documentation: `docs/development/TMUSH_ADMIN_BOOTSTRAP.md`
 
-**Status**: Admin permission foundation complete! Players can now be granted admin privileges with levels (1=moderator, 2=admin, 3=sysop). All admin operations are permission-checked and cannot self-revoke.
+**Status**: Admin system complete! Every fresh database automatically creates an admin account (default username: "admin") with sysop-level privileges. Idempotent seeding prevents duplicates, and existing players can be promoted. Ready for admin command handlers!
 
 ### Admin Console Commands (Week 1)
 - [ ] Admin command handlers:

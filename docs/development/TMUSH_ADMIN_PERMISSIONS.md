@@ -4,9 +4,13 @@
 **Version**: 1.0  
 **Date**: October 10, 2025
 
+> **Note**: Fresh databases automatically seed an admin account! See [Admin Bootstrap Documentation](TMUSH_ADMIN_BOOTSTRAP.md) for details on the automatic admin account creation.
+
 ## Overview
 
 The TinyMUSH admin permission system provides a foundation for administrative commands and moderation tools. It introduces an `is_admin` flag and optional `admin_level` hierarchy to PlayerRecord.
+
+Every fresh TinyMUSH database automatically creates an initial admin account (default username: "admin") with sysop-level privileges during initialization.
 
 ## Features
 
@@ -219,6 +223,7 @@ Comprehensive test suite covers:
 
 ## Related Documentation
 
+- [Admin Bootstrap System](TMUSH_ADMIN_BOOTSTRAP.md) - **Automatic admin account creation**
 - [Phase 9 Admin Tools Plan](/tmp/PHASE9_PLAN.md)
 - [TinyMUSH Storage API](../src/tmush/storage.rs)
 - [TinyMUSH Types](../src/tmush/types.rs)
@@ -230,6 +235,7 @@ Comprehensive test suite covers:
 - ✅ Added `is_admin` and `admin_level` fields to PlayerRecord
 - ✅ Implemented helper methods (is_admin, grant_admin, revoke_admin, admin_level)
 - ✅ Added storage methods (is_admin, require_admin, grant_admin, revoke_admin, list_admins)
+- ✅ Automatic admin account seeding on database initialization
 - ✅ Added PermissionDenied error type
 - ✅ Comprehensive test suite (9 tests)
 - ✅ Documentation complete

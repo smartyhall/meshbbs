@@ -171,6 +171,10 @@ impl TinyMushStore {
             crate::tmush::state::seed_npc_dialogues_if_needed(&store)?;
             
             store.seed_housing_templates_if_needed()?;
+            
+            // Seed initial admin account (default: "admin")
+            // In production, this username could come from config
+            store.seed_admin_if_needed("admin")?;
         }
 
         Ok(store)
@@ -1859,6 +1863,51 @@ impl TinyMushStore {
         Ok(inserted)
     }
 
+    /// Seed initial admin account if no admins exist (idempotent)
+    /// 
+    /// Creates a default sysop-level admin account on fresh database initialization.
+    /// Uses the provided username (typically from config) and grants level 3 (sysop) privileges.
+    /// 
+    /// # Arguments
+    /// * `admin_username` - Username for the admin account (e.g., "admin", "sysop")
+    /// 
+    /// # Returns
+    /// * `Ok(true)` if admin was created
+    /// * `Ok(false)` if admin already exists (no-op)
+    /// 
+    /// # Example
+    /// ```no_run
+    /// # use meshbbs::tmush::TinyMushStoreBuilder;
+    /// # let store = TinyMushStoreBuilder::new("/tmp/test").open().unwrap();
+    /// store.seed_admin_if_needed("admin").expect("seed admin");
+    /// ```
+    pub fn seed_admin_if_needed(&self, admin_username: &str) -> Result<bool, TinyMushError> {
+        // Check if any admin exists
+        let admins = self.list_admins()?;
+        if !admins.is_empty() {
+            return Ok(false);
+        }
+        
+        // Check if this specific username already exists (as non-admin)
+        if let Ok(mut existing) = self.get_player(admin_username) {
+            // Player exists but isn't admin - promote them
+            existing.grant_admin(3); // Sysop level
+            self.put_player(existing)?;
+            return Ok(true);
+        }
+        
+        // Create new admin account
+        let mut admin = crate::tmush::types::PlayerRecord::new(
+            admin_username,
+            &format!("{} (Admin)", admin_username),
+            crate::tmush::state::REQUIRED_START_LOCATION_ID,
+        );
+        admin.grant_admin(3); // Sysop level (highest privilege)
+        self.put_player(admin)?;
+        
+        Ok(true)
+    }
+
     // ========================
     // World Configuration
     // ========================
@@ -3079,7 +3128,9 @@ mod tests {
         {
             let store = TinyMushStoreBuilder::new(dir.path()).open().expect("store");
             let ids = store.list_player_ids().expect("list players");
-            assert!(ids.is_empty());
+            // Admin account is automatically seeded
+            assert_eq!(ids.len(), 1, "should have admin account");
+            assert_eq!(ids[0], "admin", "seeded account should be admin");
             for room_id in OLD_TOWNE_WORLD_ROOM_IDS {
                 store.get_room(room_id).expect("room present");
             }
@@ -3140,6 +3191,84 @@ mod tests {
         // The dialogue seeding happens during store initialization
         // If we got here, seeding succeeded
         assert!(true, "Dialogue seeding completed");
+    }
+
+    #[test]
+    fn admin_account_seeded_automatically() {
+        let dir = TempDir::new().expect("tempdir");
+        let store = TinyMushStoreBuilder::new(dir.path()).open().expect("store");
+        
+        // Admin should be automatically seeded
+        let admin = store.get_player("admin").expect("admin exists");
+        assert_eq!(admin.username, "admin");
+        assert!(admin.is_admin(), "admin should have admin flag");
+        assert_eq!(admin.admin_level(), 3, "admin should be sysop level");
+        
+        // List admins should return the seeded admin
+        let admins = store.list_admins().expect("list admins");
+        assert_eq!(admins.len(), 1, "should have exactly one admin");
+        assert_eq!(admins[0].username, "admin");
+    }
+
+    #[test]
+    fn admin_seeding_is_idempotent() {
+        let dir = TempDir::new().expect("tempdir");
+        let store = TinyMushStoreBuilder::new(dir.path()).open().expect("store");
+        
+        // First seed creates admin
+        let created1 = store.seed_admin_if_needed("admin").expect("first seed");
+        assert!(!created1, "admin already exists from initialization");
+        
+        // Second seed is no-op
+        let created2 = store.seed_admin_if_needed("admin").expect("second seed");
+        assert!(!created2, "should not recreate existing admin");
+        
+        // Should still have exactly one admin
+        let admins = store.list_admins().expect("list admins");
+        assert_eq!(admins.len(), 1, "should still have exactly one admin");
+    }
+
+    #[test]
+    fn admin_seeding_custom_username() {
+        let dir = TempDir::new().expect("tempdir");
+        let store = TinyMushStoreBuilder::new(dir.path())
+            .without_world_seed()
+            .open()
+            .expect("store");
+        
+        // Create admin with custom username
+        let created = store.seed_admin_if_needed("sysop").expect("seed sysop");
+        assert!(created, "should create new admin");
+        
+        let sysop = store.get_player("sysop").expect("sysop exists");
+        assert_eq!(sysop.username, "sysop");
+        assert!(sysop.is_admin());
+        assert_eq!(sysop.admin_level(), 3);
+    }
+
+    #[test]
+    fn admin_seeding_promotes_existing_player() {
+        let dir = TempDir::new().expect("tempdir");
+        let store = TinyMushStoreBuilder::new(dir.path())
+            .without_world_seed()
+            .open()
+            .expect("store");
+        
+        // Create regular player
+        let player = PlayerRecord::new("alice", "Alice", "town_square");
+        store.put_player(player).expect("create player");
+        
+        // Verify not admin
+        assert!(!store.is_admin("alice").expect("check admin"));
+        
+        // Seed admin with same username promotes existing player
+        let promoted = store.seed_admin_if_needed("alice").expect("promote");
+        assert!(promoted, "should promote existing player");
+        
+        // Verify now admin
+        assert!(store.is_admin("alice").expect("check admin"));
+        let alice = store.get_player("alice").expect("get alice");
+        assert_eq!(alice.admin_level(), 3);
     }
 }
 
