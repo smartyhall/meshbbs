@@ -2784,12 +2784,42 @@ impl TinyMushProcessor {
         player_name: String,
         config: &Config,
     ) -> Result<String> {
-        let _player = self.get_or_create_player(session).await?;
-        let _store = self.get_store(config).await?;
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        let world_config = store.get_world_config().unwrap_or_default();
         
-        // TODO: Implement invite logic
-        Ok(format!("INVITE command not fully implemented yet.\n\
-            Would invite: {}", player_name))
+        // Check player owns housing
+        let instances = store.get_player_housing_instances(&player.username)?;
+        if instances.is_empty() {
+            return Ok(world_config.err_invite_no_housing.clone());
+        }
+        
+        // Check if player is currently in one of their housing rooms
+        let current_instance = instances.iter().find(|inst| {
+            inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+        });
+        
+        let mut current_instance = match current_instance {
+            Some(inst) => inst.clone(),
+            None => return Ok(world_config.err_invite_not_in_housing.clone()),
+        };
+        
+        // Validate target player exists
+        let target = store.get_player(&player_name);
+        if target.is_err() {
+            return Ok(world_config.err_invite_player_not_found.replace("{name}", &player_name));
+        }
+        
+        // Check if already a guest
+        if current_instance.guests.contains(&player_name) {
+            return Ok(world_config.err_invite_already_guest.replace("{name}", &player_name));
+        }
+        
+        // Add to guest list
+        current_instance.guests.push(player_name.clone());
+        store.put_housing_instance(&current_instance)?;
+        
+        Ok(world_config.msg_invite_success.replace("{name}", &player_name))
     }
 
     /// Handle UNINVITE command - remove guest from housing
@@ -2799,12 +2829,36 @@ impl TinyMushProcessor {
         player_name: String,
         config: &Config,
     ) -> Result<String> {
-        let _player = self.get_or_create_player(session).await?;
-        let _store = self.get_store(config).await?;
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        let world_config = store.get_world_config().unwrap_or_default();
         
-        // TODO: Implement uninvite logic
-        Ok(format!("UNINVITE command not fully implemented yet.\n\
-            Would uninvite: {}", player_name))
+        // Check player owns housing
+        let instances = store.get_player_housing_instances(&player.username)?;
+        if instances.is_empty() {
+            return Ok(world_config.err_invite_no_housing.clone());
+        }
+        
+        // Check if player is currently in one of their housing rooms
+        let current_instance = instances.iter().find(|inst| {
+            inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+        });
+        
+        let mut current_instance = match current_instance {
+            Some(inst) => inst.clone(),
+            None => return Ok(world_config.err_invite_not_in_housing.clone()),
+        };
+        
+        // Check if player is on guest list
+        if !current_instance.guests.contains(&player_name) {
+            return Ok(world_config.err_uninvite_not_guest.replace("{name}", &player_name));
+        }
+        
+        // Remove from guest list
+        current_instance.guests.retain(|g| g != &player_name);
+        store.put_housing_instance(&current_instance)?;
+        
+        Ok(world_config.msg_uninvite_success.replace("{name}", &player_name))
     }
 
     /// Handle @SETCONFIG command - set world configuration

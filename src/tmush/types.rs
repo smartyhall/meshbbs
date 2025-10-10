@@ -1914,6 +1914,15 @@ pub struct WorldConfig {
     pub err_home_not_found: String,
     pub msg_home_set_success: String,
     
+    // === GUEST/INVITE SYSTEM MESSAGES ===
+    pub err_invite_no_housing: String,
+    pub err_invite_not_in_housing: String,
+    pub err_invite_player_not_found: String,
+    pub err_invite_already_guest: String,
+    pub msg_invite_success: String,
+    pub err_uninvite_not_guest: String,
+    pub msg_uninvite_success: String,
+    
     // === TECHNICAL/SYSTEM MESSAGES ===
     pub err_player_load_failed: String,
     pub err_shop_save_failed: String,
@@ -2119,6 +2128,15 @@ impl Default for WorldConfig {
             msg_home_list_footer_set: "Use 'HOME SET <number>' to change your primary home.".to_string(),
             err_home_not_found: "Housing '{id}' not found. Use HOME LIST to see your properties.".to_string(),
             msg_home_set_success: "Primary home set to: {name}\nUse HOME to teleport there.".to_string(),
+            
+            // Guest/invite system messages
+            err_invite_no_housing: "You don't own any housing to invite guests to.".to_string(),
+            err_invite_not_in_housing: "You must be in your housing to invite guests.".to_string(),
+            err_invite_player_not_found: "Player '{name}' not found.".to_string(),
+            err_invite_already_guest: "{name} is already on the guest list.".to_string(),
+            msg_invite_success: "You've invited {name} to your housing.".to_string(),
+            err_uninvite_not_guest: "{name} is not on your guest list.".to_string(),
+            msg_uninvite_success: "You've removed {name} from your guest list.".to_string(),
             
             // Technical/system messages
             err_player_load_failed: "Error loading player: {error}".to_string(),

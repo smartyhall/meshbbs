@@ -2168,6 +2168,15 @@ impl TinyMushStore {
             "err_home_not_found" => config.err_home_not_found = value.to_string(),
             "msg_home_set_success" => config.msg_home_set_success = value.to_string(),
             
+            // Guest/invite system messages
+            "err_invite_no_housing" => config.err_invite_no_housing = value.to_string(),
+            "err_invite_not_in_housing" => config.err_invite_not_in_housing = value.to_string(),
+            "err_invite_player_not_found" => config.err_invite_player_not_found = value.to_string(),
+            "err_invite_already_guest" => config.err_invite_already_guest = value.to_string(),
+            "msg_invite_success" => config.msg_invite_success = value.to_string(),
+            "err_uninvite_not_guest" => config.err_uninvite_not_guest = value.to_string(),
+            "msg_uninvite_success" => config.msg_uninvite_success = value.to_string(),
+            
             // Technical/system messages
             "err_player_load_failed" => config.err_player_load_failed = value.to_string(),
             "err_shop_save_failed" => config.err_shop_save_failed = value.to_string(),
