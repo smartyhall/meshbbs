@@ -2161,6 +2161,12 @@ impl TinyMushStore {
                 config.home_cooldown_seconds = value.parse()
                     .map_err(|_| TinyMushError::NotFound(format!("Invalid number for home_cooldown_seconds: {}", value)))?;
             },
+            "msg_home_list_header" => config.msg_home_list_header = value.to_string(),
+            "msg_home_list_empty" => config.msg_home_list_empty = value.to_string(),
+            "msg_home_list_footer_travel" => config.msg_home_list_footer_travel = value.to_string(),
+            "msg_home_list_footer_set" => config.msg_home_list_footer_set = value.to_string(),
+            "err_home_not_found" => config.err_home_not_found = value.to_string(),
+            "msg_home_set_success" => config.msg_home_set_success = value.to_string(),
             
             // Technical/system messages
             "err_player_load_failed" => config.err_player_load_failed = value.to_string(),

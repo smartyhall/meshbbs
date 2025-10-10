@@ -2548,10 +2548,10 @@ impl TinyMushProcessor {
                 let instances = store.get_player_housing_instances(&player.username)?;
                 
                 if instances.is_empty() {
-                    return Ok("You don't own any housing yet.\nVisit a housing office to rent a place!".to_string());
+                    return Ok(world_config.msg_home_list_empty.clone());
                 }
                 
-                let mut output = String::from("=== Your Housing ===\n\n");
+                let mut output = format!("{}\n\n", world_config.msg_home_list_header);
                 
                 for (idx, instance) in instances.iter().enumerate() {
                     let template = store.get_housing_template(&instance.template_id)?;
@@ -2575,8 +2575,8 @@ impl TinyMushProcessor {
                     ));
                 }
                 
-                output.push_str("Use 'HOME <number>' to travel to a specific property.\n");
-                output.push_str("Use 'HOME SET <number>' to change your primary home.");
+                output.push_str(&format!("{}\n", world_config.msg_home_list_footer_travel));
+                output.push_str(&world_config.msg_home_list_footer_set);
                 
                 Ok(output)
             },
@@ -2587,7 +2587,7 @@ impl TinyMushProcessor {
                 let instances = store.get_player_housing_instances(&player.username)?;
                 
                 if instances.is_empty() {
-                    return Ok("You don't own any housing yet.".to_string());
+                    return Ok(world_config.msg_home_list_empty.clone());
                 }
                 
                 // Try to parse as number first
@@ -2605,7 +2605,7 @@ impl TinyMushProcessor {
                 let target_instance = match target_instance {
                     Some(inst) => inst,
                     None => {
-                        return Ok(format!("Housing '{}' not found. Use HOME LIST to see your properties.", id_or_num));
+                        return Ok(world_config.err_home_not_found.replace("{id}", &id_or_num));
                     }
                 };
                 
@@ -2616,7 +2616,7 @@ impl TinyMushProcessor {
                 
                 let template = store.get_housing_template(&target_instance.template_id)?;
                 
-                Ok(format!("Primary home set to: {}\nUse HOME to teleport there.", template.name))
+                Ok(world_config.msg_home_set_success.replace("{name}", &template.name))
             },
             
             Some(id_or_num) => {
@@ -2641,7 +2641,7 @@ impl TinyMushProcessor {
                 let target_instance = match target_instance {
                     Some(inst) => inst,
                     None => {
-                        return Ok(format!("Housing '{}' not found. Use HOME LIST to see your properties.", id_or_num));
+                        return Ok(world_config.err_home_not_found.replace("{id}", &id_or_num));
                     }
                 };
                 

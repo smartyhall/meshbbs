@@ -1907,6 +1907,12 @@ pub struct WorldConfig {
     pub err_teleport_no_access: String,
     pub msg_teleport_success: String,
     pub home_cooldown_seconds: u64,
+    pub msg_home_list_header: String,
+    pub msg_home_list_empty: String,
+    pub msg_home_list_footer_travel: String,
+    pub msg_home_list_footer_set: String,
+    pub err_home_not_found: String,
+    pub msg_home_set_success: String,
     
     // === TECHNICAL/SYSTEM MESSAGES ===
     pub err_player_load_failed: String,
@@ -2107,6 +2113,12 @@ impl Default for WorldConfig {
             err_teleport_no_access: "You no longer have access to that location.".to_string(),
             msg_teleport_success: "You teleport to {name}...".to_string(),
             home_cooldown_seconds: 300,  // 5 minutes default
+            msg_home_list_header: "=== Your Housing ===".to_string(),
+            msg_home_list_empty: "You don't own any housing yet.\nVisit a housing office to rent a place!".to_string(),
+            msg_home_list_footer_travel: "Use 'HOME <number>' to travel to a specific property.".to_string(),
+            msg_home_list_footer_set: "Use 'HOME SET <number>' to change your primary home.".to_string(),
+            err_home_not_found: "Housing '{id}' not found. Use HOME LIST to see your properties.".to_string(),
+            msg_home_set_success: "Primary home set to: {name}\nUse HOME to teleport there.".to_string(),
             
             // Technical/system messages
             err_player_load_failed: "Error loading player: {error}".to_string(),
