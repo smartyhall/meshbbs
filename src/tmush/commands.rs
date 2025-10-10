@@ -13,7 +13,7 @@ use crate::logutil::escape_log;
 use crate::metrics;
 use crate::storage::Storage;
 use crate::tmush::{TinyMushStore, TinyMushError, PlayerRecord};
-use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection};
+use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDirection, RoomFlag, CurrencyAmount};
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
 use crate::tmush::inventory::format_inventory_compact;
@@ -94,6 +94,13 @@ pub enum TinyMushCommand {
     Mount(String),          // MOUNT horse - mount companion
     Dismount,              // DISMOUNT - dismount from companion
     Train(String, String), // TRAIN horse speed - train companion skill
+    
+    // Housing commands (Phase 7 Week 1-2)
+    Housing(Option<String>), // HOUSING, HOUSING LIST, HOUSING INFO - manage housing
+    Rent(String),           // RENT template_id - rent/purchase housing from template
+    Home,                   // HOME - teleport to owned housing
+    Invite(String),         // INVITE player - add guest to housing
+    Uninvite(String),       // UNINVITE player - remove guest from housing
     
     // System
     Help(Option<String>),   // HELP, HELP topic
@@ -307,6 +314,11 @@ impl TinyMushProcessor {
             TinyMushCommand::Mount(name) => self.handle_mount(session, name, config).await,
             TinyMushCommand::Dismount => self.handle_dismount(session, config).await,
             TinyMushCommand::Train(companion, skill) => self.handle_train(session, companion, skill, config).await,
+            TinyMushCommand::Housing(subcommand) => self.handle_housing(session, subcommand, config).await,
+            TinyMushCommand::Rent(template_id) => self.handle_rent(session, template_id, config).await,
+            TinyMushCommand::Home => self.handle_home(session, config).await,
+            TinyMushCommand::Invite(player) => self.handle_invite(session, player, config).await,
+            TinyMushCommand::Uninvite(player) => self.handle_uninvite(session, player, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
@@ -670,6 +682,37 @@ impl TinyMushProcessor {
                     TinyMushCommand::Train(companion, skill)
                 } else {
                     TinyMushCommand::Unknown("Usage: TRAIN <companion> <skill>".to_string())
+                }
+            },
+
+            // Housing commands (Phase 7 Week 1-2)
+            "HOUSING" | "HOUSE" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Housing(Some(parts[1..].join(" ").to_uppercase()))
+                } else {
+                    TinyMushCommand::Housing(None)
+                }
+            },
+            "RENT" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Rent(parts[1].to_lowercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: RENT <template_id>".to_string())
+                }
+            },
+            "HOME" => TinyMushCommand::Home,
+            "INVITE" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Invite(parts[1].to_lowercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: INVITE <player>".to_string())
+                }
+            },
+            "UNINVITE" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Uninvite(parts[1].to_lowercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: UNINVITE <player>".to_string())
                 }
             },
 
@@ -2260,6 +2303,267 @@ impl TinyMushProcessor {
         } else {
             Ok(format!("You don't have a companion named '{}'.", companion_name))
         }
+    }
+
+    /// Handle HOUSING command - manage player housing
+    async fn handle_housing(
+        &mut self,
+        session: &Session,
+        subcommand: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        
+        // Get world config for error messages
+        let world_config = store.get_world_config()?;
+        
+        // Get current room to check for HousingOffice flag
+        let current_room = store.get_room(&player.current_room)?;
+        
+        match subcommand.as_deref() {
+            None | Some("") => {
+                // Show player's housing status
+                let instances = store.get_player_housing_instances(&player.username)?;
+                
+                if instances.is_empty() {
+                    Ok(format!("You don't own any housing yet.\n\n\
+                        Visit a housing office to rent or purchase a place!\n\
+                        Type HOUSING LIST to see available options."))
+                } else {
+                    let mut output = format!("=== YOUR HOUSING ===\n\n");
+                    for instance in instances {
+                        let template = store.get_housing_template(&instance.template_id)?;
+                        let active_status = if instance.active { "✓ Active" } else { "✗ Inactive" };
+                        output.push_str(&format!(
+                            "{} ({})\n  Template: {}\n  {} rooms, {} guests\n  {}\n\n",
+                            template.name,
+                            instance.id,
+                            instance.template_id,
+                            instance.room_mappings.len(),
+                            instance.guests.len(),
+                            active_status
+                        ));
+                    }
+                    output.push_str("Type HOME to visit your housing.\n");
+                    output.push_str("Type HOUSING INFO for more details.");
+                    Ok(output)
+                }
+            },
+            Some("LIST") => {
+                // Check if player is at a housing office
+                use crate::tmush::types::RoomFlag;
+                if !current_room.flags.contains(&RoomFlag::HousingOffice) {
+                    return Ok(world_config.err_housing_not_at_office.clone());
+                }
+                
+                // Get all templates
+                let all_template_ids = store.list_housing_templates()?;
+                
+                if all_template_ids.is_empty() {
+                    return Ok(world_config.err_housing_no_templates.clone());
+                }
+                
+                // Filter templates by room's housing_filter_tags
+                let mut templates = Vec::new();
+                for template_id in all_template_ids {
+                    if let Ok(template) = store.get_housing_template(&template_id) {
+                        // Check if template matches room's filter
+                        if template.matches_filter(&current_room.housing_filter_tags) {
+                            templates.push(template);
+                        }
+                    }
+                }
+                
+                if templates.is_empty() {
+                    return Ok(world_config.err_housing_no_templates.clone());
+                }
+                
+                // Build output
+                let mut output = world_config.msg_housing_list_header.clone();
+                output.push_str("\n\n");
+                
+                for (idx, template) in templates.iter().enumerate() {
+                    let current_count = store.count_template_instances(&template.id)?;
+                    let availability = if template.max_instances < 0 {
+                        "Unlimited".to_string()
+                    } else {
+                        let remaining = template.max_instances - current_count as i32;
+                        format!("{} of {} available", remaining.max(0), template.max_instances)
+                    };
+                    
+                    let cost_str = if template.recurring_cost > 0 {
+                        format!("{} credits ({} per month)", template.cost, template.recurring_cost)
+                    } else {
+                        format!("{} credits (one-time)", template.cost)
+                    };
+                    
+                    output.push_str(&format!(
+                        "{}. {} ({})\n\
+                         {}\n\
+                         {} rooms | {} | Category: {}\n\
+                         Availability: {}\n\n",
+                        idx + 1,
+                        template.name,
+                        template.id,
+                        template.description,
+                        template.rooms.len(),
+                        cost_str,
+                        if template.category.is_empty() { "general" } else { &template.category },
+                        availability
+                    ));
+                }
+                
+                output.push_str("\nType RENT <id> to acquire housing.");
+                Ok(output)
+            },
+            Some(other) => {
+                Ok(format!("Unknown HOUSING subcommand: {}\n\
+                    Available: LIST, INFO", other))
+            }
+        }
+    }
+
+    /// Handle RENT command - rent/purchase housing from template
+    async fn handle_rent(
+        &mut self,
+        session: &Session,
+        template_id: String,
+        config: &Config,
+    ) -> Result<String> {
+        let mut player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        let world_config = store.get_world_config().unwrap_or_default();
+        
+        // Get current room to check if we're at a housing office
+        let current_room = store.get_room(&player.current_room)?;
+        
+        // Check if current location is a housing office
+        if !current_room.flags.contains(&RoomFlag::HousingOffice) {
+            return Ok(world_config.err_housing_not_at_office.clone());
+        }
+        
+        // Load the housing template
+        let template = store.get_housing_template(&template_id)?;
+        
+        // Check if template matches this location's filter
+        if !template.matches_filter(&current_room.housing_filter_tags) {
+            return Ok(world_config.err_housing_no_templates.clone());
+        }
+        
+        // Check if player already owns housing
+        let existing_instances = store.get_player_housing_instances(&player.username)?;
+        if !existing_instances.is_empty() {
+            return Ok(world_config.err_housing_already_owns.clone());
+        }
+        
+        // Check if template has available instances
+        if template.max_instances >= 0 {
+            let current_count = store.count_template_instances(&template.id)?;
+            if current_count >= template.max_instances as usize {
+                return Ok(format!("Sorry, all {} housing units are currently occupied. \
+                    Please check back later.", template.name));
+            }
+        }
+        
+        // Check if player has sufficient funds (currency + bank)
+        let total_funds = player.currency.base_value() + player.banked_currency.base_value();
+        let required = template.cost as i64;
+        
+        if total_funds < required {
+            let deficit = required - total_funds;
+            return Ok(world_config.err_housing_insufficient_funds
+                .replace("{cost}", &template.cost.to_string())
+                .replace("{deficit}", &deficit.to_string()));
+        }
+        
+        // Clone the template to create player's housing instance
+        let instance = store.clone_housing_template(&template.id, &player.username)?;
+        
+        // Deduct cost from player (currency first, then bank if needed)
+        let mut remaining_cost = required;
+        let currency_value = player.currency.base_value();
+        
+        // Create amount to subtract matching player's currency type
+        if currency_value >= remaining_cost {
+            // Currency covers it all
+            let to_subtract = match player.currency {
+                CurrencyAmount::Decimal { .. } => CurrencyAmount::decimal(remaining_cost),
+                CurrencyAmount::MultiTier { .. } => CurrencyAmount::multi_tier(remaining_cost),
+            };
+            player.currency = player.currency.subtract(&to_subtract)
+                .map_err(|e| anyhow::anyhow!("Currency subtraction failed: {}", e))?;
+        } else {
+            // Use all currency, then bank
+            if currency_value > 0 {
+                let to_subtract = match player.currency {
+                    CurrencyAmount::Decimal { .. } => CurrencyAmount::decimal(currency_value),
+                    CurrencyAmount::MultiTier { .. } => CurrencyAmount::multi_tier(currency_value),
+                };
+                player.currency = player.currency.subtract(&to_subtract)
+                    .map_err(|e| anyhow::anyhow!("Currency subtraction failed: {}", e))?;
+                remaining_cost -= currency_value;
+            }
+            let to_subtract = match player.banked_currency {
+                CurrencyAmount::Decimal { .. } => CurrencyAmount::decimal(remaining_cost),
+                CurrencyAmount::MultiTier { .. } => CurrencyAmount::multi_tier(remaining_cost),
+            };
+            player.banked_currency = player.banked_currency.subtract(&to_subtract)
+                .map_err(|e| anyhow::anyhow!("Bank currency subtraction failed: {}", e))?;
+        }
+        
+        // Save updated player
+        store.put_player(player)?;
+        
+        // Return success message with HOME hint
+        let success_msg = world_config.msg_housing_rented
+            .replace("{name}", &template.name)
+            .replace("{id}", &instance.id);
+        
+        Ok(format!("{}\n\nUse the HOME command to teleport to your new housing.", success_msg))
+    }
+
+    /// Handle HOME command - teleport to owned housing
+    async fn handle_home(
+        &mut self,
+        session: &Session,
+        config: &Config,
+    ) -> Result<String> {
+        let _player = self.get_or_create_player(session).await?;
+        let _store = self.get_store(config).await?;
+        
+        // TODO: Implement home teleport logic
+        Ok("HOME command not fully implemented yet.".to_string())
+    }
+
+    /// Handle INVITE command - add guest to housing
+    async fn handle_invite(
+        &mut self,
+        session: &Session,
+        player_name: String,
+        config: &Config,
+    ) -> Result<String> {
+        let _player = self.get_or_create_player(session).await?;
+        let _store = self.get_store(config).await?;
+        
+        // TODO: Implement invite logic
+        Ok(format!("INVITE command not fully implemented yet.\n\
+            Would invite: {}", player_name))
+    }
+
+    /// Handle UNINVITE command - remove guest from housing
+    async fn handle_uninvite(
+        &mut self,
+        session: &Session,
+        player_name: String,
+        config: &Config,
+    ) -> Result<String> {
+        let _player = self.get_or_create_player(session).await?;
+        let _store = self.get_store(config).await?;
+        
+        // TODO: Implement uninvite logic
+        Ok(format!("UNINVITE command not fully implemented yet.\n\
+            Would uninvite: {}", player_name))
     }
 
     /// Handle @SETCONFIG command - set world configuration

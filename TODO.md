@@ -475,9 +475,37 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] WorldConfig housing messages (7 fields): err_housing_not_at_office, err_housing_no_templates, etc.
 - [x] Housing template seeding (studio_apartment, basic_apartment, luxury_flat templates with tags)
 - [ ] Housing commands:
-  - [ ] HOUSING LIST - show available templates catalog (location-restricted to HousingOffice rooms)
-  - [ ] RENT <template_id> - clone template to create player instance
-  - [ ] HOME - teleport to owned housing entry room
+  - [x] HOUSING - show player's owned housing status
+  - [x] HOUSING LIST - show available templates catalog (location-restricted to HousingOffice rooms)
+  - [x] RENT <template_id> - clone template to create player instance (COMPLETE - full validation, currency handling, location restrictions)
+  - [ ] HOME command (3-phase implementation):
+    - [ ] **Phase 1 (MVP)**: Basic teleport to primary housing
+      - [ ] Add PlayerRecord.primary_housing_id field
+      - [ ] Add PlayerRecord.last_teleport field for cooldown
+      - [ ] Add PlayerRecord.in_combat field
+      - [ ] Add RoomFlag::NoTeleportOut for teleport restrictions
+      - [ ] Add 6 WorldConfig teleport messages (err_teleport_in_combat, err_teleport_restricted, err_teleport_cooldown, err_no_housing, err_teleport_no_access, msg_teleport_success)
+      - [ ] HOME command: teleports to primary housing with validations
+      - [ ] Validation: Check in_combat flag → block with err_teleport_in_combat
+      - [ ] Validation: Check RoomFlag::NoTeleportOut → block with err_teleport_restricted
+      - [ ] Validation: Check cooldown (world_config.home_cooldown_seconds, default 300) → block with err_teleport_cooldown
+      - [ ] Validation: Check player has active housing → block with err_no_housing
+      - [ ] WorldConfig: home_cooldown_seconds field (default 300 = 5 minutes)
+      - [ ] Set last_teleport timestamp after successful teleport
+    - [ ] **Phase 2 (Polish)**: Multi-home management
+      - [ ] HOME LIST - show all accessible housing instances with status
+      - [ ] Display format: [★ Primary] ID. Name (Category) - ACCESS_TYPE
+      - [ ] Show access types: OWNED, GUEST, GUILD, BUSINESS
+      - [ ] HOME <id> - teleport to specific housing instance by ID/number
+      - [ ] HOME SET <id> - designate a housing instance as primary home
+      - [ ] Update primary_housing_id when using HOME SET
+      - [ ] Auto-prompt if multiple housing and no primary set
+    - [ ] **Phase 3 (Advanced)**: Extended access types
+      - [ ] Guest access tracking (show instances where player is on guests list)
+      - [ ] Guild hall support (HousingInstance.access_type enum)
+      - [ ] Business property support (owned businesses accessible via HOME)
+      - [ ] Quest-based teleport restrictions (Quest.restrictions.allow_teleport)
+      - [ ] Area-specific teleport rules (RoomFlag::QuestRestricted)
   - [ ] DESCRIBE HOME <text> - customize room description (if can_edit_description)
   - [ ] INVITE <player> / UNINVITE <player> - guest management (if can_invite_guests)
   - [ ] LOCK / UNLOCK - access control
