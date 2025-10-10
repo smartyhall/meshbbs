@@ -1981,6 +1981,7 @@ impl TinyMushStore {
                 visibility: crate::tmush::types::RoomVisibility::Private,
                 items: vec![],
                 housing_filter_tags: vec![], // Instance rooms don't filter housing
+                locked: false, // New housing rooms unlocked by default
                 schema_version: crate::tmush::types::ROOM_SCHEMA_VERSION,
             };
             self.put_room(room)?;
@@ -2025,6 +2026,8 @@ impl TinyMushStore {
             entry_room_id,
             guests: vec![],
             active: true,
+            reclaim_box: vec![], // Empty reclaim box for new housing
+            inactive_since: None, // Active housing
             schema_version: 1,
         };
         

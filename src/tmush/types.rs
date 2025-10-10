@@ -89,6 +89,43 @@ pub enum ObjectOwner {
     Player { username: String },
 }
 
+/// Ownership transfer record for forensic tracking
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct OwnershipTransfer {
+    /// Previous owner (None if created by system/world)
+    pub from_owner: Option<String>,
+    /// New owner
+    pub to_owner: String,
+    /// When the transfer occurred
+    pub timestamp: DateTime<Utc>,
+    /// Reason for transfer
+    pub reason: OwnershipReason,
+}
+
+/// Reasons for ownership transfer (for audit trail)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnershipReason {
+    /// Item created by player
+    Created,
+    /// Item purchased from shop
+    Purchased,
+    /// Item received via TRADE command
+    Traded,
+    /// Item received via GIVE command
+    Gifted,
+    /// Item picked up from ground (was dropped)
+    PickedUp,
+    /// Item taken from unlocked container
+    Taken,
+    /// Item reclaimed from reclaim box
+    Reclaimed,
+    /// Item transferred by admin
+    AdminTransfer,
+    /// Item spawned by quest/system
+    SystemGrant,
+}
+
 /// Tutorial progression state for new player onboarding
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -152,6 +189,12 @@ pub struct ObjectRecord {
     pub actions: ObjectActions,
     #[serde(default)]
     pub flags: Vec<ObjectFlag>,
+    /// Whether object is locked (guests can't take it)
+    #[serde(default)]
+    pub locked: bool,
+    /// Indelible ownership history for forensic tracking
+    #[serde(default)]
+    pub ownership_history: Vec<OwnershipTransfer>,
     pub schema_version: u8,
 }
 
@@ -170,6 +213,8 @@ impl ObjectRecord {
             usable: false,
             actions: HashMap::new(),
             flags: Vec::new(),
+            locked: false,
+            ownership_history: Vec::new(),
             schema_version: OBJECT_SCHEMA_VERSION,
         }
     }
@@ -436,6 +481,9 @@ pub struct RoomRecord {
     /// If this is a housing office, filter templates by these tags (empty = show all)
     #[serde(default)]
     pub housing_filter_tags: Vec<String>,
+    /// Whether room is locked (guests can't enter even if on guest list)
+    #[serde(default)]
+    pub locked: bool,
     pub schema_version: u8,
 }
 
@@ -454,6 +502,7 @@ impl RoomRecord {
             flags: Vec::new(),
             max_capacity: 15,
             housing_filter_tags: Vec::new(),
+            locked: false,
             schema_version: ROOM_SCHEMA_VERSION,
         }
     }
@@ -671,6 +720,12 @@ pub struct HousingInstance {
     pub guests: Vec<String>,
     /// Whether instance is currently active
     pub active: bool,
+    /// Item IDs stored in reclaim box (from deletion/abandonment)
+    #[serde(default)]
+    pub reclaim_box: Vec<String>,
+    /// When housing became inactive (owner hasn't logged in)
+    #[serde(default)]
+    pub inactive_since: Option<DateTime<Utc>>,
     /// Schema version
     pub schema_version: u8,
 }
@@ -692,6 +747,8 @@ impl HousingInstance {
             entry_room_id: entry_room_id.to_string(),
             guests: Vec::new(),
             active: true,
+            reclaim_box: Vec::new(),
+            inactive_since: None,
             schema_version: 1,
         }
     }

@@ -266,6 +266,7 @@ mod tests {
             flags: Vec::new(),
             max_capacity,
             housing_filter_tags: Vec::new(),
+            locked: false, // Test rooms unlocked
             schema_version: 1,
         }
     }

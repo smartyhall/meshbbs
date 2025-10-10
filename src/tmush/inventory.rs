@@ -254,6 +254,8 @@ mod tests {
             usable: false,
             actions: std::collections::HashMap::new(),
             flags: Vec::new(),
+            locked: false, // Test items unlocked
+            ownership_history: vec![], // Test items have no history
             schema_version: 1,
         }
     }

@@ -195,6 +195,8 @@ pub fn distribute_tutorial_rewards(
         usable: false,
         actions: Default::default(),
         flags: vec![],
+        locked: false, // Quest items unlocked by default
+        ownership_history: vec![], // No prior ownership
         created_at: Utc::now(),
         schema_version: 1,
     };

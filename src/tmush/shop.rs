@@ -469,6 +469,8 @@ mod tests {
             usable: false,
             actions: HashMap::new(),
             flags: Vec::new(),
+            locked: false, // Shop items unlocked by default
+            ownership_history: vec![], // New items have no history
             schema_version: 1,
         }
     }
