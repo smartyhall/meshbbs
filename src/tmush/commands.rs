@@ -101,6 +101,8 @@ pub enum TinyMushCommand {
     Home(Option<String>),   // HOME, HOME LIST, HOME <id>, HOME SET <id> - teleport to housing
     Invite(String),         // INVITE player - add guest to housing
     Uninvite(String),       // UNINVITE player - remove guest from housing
+    Describe(Option<String>), // DESCRIBE <text> - edit current room description (housing only)
+                            // DESCRIBE - show current description and permissions
     
     // System
     Help(Option<String>),   // HELP, HELP topic
@@ -319,6 +321,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Home(subcommand) => self.handle_home(session, subcommand, config).await,
             TinyMushCommand::Invite(player) => self.handle_invite(session, player, config).await,
             TinyMushCommand::Uninvite(player) => self.handle_uninvite(session, player, config).await,
+            TinyMushCommand::Describe(description) => self.handle_describe(session, description, config).await,
             TinyMushCommand::SetConfig(field, value) => self.handle_set_config(session, field, value, config).await,
             TinyMushCommand::GetConfig(field) => self.handle_get_config(session, field, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
@@ -719,6 +722,16 @@ impl TinyMushProcessor {
                     TinyMushCommand::Uninvite(parts[1].to_lowercase())
                 } else {
                     TinyMushCommand::Unknown("Usage: UNINVITE <player>".to_string())
+                }
+            },
+            "DESCRIBE" | "DESC" => {
+                if parts.len() > 1 {
+                    // Join all parts after DESCRIBE as the description
+                    let description = parts[1..].join(" ");
+                    TinyMushCommand::Describe(Some(description))
+                } else {
+                    // No args - show current description and permissions
+                    TinyMushCommand::Describe(None)
                 }
             },
 
@@ -2877,6 +2890,78 @@ impl TinyMushProcessor {
         store.put_housing_instance(&current_instance)?;
         
         Ok(world_config.msg_uninvite_success.replace("{name}", &player_name))
+    }
+
+    /// Handle DESCRIBE command - edit current room description (housing only)
+    async fn handle_describe(
+        &mut self,
+        session: &Session,
+        description: Option<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        let store = self.get_store(config).await?;
+        let world_config = store.get_world_config().unwrap_or_default();
+        
+        // Get all housing instances player owns or has guest access to
+        let owned_instances = store.get_player_housing_instances(&player.username)?;
+        let guest_instances = store.get_guest_housing_instances(&player.username)?;
+        
+        // Check if player is currently in a housing room
+        let current_owned = owned_instances.iter().find(|inst| {
+            inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+        });
+        
+        let current_guest = guest_instances.iter().find(|inst| {
+            inst.room_mappings.values().any(|room_id| room_id == &player.current_room)
+        });
+        
+        // Determine which instance and check permissions
+        let (current_instance, is_owner) = if let Some(inst) = current_owned {
+            (inst, true)
+        } else if let Some(inst) = current_guest {
+            (inst, false)
+        } else {
+            return Ok(world_config.err_describe_not_in_housing.clone());
+        };
+        
+        // Get the housing template to check permissions
+        let template = store.get_housing_template(&current_instance.template_id)?;
+        
+        // Check if editing is allowed
+        if !is_owner && !template.permissions.can_edit_description {
+            return Ok(world_config.err_describe_no_permission.clone());
+        }
+        
+        // If no description provided, show current description and permissions
+        if description.is_none() {
+            let current_room = store.get_room(&player.current_room)?;
+            let desc = if current_room.long_desc.is_empty() {
+                "Empty room."
+            } else {
+                &current_room.long_desc
+            };
+            
+            return Ok(world_config.msg_describe_current.replace("{desc}", desc));
+        }
+        
+        // Update the room description
+        let new_desc = description.unwrap();
+        
+        // Validate length (500 char max for room descriptions)
+        const MAX_DESC_LENGTH: usize = 500;
+        if new_desc.len() > MAX_DESC_LENGTH {
+            return Ok(world_config.err_describe_too_long
+                .replace("{max}", &MAX_DESC_LENGTH.to_string())
+                .replace("{actual}", &new_desc.len().to_string()));
+        }
+        
+        // Update the room
+        let mut current_room = store.get_room(&player.current_room)?;
+        current_room.long_desc = new_desc;
+        store.put_room(current_room)?;
+        
+        Ok(world_config.msg_describe_success.clone())
     }
 
     /// Handle @SETCONFIG command - set world configuration

@@ -1923,6 +1923,13 @@ pub struct WorldConfig {
     pub err_uninvite_not_guest: String,
     pub msg_uninvite_success: String,
     
+    // === DESCRIBE/CUSTOMIZATION SYSTEM MESSAGES ===
+    pub err_describe_not_in_housing: String,
+    pub err_describe_no_permission: String,
+    pub err_describe_too_long: String,
+    pub msg_describe_success: String,
+    pub msg_describe_current: String,
+    
     // === TECHNICAL/SYSTEM MESSAGES ===
     pub err_player_load_failed: String,
     pub err_shop_save_failed: String,
@@ -2137,6 +2144,13 @@ impl Default for WorldConfig {
             msg_invite_success: "You've invited {name} to your housing.".to_string(),
             err_uninvite_not_guest: "{name} is not on your guest list.".to_string(),
             msg_uninvite_success: "You've removed {name} from your guest list.".to_string(),
+            
+            // Describe/customization system messages
+            err_describe_not_in_housing: "You can only use DESCRIBE in housing you own or have permission to edit.".to_string(),
+            err_describe_no_permission: "You don't have permission to edit this room's description.".to_string(),
+            err_describe_too_long: "Description too long. Maximum {max} characters (yours: {actual}).".to_string(),
+            msg_describe_success: "✓ Room description updated!".to_string(),
+            msg_describe_current: "Current: \"{desc}\"\n\nYou have permission to edit.\nUsage: DESCRIBE <new description>".to_string(),
             
             // Technical/system messages
             err_player_load_failed: "Error loading player: {error}".to_string(),

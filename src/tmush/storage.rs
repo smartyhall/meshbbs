@@ -2191,6 +2191,13 @@ impl TinyMushStore {
             "err_uninvite_not_guest" => config.err_uninvite_not_guest = value.to_string(),
             "msg_uninvite_success" => config.msg_uninvite_success = value.to_string(),
             
+            // Describe/customization system messages
+            "err_describe_not_in_housing" => config.err_describe_not_in_housing = value.to_string(),
+            "err_describe_no_permission" => config.err_describe_no_permission = value.to_string(),
+            "err_describe_too_long" => config.err_describe_too_long = value.to_string(),
+            "msg_describe_success" => config.msg_describe_success = value.to_string(),
+            "msg_describe_current" => config.msg_describe_current = value.to_string(),
+            
             // Technical/system messages
             "err_player_load_failed" => config.err_player_load_failed = value.to_string(),
             "err_shop_save_failed" => config.err_shop_save_failed = value.to_string(),
