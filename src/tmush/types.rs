@@ -1472,6 +1472,10 @@ pub struct PlayerRecord {
     /// Admin level for future role hierarchy (0=none, 1=moderator, 2=admin, 3=sysop)
     #[serde(default)]
     pub admin_level: Option<u8>,
+    /// Builder permission level (0=none, 1=apprentice, 2=builder, 3=architect)
+    /// Builders can create rooms, objects, and modify world structure
+    #[serde(default)]
+    pub builder_level: Option<u8>,
     pub schema_version: u8,
 }
 
@@ -1502,6 +1506,7 @@ impl PlayerRecord {
             in_combat: false,
             is_admin: false,
             admin_level: None,
+            builder_level: None,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
@@ -1536,6 +1541,33 @@ impl PlayerRecord {
         } else {
             0
         }
+    }
+
+    /// Check if player has builder privileges
+    pub fn is_builder(&self) -> bool {
+        self.builder_level.is_some() && self.builder_level.unwrap() > 0
+    }
+
+    /// Grant builder privileges to this player
+    pub fn grant_builder(&mut self, level: u8) {
+        self.builder_level = Some(level.clamp(1, 3));
+        self.touch();
+    }
+
+    /// Revoke builder privileges from this player
+    pub fn revoke_builder(&mut self) {
+        self.builder_level = None;
+        self.touch();
+    }
+
+    /// Get builder level (0 if not a builder)
+    pub fn builder_level(&self) -> u8 {
+        self.builder_level.unwrap_or(0)
+    }
+
+    /// Check if player has sufficient builder level
+    pub fn has_builder_level(&self, required_level: u8) -> bool {
+        self.builder_level() >= required_level
     }
 }
 

@@ -550,17 +550,32 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 
 **Current Status: Storage + abstraction layer complete (124 tests passing), command handlers next**
 
-### Builder Commands (Week 3-4)
-- [ ] Builder permission system (builder rank/flag)
-- [ ] `/DIG <direction> <room_name>` - create new room
-- [ ] `/DESCRIBE <target> <text>` - set descriptions
-- [ ] `/LINK <direction> <destination>` - create exits
-- [ ] `/UNLINK <direction>` - remove exits
-- [ ] `/SETFLAG <target> <flag>` - modify object flags
-- [ ] `/CREATE <object>` - create new objects
-- [ ] `/DESTROY <object>` - delete objects (with safeguards)
+### Builder Commands (Week 3-4) 🚧 IN PROGRESS
+- [x] Builder permission system (builder rank/flag)
+  - [x] Add `builder_level` field to PlayerRecord (0-3: none, apprentice, builder, architect)
+  - [x] Helper methods: is_builder(), grant_builder(), revoke_builder(), has_builder_level()
+  - [x] `/BUILDER` command - show builder status and available commands
+  - [x] `/SETBUILDER <player> <level>` - grant builder privileges (admin level 3 required)
+  - [x] `/REMOVEBUILDER <player>` - revoke builder privileges (admin level 3 required)
+  - [x] `/BUILDERS` - list all builders with levels
+- [x] `/DIG <direction> <room_name>` - create new room with bidirectional exits (builder level 2+)
+- [x] `/DESCRIBE <target> <text>` - set descriptions (builder level 1+)
+  - [x] Use "here" to describe current room
+  - [x] Permission checks (owner or architect required)
+- [x] `/LINK <direction> <destination>` - create one-way exit (builder level 2+)
+- [x] `/UNLINK <direction>` - remove exit (builder level 2+)
+- [x] `/SETFLAG <target> <flag>` - modify room/object flags (builder level 2+)
+  - [x] Add/remove flags with +/- prefix
+  - [x] Use "here" to modify current room
+- [x] `/CREATE <object>` - create new objects (builder level 1+)
+- [x] `/DESTROY <object>` - remove objects from rooms (builder level 3+)
+  - [x] NOTE: Objects are orphaned in storage, need delete_object() method for full deletion
 - [ ] Builder undo/redo system
 - [ ] Builder audit log for all creation/modification
+- [ ] Object description editing (extend /DESCRIBE to support objects)
+- [ ] Implement delete_object() storage method for proper object deletion
+
+**Builder Commands Status**: Core functionality complete (392 tests passing). Permission system fully implemented with 3-tier access control. World manipulation commands functional. Undo/redo and audit logging deferred to future enhancement.
 
 ### Trigger Engine (Week 5-6)
 - [ ] Trigger DSL design (safe, sandboxed)

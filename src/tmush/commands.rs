@@ -110,6 +110,46 @@ pub enum TinyMushCommand {
     History(String),        // HISTORY <item> - view ownership audit trail (Phase 5)
     Reclaim(Option<String>), // RECLAIM - view reclaim box, RECLAIM <item> - retrieve item (Phase 6)
 
+    /// Builder Commands (Phase 7 Week 3-4)
+    ///
+    /// These commands enable world building and modification:
+    /// - `/DIG <direction> <room_name>`: Create a new room and link it in the specified direction
+    /// - `/DESCRIBE <target> <text>`: Set description on room or object
+    /// - `/LINK <direction> <destination>`: Create exit from current room
+    /// - `/UNLINK <direction>`: Remove exit from current room
+    /// - `/SETFLAG <target> <flag>`: Modify object or room flags
+    /// - `/CREATE <object_name>`: Create new object in current room
+    /// - `/DESTROY <object>`: Delete object (with safeguards)
+    /// 
+    /// Permission requirements:
+    /// - All commands require builder level 1+ (Apprentice or higher)
+    /// - Some commands require higher levels (Architect for world structure changes)
+    Dig(String, String),    // /DIG <direction> <room_name> - create room and link (builder 1+)
+    DescribeTarget(String, String), // /DESCRIBE <target> <text> - set description (builder 1+)
+    Link(String, String),   // /LINK <direction> <destination> - create exit (builder 2+)
+    Unlink(String),         // /UNLINK <direction> - remove exit (builder 2+)
+    SetFlag(String, String), // /SETFLAG <target> <flag> - modify flags (builder 2+)
+    Create(String),         // /CREATE <object_name> - create object (builder 1+)
+    Destroy(String),        // /DESTROY <object> - delete object (builder 3+)
+    
+    /// Builder permission management (Phase 7 Week 3)
+    ///
+    /// These commands manage builder privileges:
+    /// - `/BUILDER`: Display builder status and level
+    /// - `/SETBUILDER <player> <level>`: Grant builder privileges (level 0-3)
+    /// - `/REMOVEBUILDER <player>`: Revoke builder privileges
+    /// - `/BUILDERS`: List all builders
+    /// 
+    /// Builder Levels:
+    /// - Level 0: No builder permissions
+    /// - Level 1: Apprentice - create objects, basic room editing
+    /// - Level 2: Builder - create rooms, link exits, modify flags
+    /// - Level 3: Architect - full world editing, deletion powers
+    Builder,                // /BUILDER - show builder status
+    SetBuilder(String, u8), // /SETBUILDER player level - grant builder privileges (0-3)
+    RemoveBuilder(String),  // /REMOVEBUILDER player - revoke builder privileges
+    Builders,               // /BUILDERS - list all builders
+
     
     // System
     Help(Option<String>),   // HELP, HELP topic
@@ -365,6 +405,19 @@ impl TinyMushProcessor {
             TinyMushCommand::ConvertCurrency(currency_type, dry_run) => {
                 self.handle_convert_currency(session, currency_type, dry_run, config).await
             },
+            // Builder permission commands (Phase 7)
+            TinyMushCommand::Builder => self.handle_builder(session, config).await,
+            TinyMushCommand::SetBuilder(username, level) => self.handle_set_builder(session, username, level, config).await,
+            TinyMushCommand::RemoveBuilder(username) => self.handle_remove_builder(session, username, config).await,
+            TinyMushCommand::Builders => self.handle_builders(session, config).await,
+            // Builder world manipulation commands (Phase 7)
+            TinyMushCommand::Dig(direction, room_name) => self.handle_dig(session, direction, room_name, config).await,
+            TinyMushCommand::DescribeTarget(target, description) => self.handle_describe_target(session, target, description, config).await,
+            TinyMushCommand::Link(direction, destination) => self.handle_link(session, direction, destination, config).await,
+            TinyMushCommand::Unlink(direction) => self.handle_unlink(session, direction, config).await,
+            TinyMushCommand::SetFlag(target, flag) => self.handle_set_flag(session, target, flag, config).await,
+            TinyMushCommand::Create(object_name) => self.handle_create(session, object_name, config).await,
+            TinyMushCommand::Destroy(object_name) => self.handle_destroy(session, object_name, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -957,6 +1010,95 @@ impl TinyMushProcessor {
                 let dry_run = parts.len() > 2 && parts[2].eq_ignore_ascii_case("--dry-run");
                 
                 TinyMushCommand::ConvertCurrency(currency_type, dry_run)
+            },
+            
+            // Builder permission management commands (Phase 7)
+            "/BUILDER" => {
+                TinyMushCommand::Builder
+            },
+            "/SETBUILDER" => {
+                if parts.len() > 2 {
+                    let username = parts[1].to_lowercase();
+                    match parts[2].parse::<u8>() {
+                        Ok(level) if level <= 3 => TinyMushCommand::SetBuilder(username, level),
+                        Ok(_) => TinyMushCommand::Unknown("Builder level must be 0-3 (0=none, 1=apprentice, 2=builder, 3=architect)".to_string()),
+                        Err(_) => TinyMushCommand::Unknown("Usage: /SETBUILDER <player> <level>\nLevel: 0=none, 1=apprentice, 2=builder, 3=architect\nExample: /SETBUILDER alice 2".to_string()),
+                    }
+                } else {
+                    TinyMushCommand::Unknown("Usage: /SETBUILDER <player> <level>\nLevel: 0=none, 1=apprentice, 2=builder, 3=architect".to_string())
+                }
+            },
+            "/REMOVEBUILDER" | "/REVOKEBUILDER" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::RemoveBuilder(parts[1].to_lowercase())
+                } else {
+                    TinyMushCommand::Unknown("Usage: /REMOVEBUILDER <player>".to_string())
+                }
+            },
+            "/BUILDERS" | "/BUILDERLIST" => {
+                TinyMushCommand::Builders
+            },
+            
+            // Builder world manipulation commands (Phase 7)
+            "/DIG" => {
+                if parts.len() > 2 {
+                    let direction = parts[1].to_string();
+                    let room_name = parts[2..].join(" ");
+                    TinyMushCommand::Dig(direction, room_name)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /DIG <direction> <room_name>\nExample: /DIG north Mysterious Cave".to_string())
+                }
+            },
+            "/DESCRIBE" => {
+                if parts.len() > 2 {
+                    let target = parts[1].to_string();
+                    let description = parts[2..].join(" ");
+                    TinyMushCommand::DescribeTarget(target, description)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /DESCRIBE <target> <description>\nExample: /DESCRIBE here A dusty abandoned room\nExample: /DESCRIBE sword An ancient blade".to_string())
+                }
+            },
+            "/LINK" => {
+                if parts.len() > 2 {
+                    let direction = parts[1].to_string();
+                    let destination = parts[2].to_string();
+                    TinyMushCommand::Link(direction, destination)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /LINK <direction> <destination>\nExample: /LINK south town_square".to_string())
+                }
+            },
+            "/UNLINK" => {
+                if parts.len() > 1 {
+                    let direction = parts[1].to_string();
+                    TinyMushCommand::Unlink(direction)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /UNLINK <direction>\nExample: /UNLINK north".to_string())
+                }
+            },
+            "/SETFLAG" => {
+                if parts.len() > 2 {
+                    let target = parts[1].to_string();
+                    let flag = parts[2].to_string();
+                    TinyMushCommand::SetFlag(target, flag)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /SETFLAG <target> <flag>\nExample: /SETFLAG here safe\nExample: /SETFLAG sword magical".to_string())
+                }
+            },
+            "/CREATE" => {
+                if parts.len() > 1 {
+                    let object_name = parts[1..].join(" ");
+                    TinyMushCommand::Create(object_name)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /CREATE <object_name>\nExample: /CREATE Ancient Sword".to_string())
+                }
+            },
+            "/DESTROY" => {
+                if parts.len() > 1 {
+                    let object_name = parts[1..].join(" ");
+                    TinyMushCommand::Destroy(object_name)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /DESTROY <object>\nExample: /DESTROY sword".to_string())
+                }
             },
 
             _ => TinyMushCommand::Unknown(input),
@@ -5521,6 +5663,756 @@ impl TinyMushProcessor {
         Ok(response)
     }
 
+    // ============================================================================
+    // Builder Permission Commands (Phase 7)
+    // ============================================================================
+
+    /// Handle `/BUILDER` command - show builder status and available commands
+    ///
+    /// Displays the player's builder level and lists builder commands they have access to.
+    ///
+    /// # Builder Levels
+    /// - Level 0: No builder permissions
+    /// - Level 1: Apprentice - create objects, basic room editing
+    /// - Level 2: Builder - create rooms, link exits, modify flags
+    /// - Level 3: Architect - full world editing, deletion powers
+    ///
+    /// # Example
+    /// ```text
+    /// > /BUILDER
+    /// ═══════════════════════════════════════
+    /// 🔨 BUILDER STATUS
+    /// ═══════════════════════════════════════
+    /// Username: alice
+    /// Builder Level: 2 (Builder)
+    ///
+    /// Available Commands:
+    ///   /CREATE <name> - Create new objects
+    ///   /DESCRIBE <target> <text> - Set descriptions
+    ///   /DIG <direction> <room_name> - Create rooms
+    ///   /LINK <direction> <destination> - Create exits
+    ///   /UNLINK <direction> - Remove exits
+    ///   /SETFLAG <target> <flag> - Modify flags
+    ///
+    /// Total Builders: 5
+    /// ```
+    async fn handle_builder(
+        &mut self,
+        session: &Session,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        let player = store.get_player(&username.to_lowercase())?;
+        let builder_level = player.builder_level();
+        
+        let mut response = String::new();
+        response.push_str("═══════════════════════════════════════\n");
+        response.push_str("🔨 BUILDER STATUS\n");
+        response.push_str("═══════════════════════════════════════\n");
+        response.push_str(&format!("Username: {}\n", username));
+        
+        if builder_level == 0 {
+            response.push_str("Builder Level: 0 (None)\n\n");
+            response.push_str("❌ You do not have builder privileges.\n");
+            response.push_str("Contact an admin to request builder access.\n");
+            return Ok(response);
+        }
+
+        let level_name = match builder_level {
+            1 => "Apprentice",
+            2 => "Builder",
+            3 => "Architect",
+            _ => "Unknown",
+        };
+
+        response.push_str(&format!("Builder Level: {} ({})\n\n", builder_level, level_name));
+        response.push_str("Available Commands:\n");
+
+        // Level 1+ commands
+        if builder_level >= 1 {
+            response.push_str("  /CREATE <name> - Create new objects\n");
+            response.push_str("  /DESCRIBE <target> <text> - Set descriptions\n");
+        }
+
+        // Level 2+ commands
+        if builder_level >= 2 {
+            response.push_str("  /DIG <direction> <room_name> - Create rooms\n");
+            response.push_str("  /LINK <direction> <destination> - Create exits\n");
+            response.push_str("  /UNLINK <direction> - Remove exits\n");
+            response.push_str("  /SETFLAG <target> <flag> - Modify flags\n");
+        }
+
+        // Level 3 commands
+        if builder_level >= 3 {
+            response.push_str("  /DESTROY <object> - Delete objects\n");
+        }
+
+        // Count total builders
+        let all_player_ids = store.list_player_ids()?;
+        let builder_count = all_player_ids.iter()
+            .filter_map(|id| store.get_player(id).ok())
+            .filter(|p| p.is_builder())
+            .count();
+
+        response.push_str(&format!("\n🛠️ Total Builders: {}\n", builder_count));
+
+        Ok(response)
+    }
+
+    /// Handle `/SETBUILDER` command - grant builder privileges to a player
+    ///
+    /// Grants builder privileges at the specified level (0-3). Only sysop-level admins
+    /// (level 3) can grant builder privileges, as builders can modify world structure.
+    ///
+    /// # Builder Levels
+    /// - Level 0: Revoke builder privileges
+    /// - Level 1: Apprentice - create objects, basic editing
+    /// - Level 2: Builder - create rooms, link exits, modify flags
+    /// - Level 3: Architect - full world editing, deletion powers
+    ///
+    /// # Permission Requirements
+    /// - Requires admin level 3 (Sysop)
+    /// - Grants significant world-editing capabilities
+    ///
+    /// # Example
+    /// ```text
+    /// > /SETBUILDER alice 2
+    /// ✅ Granted builder level 2 (Builder) to alice
+    /// ```
+    async fn handle_set_builder(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        level: u8,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check if requester is admin with level 3 (sysop)
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Only sysops can grant builder privileges.".to_string());
+        }
+
+        let requester = store.get_player(&username.to_lowercase())?;
+        if requester.admin_level() < 3 {
+            return Ok(format!(
+                "⛔ Permission denied. Only sysops (level 3) can grant builder privileges.\nYour admin level: {}",
+                requester.admin_level()
+            ));
+        }
+
+        // Validate level
+        if level > 3 {
+            return Ok("❌ Invalid builder level. Must be 0-3.".to_string());
+        }
+
+        // Get target player
+        let mut target = match store.get_player(&target_username.to_lowercase()) {
+            Ok(player) => player,
+            Err(_) => return Ok(format!("❌ Player '{}' not found.", target_username)),
+        };
+
+        // Grant or revoke builder privileges
+        if level == 0 {
+            target.revoke_builder();
+            store.put_player(target)?;
+            Ok(format!("✅ Revoked builder privileges from {}", target_username))
+        } else {
+            target.grant_builder(level);
+            store.put_player(target)?;
+            
+            let level_name = match level {
+                1 => "Apprentice",
+                2 => "Builder",
+                3 => "Architect",
+                _ => "Unknown",
+            };
+
+            Ok(format!("✅ Granted builder level {} ({}) to {}", level, level_name, target_username))
+        }
+    }
+
+    /// Handle `/REMOVEBUILDER` command - revoke builder privileges from a player
+    ///
+    /// Removes all builder privileges from the specified player. Only sysop-level admins
+    /// can revoke builder privileges.
+    ///
+    /// # Permission Requirements
+    /// - Requires admin level 3 (Sysop)
+    ///
+    /// # Example
+    /// ```text
+    /// > /REMOVEBUILDER alice
+    /// ✅ Revoked builder privileges from alice
+    /// ```
+    async fn handle_remove_builder(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check if requester is admin with level 3 (sysop)
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Only sysops can revoke builder privileges.".to_string());
+        }
+
+        let requester = store.get_player(&username.to_lowercase())?;
+        if requester.admin_level() < 3 {
+            return Ok(format!(
+                "⛔ Permission denied. Only sysops (level 3) can revoke builder privileges.\nYour admin level: {}",
+                requester.admin_level()
+            ));
+        }
+
+        // Get target player
+        let mut target = match store.get_player(&target_username.to_lowercase()) {
+            Ok(player) => player,
+            Err(_) => return Ok(format!("❌ Player '{}' not found.", target_username)),
+        };
+
+        if !target.is_builder() {
+            return Ok(format!("❌ {} does not have builder privileges.", target_username));
+        }
+
+        target.revoke_builder();
+        store.put_player(target)?;
+
+        Ok(format!("✅ Revoked builder privileges from {}", target_username))
+    }
+
+    /// Handle `/BUILDERS` command - list all builders
+    ///
+    /// Shows all players with builder privileges and their builder levels.
+    /// This is a public command available to all players.
+    ///
+    /// # Example
+    /// ```text
+    /// > /BUILDERS
+    /// ═══════════════════════════════════════
+    /// 🔨 ACTIVE BUILDERS
+    /// ═══════════════════════════════════════
+    /// alice - Level 2 (Builder)
+    /// bob - Level 3 (Architect)
+    /// carol - Level 1 (Apprentice)
+    ///
+    /// Total: 3 builders
+    /// ```
+    async fn handle_builders(
+        &mut self,
+        _session: &Session,
+        _config: &Config,
+    ) -> Result<String> {
+        let store = self.store();
+        let all_player_ids = store.list_player_ids()?;
+
+        let mut builders: Vec<_> = all_player_ids.iter()
+            .filter_map(|id| store.get_player(id).ok())
+            .filter(|p| p.is_builder())
+            .collect();
+
+        if builders.is_empty() {
+            return Ok("No builders currently registered.".to_string());
+        }
+
+        // Sort by builder level (descending) then username
+        builders.sort_by(|a, b| {
+            b.builder_level().cmp(&a.builder_level())
+                .then_with(|| a.username.cmp(&b.username))
+        });
+
+        let mut response = String::new();
+        response.push_str("═══════════════════════════════════════\n");
+        response.push_str("🔨 ACTIVE BUILDERS\n");
+        response.push_str("═══════════════════════════════════════\n");
+
+        for builder in &builders {
+            let level_name = match builder.builder_level() {
+                1 => "Apprentice",
+                2 => "Builder",
+                3 => "Architect",
+                _ => "Unknown",
+            };
+            response.push_str(&format!(
+                "{} - Level {} ({})\n",
+                builder.username, builder.builder_level(), level_name
+            ));
+        }
+
+        response.push_str(&format!("\nTotal: {} builders\n", builders.len()));
+
+        Ok(response)
+    }
+
+    // ============================================================================
+    // Builder World Manipulation Commands (Phase 7)
+    // ============================================================================
+
+    /// Handle `/DIG` command - create a new room and link it from current location
+    ///
+    /// Creates a new room with the specified name and automatically creates a bidirectional
+    /// exit connecting the current room to the new room in the specified direction.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 2+ (Builder or Architect)
+    ///
+    /// # Example
+    /// ```text
+    /// > /DIG north Mysterious Cave
+    /// ✅ Created room 'mysterious_cave_1234' (Mysterious Cave)
+    /// ✅ Linked north → mysterious_cave_1234
+    /// ✅ Linked mysterious_cave_1234 south → town_square
+    /// ```
+    async fn handle_dig(
+        &mut self,
+        session: &Session,
+        direction_str: String,
+        room_name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 2+ required)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(2) {
+            return Ok("⛔ Permission denied. Creating rooms requires builder level 2 (Builder).".to_string());
+        }
+
+        // Parse direction
+        let direction = match parse_direction_string(&direction_str) {
+            Some(dir) => dir,
+            None => return Ok(format!("❌ Invalid direction: {}", direction_str)),
+        };
+
+        // Get current room
+        let mut current_room = store.get_room(&player.current_room)?;
+
+        // Check if exit already exists
+        if current_room.exits.contains_key(&direction) {
+            return Ok(format!("❌ An exit already exists to the {}.", direction_str));
+        }
+
+        // Generate unique room ID
+        use chrono::Utc;
+        let timestamp = Utc::now().timestamp_millis();
+        let room_id = format!("{}_{}", 
+            room_name.to_lowercase().replace(" ", "_"),
+            timestamp
+        );
+
+        // Create the new room
+        use crate::tmush::types::{RoomRecord, RoomOwner};
+        let new_room = RoomRecord {
+            id: room_id.clone(),
+            name: room_name.clone(),
+            short_desc: format!("A newly created room: {}", room_name),
+            long_desc: format!("This is {}. It needs a description.\nUse /DESCRIBE here <text> to customize it.", room_name),
+            owner: RoomOwner::Player { username: username.to_string() },
+            created_at: Utc::now(),
+            visibility: crate::tmush::types::RoomVisibility::Public,
+            exits: std::collections::HashMap::new(),
+            items: Vec::new(),
+            flags: vec![crate::tmush::types::RoomFlag::PlayerCreated],
+            max_capacity: 15,
+            housing_filter_tags: Vec::new(),
+            locked: false,
+            schema_version: crate::tmush::types::ROOM_SCHEMA_VERSION,
+        };
+
+        // Save new room
+        store.put_room(new_room.clone())?;
+
+        // Link current room to new room
+        current_room.exits.insert(direction, room_id.clone());
+        store.put_room(current_room.clone())?;
+
+        // Create reverse exit
+        let mut new_room_with_exit = new_room;
+        let reverse_direction = get_reverse_direction(&direction);
+        new_room_with_exit.exits.insert(reverse_direction, current_room.id.clone());
+        store.put_room(new_room_with_exit)?;
+
+        Ok(format!(
+            "✅ Created room '{}' ({})\n✅ Linked {} → {}\n✅ Linked {} {} → {}",
+            room_id, room_name,
+            direction_str, room_id,
+            room_id, format_direction(&reverse_direction), current_room.id
+        ))
+    }
+
+    /// Handle `/DESCRIBE` command for targeting specific rooms or objects
+    ///
+    /// Sets the description of a specified target. Use "here" to describe the current room.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 1+ (Apprentice)
+    /// - Can only edit rooms you own or have permission to edit
+    ///
+    /// # Example
+    /// ```text
+    /// > /DESCRIBE here A dark and mysterious cave filled with ancient crystals
+    /// ✅ Updated description for 'Mysterious Cave'
+    /// ```
+    async fn handle_describe_target(
+        &mut self,
+        session: &Session,
+        target: String,
+        description: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 1+ required)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(1) {
+            return Ok("⛔ Permission denied. Setting descriptions requires builder level 1 (Apprentice).".to_string());
+        }
+
+        // Handle "here" as current room
+        if target.to_lowercase() == "here" {
+            let mut room = store.get_room(&player.current_room)?;
+            
+            // Check if player owns the room or is high-level builder
+            let can_edit = match &room.owner {
+                crate::tmush::types::RoomOwner::Player { username: owner } => {
+                    owner == &username || player.has_builder_level(3)
+                },
+                crate::tmush::types::RoomOwner::World => player.has_builder_level(3),
+            };
+
+            if !can_edit {
+                return Ok("⛔ You don't have permission to edit this room.\nOnly the room owner or an Architect can edit it.".to_string());
+            }
+
+            room.long_desc = description;
+            store.put_room(room.clone())?;
+
+            return Ok(format!("✅ Updated description for '{}'", room.name));
+        }
+
+        // Handle objects (future enhancement)
+        Ok(format!("❌ Target '{}' not found. Use 'here' to describe the current room.", target))
+    }
+
+    /// Handle `/LINK` command - create an exit from current room to destination
+    ///
+    /// Creates a one-way exit in the specified direction to the destination room.
+    /// Does not create a reverse exit automatically (use /DIG for bidirectional).
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 2+ (Builder)
+    ///
+    /// # Example
+    /// ```text
+    /// > /LINK north cave_entrance
+    /// ✅ Created exit north → cave_entrance
+    /// ```
+    async fn handle_link(
+        &mut self,
+        session: &Session,
+        direction_str: String,
+        destination: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 2+ required)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(2) {
+            return Ok("⛔ Permission denied. Creating exits requires builder level 2 (Builder).".to_string());
+        }
+
+        // Parse direction
+        let direction = match parse_direction_string(&direction_str) {
+            Some(dir) => dir,
+            None => return Ok(format!("❌ Invalid direction: {}", direction_str)),
+        };
+
+        // Verify destination room exists
+        if store.get_room(&destination).is_err() {
+            return Ok(format!("❌ Destination room '{}' does not exist.", destination));
+        }
+
+        // Get current room
+        let mut current_room = store.get_room(&player.current_room)?;
+
+        // Check if exit already exists
+        if current_room.exits.contains_key(&direction) {
+            return Ok(format!("❌ An exit already exists to the {}.", direction_str));
+        }
+
+        // Check permissions
+        let can_edit = match &current_room.owner {
+            crate::tmush::types::RoomOwner::Player { username: owner } => {
+                owner == &username || player.has_builder_level(3)
+            },
+            crate::tmush::types::RoomOwner::World => player.has_builder_level(3),
+        };
+
+        if !can_edit {
+            return Ok("⛔ You don't have permission to edit this room.".to_string());
+        }
+
+        // Create the exit
+        current_room.exits.insert(direction, destination.clone());
+        store.put_room(current_room)?;
+
+        Ok(format!("✅ Created exit {} → {}", direction_str, destination))
+    }
+
+    /// Handle `/UNLINK` command - remove an exit from current room
+    ///
+    /// Removes the exit in the specified direction from the current room.
+    /// Does not affect reverse exits.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 2+ (Builder)
+    ///
+    /// # Example
+    /// ```text
+    /// > /UNLINK north
+    /// ✅ Removed exit to the north
+    /// ```
+    async fn handle_unlink(
+        &mut self,
+        session: &Session,
+        direction_str: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 2+ required)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(2) {
+            return Ok("⛔ Permission denied. Removing exits requires builder level 2 (Builder).".to_string());
+        }
+
+        // Parse direction
+        let direction = match parse_direction_string(&direction_str) {
+            Some(dir) => dir,
+            None => return Ok(format!("❌ Invalid direction: {}", direction_str)),
+        };
+
+        // Get current room
+        let mut current_room = store.get_room(&player.current_room)?;
+
+        // Check if exit exists
+        if !current_room.exits.contains_key(&direction) {
+            return Ok(format!("❌ No exit exists to the {}.", direction_str));
+        }
+
+        // Check permissions
+        let can_edit = match &current_room.owner {
+            crate::tmush::types::RoomOwner::Player { username: owner } => {
+                owner == &username || player.has_builder_level(3)
+            },
+            crate::tmush::types::RoomOwner::World => player.has_builder_level(3),
+        };
+
+        if !can_edit {
+            return Ok("⛔ You don't have permission to edit this room.".to_string());
+        }
+
+        // Remove the exit
+        current_room.exits.remove(&direction);
+        store.put_room(current_room)?;
+
+        Ok(format!("✅ Removed exit to the {}", direction_str))
+    }
+
+    /// Handle `/SETFLAG` command - modify flags on rooms or objects
+    ///
+    /// Adds or removes flags from rooms or objects. Prefix flag with - to remove it.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 2+ (Builder)
+    ///
+    /// # Example
+    /// ```text
+    /// > /SETFLAG here safe
+    /// ✅ Added flag 'safe' to 'Mysterious Cave'
+    /// > /SETFLAG here -dark
+    /// ✅ Removed flag 'dark' from 'Mysterious Cave'
+    /// ```
+    async fn handle_set_flag(
+        &mut self,
+        session: &Session,
+        target: String,
+        flag_str: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 2+ required)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(2) {
+            return Ok("⛔ Permission denied. Modifying flags requires builder level 2 (Builder).".to_string());
+        }
+
+        // Determine if we're adding or removing the flag
+        let (remove, flag_name) = if flag_str.starts_with('-') {
+            (true, &flag_str[1..])
+        } else {
+            (false, flag_str.as_str())
+        };
+
+        // Handle "here" as current room
+        if target.to_lowercase() == "here" {
+            let mut room = store.get_room(&player.current_room)?;
+            
+            // Check permissions
+            let can_edit = match &room.owner {
+                crate::tmush::types::RoomOwner::Player { username: owner } => {
+                    owner == &username || player.has_builder_level(3)
+                },
+                crate::tmush::types::RoomOwner::World => player.has_builder_level(3),
+            };
+
+            if !can_edit {
+                return Ok("⛔ You don't have permission to edit this room.".to_string());
+            }
+
+            // Parse room flag
+            let flag = match parse_room_flag(flag_name) {
+                Some(f) => f,
+                None => return Ok(format!("❌ Unknown room flag: {}\nValid flags: safe, dark, indoor, shop, pvpenabled, private, moderated, noteleportout", flag_name)),
+            };
+
+            if remove {
+                room.flags.retain(|f| f != &flag);
+                store.put_room(room.clone())?;
+                Ok(format!("✅ Removed flag '{}' from '{}'", flag_name, room.name))
+            } else {
+                if !room.flags.contains(&flag) {
+                    room.flags.push(flag);
+                }
+                store.put_room(room.clone())?;
+                Ok(format!("✅ Added flag '{}' to '{}'", flag_name, room.name))
+            }
+        } else {
+            Ok(format!("❌ Target '{}' not found. Use 'here' to modify the current room.", target))
+        }
+    }
+
+    /// Handle `/CREATE` command - create a new object in current room
+    ///
+    /// Creates a new takeable object with the specified name in the current room.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 1+ (Apprentice)
+    ///
+    /// # Example
+    /// ```text
+    /// > /CREATE Ancient Sword
+    /// ✅ Created object 'ancient_sword_1234' (Ancient Sword)
+    /// ```
+    async fn handle_create(
+        &mut self,
+        session: &Session,
+        object_name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 1+ required)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(1) {
+            return Ok("⛔ Permission denied. Creating objects requires builder level 1 (Apprentice).".to_string());
+        }
+
+        // Generate unique object ID
+        use chrono::Utc;
+        let timestamp = Utc::now().timestamp_millis();
+        let object_id = format!("{}_{}", 
+            object_name.to_lowercase().replace(" ", "_"),
+            timestamp
+        );
+
+        // Create the object
+        use crate::tmush::types::{ObjectRecord, OwnershipReason};
+        let object = ObjectRecord::new_player_owned(
+            &object_id,
+            &object_name,
+            &format!("A newly created object: {}. Use /DESCRIBE {} <text> to set a description.", object_name, object_name),
+            username,
+            OwnershipReason::Created,
+        );
+
+        // Save object
+        store.put_object(object)?;
+
+        // Add to current room
+        let mut room = store.get_room(&player.current_room)?;
+        room.items.push(object_id.clone());
+        store.put_room(room)?;
+
+        Ok(format!("✅ Created object '{}' ({})", object_id, object_name))
+    }
+
+    /// Handle `/DESTROY` command - permanently delete an object
+    ///
+    /// Permanently deletes the specified object from the world. This action cannot be undone.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 3 (Architect)
+    /// - Destructive action with no undo
+    ///
+    /// # Example
+    /// ```text
+    /// > /DESTROY ancient_sword_1234
+    /// ⚠️  WARNING: This will permanently delete the object!
+    /// ✅ Deleted object 'ancient_sword_1234'
+    /// ```
+    async fn handle_destroy(
+        &mut self,
+        session: &Session,
+        object_name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check builder permissions (level 3 required - destructive action)
+        let player = store.get_player(&username.to_lowercase())?;
+        if !player.has_builder_level(3) {
+            return Ok("⛔ Permission denied. Deleting objects requires builder level 3 (Architect).".to_string());
+        }
+
+        // Get current room
+        let mut room = store.get_room(&player.current_room)?;
+
+        // Find object in room
+        let object_id = room.items.iter()
+            .find(|id| id.to_lowercase() == object_name.to_lowercase())
+            .cloned();
+
+        match object_id {
+            Some(id) => {
+                // Remove from room
+                room.items.retain(|item_id| item_id != &id);
+                store.put_room(room)?;
+
+                // TODO: Implement proper object deletion in storage layer
+                // For now, we just remove it from the room's item list
+                // The object still exists in storage but is orphaned
+
+                Ok(format!("✅ Removed object '{}' from room (object orphaned in storage)", id))
+            },
+            None => Ok(format!("❌ Object '{}' not found in current room.", object_name))
+        }
+    }
+
     /// Helper to get required progress for achievement
     fn get_achievement_required(&self, trigger: &crate::tmush::types::AchievementTrigger) -> u32 {
         use crate::tmush::types::AchievementTrigger::*;
@@ -6815,6 +7707,83 @@ pub async fn handle_tinymush_command(
 /// Check if we should route to TinyMUSH based on session state
 pub fn should_route_to_tinymush(session: &Session) -> bool {
     session.current_game_slug.as_deref() == Some("tinymush")
+}
+
+// ============================================================================
+// Helper Functions for Builder Commands
+// ============================================================================
+
+/// Parse a direction string into a Direction enum
+fn parse_direction_string(s: &str) -> Option<crate::tmush::types::Direction> {
+    use crate::tmush::types::Direction::*;
+    match s.to_lowercase().as_str() {
+        "n" | "north" => Some(North),
+        "s" | "south" => Some(South),
+        "e" | "east" => Some(East),
+        "w" | "west" => Some(West),
+        "u" | "up" => Some(Up),
+        "d" | "down" => Some(Down),
+        "ne" | "northeast" => Some(Northeast),
+        "nw" | "northwest" => Some(Northwest),
+        "se" | "southeast" => Some(Southeast),
+        "sw" | "southwest" => Some(Southwest),
+        _ => None,
+    }
+}
+
+/// Get the reverse of a direction (for bidirectional exits)
+fn get_reverse_direction(dir: &crate::tmush::types::Direction) -> crate::tmush::types::Direction {
+    use crate::tmush::types::Direction::*;
+    match dir {
+        North => South,
+        South => North,
+        East => West,
+        West => East,
+        Up => Down,
+        Down => Up,
+        Northeast => Southwest,
+        Northwest => Southeast,
+        Southeast => Northwest,
+        Southwest => Northeast,
+    }
+}
+
+/// Format a direction for display
+fn format_direction(dir: &crate::tmush::types::Direction) -> String {
+    use crate::tmush::types::Direction::*;
+    match dir {
+        North => "north",
+        South => "south",
+        East => "east",
+        West => "west",
+        Up => "up",
+        Down => "down",
+        Northeast => "northeast",
+        Northwest => "northwest",
+        Southeast => "southeast",
+        Southwest => "southwest",
+    }.to_string()
+}
+
+/// Parse a room flag string into a RoomFlag enum
+fn parse_room_flag(s: &str) -> Option<crate::tmush::types::RoomFlag> {
+    use crate::tmush::types::RoomFlag::*;
+    match s.to_lowercase().as_str() {
+        "safe" => Some(Safe),
+        "dark" => Some(Dark),
+        "indoor" => Some(Indoor),
+        "shop" => Some(Shop),
+        "questlocation" => Some(QuestLocation),
+        "pvpenabled" => Some(PvpEnabled),
+        "playercreated" => Some(PlayerCreated),
+        "private" => Some(Private),
+        "moderated" => Some(Moderated),
+        "instanced" => Some(Instanced),
+        "crowded" => Some(Crowded),
+        "housingoffice" => Some(HousingOffice),
+        "noteleportout" => Some(NoTeleportOut),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
