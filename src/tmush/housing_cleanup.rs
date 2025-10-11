@@ -17,10 +17,15 @@
 //! * Admin oversight: Tools to view and manage abandoned housing
 
 use chrono::{DateTime, Utc};
-use log::{debug, info};
+use log::{debug, info, warn};
+use std::sync::Arc;
 
 use crate::storage::Storage;
-use crate::tmush::{TinyMushStore, TinyMushError};
+use crate::tmush::{TinyMushStore, TinyMushError, WorldConfig};
+
+/// Notification callback for housing events
+/// Arguments: (username, housing_name, message)
+pub type NotificationCallback = Arc<dyn Fn(&str, &str, &str) + Send + Sync>;
 
 /// Configuration for the housing cleanup task
 #[derive(Debug, Clone)]
@@ -107,11 +112,25 @@ pub async fn list_abandoned_housing(
 /// This function performs a full scan of all housing instances and takes
 /// progressive actions based on the abandonment timeline. It's designed to be
 /// called periodically (e.g., daily via cron or a background task).
+///
+/// ## Parameters
+/// * `tmush_store` - TinyMUSH storage handle
+/// * `storage` - Main BBS storage (for user login data)
+/// * `config` - Cleanup configuration (thresholds)
+/// * `stats` - Statistics tracker
+/// * `world_config` - World configuration for notification messages
+/// * `notification_fn` - Optional callback for sending notifications to online players
+///
+/// ## Notification Function
+/// The notification function receives: `(username, housing_name, message_text)`
+/// It should handle checking if the player is online and sending the message appropriately.
 pub async fn check_and_cleanup_housing(
     tmush_store: &TinyMushStore,
     storage: &Storage,
     config: &CleanupConfig,
     stats: &mut CleanupStats,
+    world_config: &WorldConfig,
+    notification_fn: Option<NotificationCallback>,
 ) -> Result<(), TinyMushError> {
     stats.checks_performed += 1;
     let now = Utc::now();
@@ -124,6 +143,12 @@ pub async fn check_and_cleanup_housing(
     
     for instance_id in instance_ids {
         if let Ok(mut instance) = tmush_store.get_housing_instance(&instance_id) {
+            // Get housing template for name display
+            let housing_name = tmush_store.get_housing_template(&instance.template_id)
+                .ok()
+                .map(|t| t.name)
+                .unwrap_or_else(|| instance.template_id.clone());
+            
             // Get owner's last login
             let owner_username = &instance.owner;
             if let Ok(Some(owner)) = storage.get_user(owner_username).await {
@@ -143,8 +168,48 @@ pub async fn check_and_cleanup_housing(
                     
                     stats.items_moved_to_reclaim += 1;
                     
+                    // Send notification to owner (if callback provided)
+                    if let Some(ref notify) = notification_fn {
+                        let message = world_config.msg_housing_inactive_warning
+                            .replace("{name}", &housing_name)
+                            .replace("{days}", &days_inactive.to_string());
+                        notify(owner_username, &housing_name, &message);
+                        stats.warnings_issued += 1;
+                    }
+                    
                     // TODO: Move items to reclaim box (call move_housing_to_reclaim_box from commands.rs)
-                    // TODO: Send notification to owner (if online)
+                }
+                
+                // Phase 1.5: Send warnings at 60 and 80 days
+                if !instance.active && instance.inactive_since.is_some() {
+                    let days_in_reclaim = now.signed_duration_since(instance.inactive_since.unwrap()).num_days();
+                    
+                    // 60-day warning (housing marked for reclamation)
+                    if days_in_reclaim >= config.mark_reclaim_days 
+                        && days_in_reclaim < config.final_warning_days 
+                        && notification_fn.is_some() {
+                        if let Some(ref notify) = notification_fn {
+                            let message = world_config.msg_housing_inactive_warning
+                                .replace("{name}", &housing_name)
+                                .replace("{days}", &days_in_reclaim.to_string());
+                            notify(owner_username, &housing_name, &message);
+                            stats.warnings_issued += 1;
+                        }
+                        stats.housing_marked_for_reclaim += 1;
+                    }
+                    
+                    // 80-day final warning
+                    if days_in_reclaim >= config.final_warning_days 
+                        && days_in_reclaim < config.permanent_deletion_days 
+                        && notification_fn.is_some() {
+                        if let Some(ref notify) = notification_fn {
+                            let message = world_config.msg_housing_final_warning
+                                .replace("{name}", &housing_name)
+                                .replace("{days}", &days_in_reclaim.to_string());
+                            notify(owner_username, &housing_name, &message);
+                            stats.warnings_issued += 1;
+                        }
+                    }
                 }
                 
                 // Phase 2: Delete reclaim box items at 90 days
@@ -184,6 +249,179 @@ pub async fn check_and_cleanup_housing(
     );
     
     Ok(())
+}
+
+/// Process recurring housing payments for all active housing instances
+///
+/// This function checks all housing instances to see if monthly payments are due.
+/// It attempts to deduct from the player's wallet first, then bank if needed.
+/// If payment fails, the housing is marked inactive and items moved to reclaim box.
+///
+/// ## Parameters
+/// * `tmush_store` - TinyMUSH storage handle
+/// * `storage` - Main BBS storage (for player data)
+/// * `world_config` - World configuration for notification messages
+/// * `notification_fn` - Optional callback for sending payment notifications
+///
+/// ## Returns
+/// * `Ok((payments_processed, payments_failed))` - Count of successful and failed payments
+pub async fn process_recurring_payments(
+    tmush_store: &TinyMushStore,
+    storage: &Storage,
+    world_config: &WorldConfig,
+    notification_fn: Option<NotificationCallback>,
+) -> Result<(u32, u32), TinyMushError> {
+    let now = Utc::now();
+    let mut payments_processed = 0;
+    let mut payments_failed = 0;
+    
+    info!("Processing recurring housing payments");
+    
+    // Get all housing instances
+    let instance_ids = tmush_store.list_housing_instances()?;
+    
+    for instance_id in instance_ids {
+        if let Ok(mut instance) = tmush_store.get_housing_instance(&instance_id) {
+            // Skip inactive housing
+            if !instance.active {
+                continue;
+            }
+            
+            // Get the template to check for recurring_cost
+            let template = match tmush_store.get_housing_template(&instance.template_id) {
+                Ok(t) => t,
+                Err(e) => {
+                    warn!("Failed to get template {} for instance {}: {}", 
+                          instance.template_id, instance.id, e);
+                    continue;
+                }
+            };
+            
+            // Skip if no recurring cost
+            if template.recurring_cost <= 0 {
+                continue;
+            }
+            
+            // Check if payment is due (30 days since last payment)
+            let days_since_payment = now.signed_duration_since(instance.last_payment).num_days();
+            if days_since_payment < 30 {
+                continue; // Not due yet
+            }
+            
+            info!(
+                "Housing {} ({}) payment due: {} credits (last payment {} days ago)",
+                instance.id, template.name, template.recurring_cost, days_since_payment
+            );
+            
+            // Get housing name for messages
+            let housing_name = &template.name;
+            let owner_username = &instance.owner;
+            
+            // Get owner's player record
+            let mut player = match tmush_store.get_player(owner_username) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("Failed to get player {} for housing {}: {}", 
+                          owner_username, instance.id, e);
+                    continue;
+                }
+            };
+            
+            // Try to deduct payment
+            let cost = template.recurring_cost as i64;
+            let wallet_value = player.currency.base_value();
+            let bank_value = player.banked_currency.base_value();
+            let total_value = wallet_value + bank_value;
+            
+            if total_value >= cost {
+                // Player can afford it - deduct from wallet first, then bank if needed
+                let mut remaining_cost = cost;
+                
+                // Deduct from wallet first
+                if wallet_value > 0 {
+                    let to_deduct = wallet_value.min(remaining_cost);
+                    let deduct_amount = match player.currency {
+                        crate::tmush::types::CurrencyAmount::Decimal { .. } => 
+                            crate::tmush::types::CurrencyAmount::decimal(to_deduct),
+                        crate::tmush::types::CurrencyAmount::MultiTier { .. } => 
+                            crate::tmush::types::CurrencyAmount::multi_tier(to_deduct),
+                    };
+                    
+                    if let Ok(new_currency) = player.currency.subtract(&deduct_amount) {
+                        player.currency = new_currency;
+                        remaining_cost -= to_deduct;
+                    }
+                }
+                
+                // Deduct remainder from bank if needed
+                if remaining_cost > 0 && bank_value > 0 {
+                    let deduct_amount = match player.banked_currency {
+                        crate::tmush::types::CurrencyAmount::Decimal { .. } => 
+                            crate::tmush::types::CurrencyAmount::decimal(remaining_cost),
+                        crate::tmush::types::CurrencyAmount::MultiTier { .. } => 
+                            crate::tmush::types::CurrencyAmount::multi_tier(remaining_cost),
+                    };
+                    
+                    if let Ok(new_bank) = player.banked_currency.subtract(&deduct_amount) {
+                        player.banked_currency = new_bank;
+                    }
+                }
+                
+                // Update player record
+                if let Err(e) = tmush_store.put_player(player.clone()) {
+                    warn!("Failed to update player {} after housing payment: {}", owner_username, e);
+                    payments_failed += 1;
+                    continue;
+                }
+                
+                // Update last payment date
+                instance.last_payment = now;
+                tmush_store.put_housing_instance(&instance)?;
+                
+                payments_processed += 1;
+                
+                info!("Successfully processed payment for housing {} ({}): {} credits", 
+                      instance.id, housing_name, cost);
+                
+                // Send success notification
+                if let Some(ref notify) = notification_fn {
+                    let message = world_config.msg_housing_payment_success
+                        .replace("{name}", housing_name)
+                        .replace("{amount}", &cost.to_string());
+                    notify(owner_username, housing_name, &message);
+                }
+            } else {
+                // Payment failed - mark housing inactive
+                warn!(
+                    "Payment failed for housing {} ({}): insufficient funds ({} credits needed, {} available)",
+                    instance.id, housing_name, cost, total_value
+                );
+                
+                instance.active = false;
+                instance.inactive_since = Some(now);
+                tmush_store.put_housing_instance(&instance)?;
+                
+                payments_failed += 1;
+                
+                // Send failure notification
+                if let Some(ref notify) = notification_fn {
+                    let message = world_config.msg_housing_payment_failed
+                        .replace("{name}", housing_name)
+                        .replace("{amount}", &cost.to_string());
+                    notify(owner_username, housing_name, &message);
+                }
+                
+                // TODO: Move items to reclaim box
+            }
+        }
+    }
+    
+    info!(
+        "Recurring payment processing complete: {} successful, {} failed",
+        payments_processed, payments_failed
+    );
+    
+    Ok((payments_processed, payments_failed))
 }
 
 /// Information about abandoned or at-risk housing

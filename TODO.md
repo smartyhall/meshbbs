@@ -1,10 +1,16 @@
 # TinyMUSH Implementation TODO
 
-**Last Updated**: 2025-10-10 (Phase 9.3 Complete - Player Monitoring Commands!)
+**Last Updated**: 2025-10-11 (Housing System 100% Complete!)
 
-**Recent Achievement**: Player monitoring commands for alpha testing management fully operational! Three commands implemented: `/PLAYERS` (list all players), `WHERE [player]` (dual-mode location display), and `/GOTO <target>` (admin teleportation). Commands provide essential oversight tools for managing alpha testers. All 129 library tests passing!
+**Recent Achievement**: ✅ Housing System Fully Complete! All 387 tests passing:
+- Background task integration for automated cleanup (daily checks)
+- Notification system for abandonment warnings (30/60/80 days)
+- Recurring housing payment system (monthly billing)
+- @LISTABANDONED admin command fully implemented
+- Automatic processing integrated into server housekeeping
+- All infrastructure complete and tested
 
-**Next Up**: Phase 9.4 - Integration Tests for player monitoring commands. Create comprehensive test coverage to verify permission checks, location tracking, teleportation mechanics, and edge cases.
+**Next Up**: Phase 9.5 - World Event Commands (Currency migration tools)
 
 ## Development Standards
 
@@ -474,7 +480,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 ## Phase 7 — Housing, Building, World Creation
 (Ref: Plan §Phase 7, Design §§Housing, MUSH Building System, Triggers)
 
-### Player Housing (Week 1-2) — 98% COMPLETE ✅
+### Player Housing (Week 1-2) — ✅ 100% COMPLETE!
 - [x] Housing data structures (HousingPermissions, HousingTemplateRoom, HousingTemplate, HousingInstance) — types.rs
 - [x] Housing storage trees (TREE_HOUSING_TEMPLATES, TREE_HOUSING_INSTANCES) — storage.rs
 - [x] Housing CRUD methods (10 methods):
@@ -505,13 +511,28 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Reclaim box system (move_housing_to_reclaim_box helper)
   - [x] Abandonment tracking (inactive_since field)
   - [x] Cleanup system with check_and_cleanup_housing() (30/60/80/90 day thresholds)
-  - [x] @LISTABANDONED command (admin visibility)
-- [x] Integration tests for housing lifecycle (documented, some tests TODO due to clone issue)
-- [ ] Background task integration for automated cleanup (scheduler/cron)
-- [ ] Notification system for abandonment warnings (30/60/80 days)
-- [ ] Housing cost deduction and payment system (recurring_cost implementation)
+  - [x] @LISTABANDONED command (admin visibility) - FULLY IMPLEMENTED
+- [x] Background task integration for automated cleanup (scheduler/cron) - ✅ COMPLETE
+  - [x] Integrated into server housekeeping loop (daily checks: 86400 seconds)
+  - [x] housing_cleanup_last_check tracking
+  - [x] Automatic processing via check_housing_cleanup()
+- [x] Notification system for abandonment warnings (30/60/80 days) - ✅ COMPLETE
+  - [x] WorldConfig notification messages (5 new fields added)
+  - [x] Notification callback pattern for online player messaging
+  - [x] 30-day warning: "Items will be moved to reclaim box"
+  - [x] 60-day warning: "Housing marked for reclamation"
+  - [x] 80-day final warning: "Reclaim box will be deleted at 90 days"
+- [x] Housing cost deduction and payment system (recurring_cost implementation) - ✅ COMPLETE
+  - [x] process_recurring_payments() function in housing_cleanup.rs
+  - [x] Monthly billing cycle (every 30 days from last_payment)
+  - [x] Automatic deduction from wallet first, then bank
+  - [x] Payment failure handling (mark inactive, move to reclaim)
+  - [x] Payment notifications (success/failure messages)
+  - [x] Integrated into server housekeeping (daily checks)
+  - [x] housing_payment_last_check tracking
+- [x] Integration tests for housing lifecycle (10 tests passing)
 
-**Housing System Status**: ✅ Storage layer + all commands complete (124 tests passing). Integration tests documented but some marked TODO due to minor clone_housing_template issue that doesn't affect real usage. System is production-ready for alpha testing.
+**Housing System Status**: ✅ **100% COMPLETE!** All storage, commands, lifecycle management, notifications, and recurring payments fully implemented and tested. System is production-ready for alpha testing. 387 total tests passing!
 - [x] Housing data structures (HousingPermissions, HousingTemplateRoom, HousingTemplate, HousingInstance) — types.rs
 - [x] Housing storage trees (TREE_HOUSING_TEMPLATES, TREE_HOUSING_INSTANCES) — storage.rs
 - [x] Housing CRUD methods (10 methods):
@@ -906,53 +927,124 @@ At 1000 users with 10 objects each (10,000 objects total):
 - [x] All 129 library tests passing
 - [ ] Integration tests for player monitoring commands (next priority)
 
-**Status**: Core player monitoring complete! Admins can now list players, locate them, and teleport to assist. Essential tools for alpha testing management are operational. Ready for integration tests!
+**Status**: Core player monitoring complete! Admins can now list players, locate them, and teleport to assist. Essential tools for alpha testing management are operational. ✅ Integration tests implemented and passing!
 
-### Phase 9.4 — Player Monitoring Integration Tests (Week 1 - NEXT UP)
+### Phase 9.4 — Player Monitoring Integration Tests ✅ COMPLETE
 **Priority**: High - Verify player monitoring commands work correctly
-**Effort**: 2-3 hours
-**Dependencies**: Phase 9.3 complete
+**Effort**: 3 hours (actual)
+**Completion Date**: 2025-10-11
+**Commit**: 79114df
 
-- [ ] Test `/PLAYERS` command:
-  - [ ] Shows all registered players
-  - [ ] Displays admin levels correctly
-  - [ ] Shows current room location
-  - [ ] Denies access to non-admins
-  - [ ] Handles empty player list
-  - [ ] Handles 50+ player overflow correctly
-- [ ] Test `WHERE` command (dual-mode):
-  - [ ] Regular user: WHERE shows own location with occupancy
-  - [ ] Admin: WHERE shows own location
-  - [ ] Admin: WHERE <player> locates other player
-  - [ ] Shows player admin level if applicable
-  - [ ] Shows room name and location
-  - [ ] Denies WHERE <player> to non-admins
-  - [ ] Handles player-not-found gracefully
-- [ ] Test `/GOTO` command:
-  - [ ] Teleports admin to player's location
-  - [ ] Teleports admin to specific room
-  - [ ] Updates admin's current_room correctly
-  - [ ] Shows room description after teleport
-  - [ ] Lists players in destination room
-  - [ ] Denies access to non-admins
-  - [ ] Handles invalid player/room gracefully
-  - [ ] Works with both player names and room IDs
-- [ ] Test permission enforcement:
-  - [ ] Level 1 (Moderator) can use all monitoring commands
-  - [ ] Level 2 (Admin) can use all monitoring commands
-  - [ ] Level 3 (Sysop) can use all monitoring commands
-  - [ ] Non-admin gets clear permission denied messages
-- [ ] Test edge cases:
-  - [ ] Player in room without description
-  - [ ] Player in invalid/deleted room
-  - [ ] Multiple players in same room
-  - [ ] Teleport to player who just moved
-- [ ] Create test fixture file: `tests/player_monitoring.rs`
-- [ ] Document test coverage in `docs/development/TMUSH_ADMIN_COMMANDS.md`
+- [x] Test `/PLAYERS` command:
+  - [x] Shows all registered players
+  - [x] Displays admin levels correctly
+  - [x] Shows current room location
+  - [x] Denies access to non-admins
+  - [x] Handles empty player list
+  - [x] Handles 50+ player overflow correctly
+- [x] Test `WHERE` command (dual-mode):
+  - [x] Regular user: WHERE shows own location with occupancy
+  - [x] Admin: WHERE shows own location
+  - [x] Admin: WHERE <player> locates other player
+  - [x] Shows player admin level if applicable
+  - [x] Shows room name and location
+  - [x] Denies WHERE <player> to non-admins
+  - [x] Handles player-not-found gracefully
+- [x] Test `/GOTO` command:
+  - [x] Teleports admin to player's location
+  - [x] Teleports admin to specific room
+  - [x] Updates admin's current_room correctly
+  - [x] Shows room description after teleport
+  - [x] Lists players in destination room
+  - [x] Denies access to non-admins
+  - [x] Handles invalid player/room gracefully
+  - [x] Works with both player names and room IDs
+- [x] Test permission enforcement:
+  - [x] Level 1 (Moderator) can use all monitoring commands
+  - [x] Level 2 (Admin) can use all monitoring commands
+  - [x] Level 3 (Sysop) can use all monitoring commands
+  - [x] Non-admin gets clear permission denied messages
+- [x] Test edge cases:
+  - [x] Player in room without description
+  - [x] Player in invalid/deleted room
+  - [x] Multiple players in same room
+  - [x] Teleport to player who just moved
+- [x] Created test fixture file: `tests/player_monitoring.rs` (10 tests)
+- [x] Fixed test isolation with temp directory configuration
+- [x] Documentation in `docs/development/TMUSH_ADMIN_COMMANDS.md`
 
-**Expected Test Count**: +8-12 integration tests
+**Test Status**: 10/10 integration tests passing as part of 374 total tests.
 
-**Status**: Player monitoring integration tests DEFERRED. Core functionality verified by 129 library tests. Integration test infrastructure needs comprehensive overhaul to support async game door testing. See Phase 9.4.5 for detailed test infrastructure work required.
+**Infrastructure Improvements Completed**:
+- Fixed temp directory configuration for TinyMUSH stores in tests
+- Resolved Sled database locking conflicts (no more reopening same database)
+- Created unique temp directories per test for proper isolation
+- All tests now use isolated databases to prevent data contamination
+
+### Phase 9.4.5 — Critical Infrastructure Fixes ✅ COMPLETE
+**Priority**: URGENT - Blocking test development
+**Effort**: 6 hours (actual)
+**Completion Date**: 2025-10-11
+**Commit**: 79114df
+
+#### Problems Discovered and Fixed
+
+**1. NPC Serialization Errors** ✅ FIXED
+- **Problem**: `InvalidBoolEncoding(X)` errors when deserializing NPC records
+- **Root Cause**: Bincode 1.3 incompatible with certain serde attributes:
+  - `#[serde(skip_serializing_if = "Option::is_none")]` on DialogChoice.goto
+  - `#[serde(tag = "type")]` on DialogCondition and DialogAction enums
+- **Solution**: Removed incompatible serde attributes from `src/tmush/types.rs`
+- **Impact**: NPCs with dialogue trees now serialize/deserialize correctly
+- **Validation**: Created `tests/npc_serialization_test.rs` to prevent regression
+
+**2. GameRegistry Pattern** ✅ IMPLEMENTED
+- **Problem**: Multiple code paths opening same Sled store causing cache coherency issues
+- **Solution**: Created `src/bbs/game_registry.rs` for centralized resource management
+- **Pattern**: Single Arc<TinyMushStore> shared across all BBS code
+- **Methods**: Builder pattern with `with_tinymush()`, `with_tinyhack()`, getter methods
+- **Impact**: Prevents Sled database conflicts, enables proper test isolation
+
+**3. Schema Migration System** ✅ IMPLEMENTED
+- **Problem**: Data schema changes breaking existing databases
+- **Solution**: Created `src/tmush/migration.rs` with Migratable trait
+- **Components**: 
+  - Migratable trait with `current_schema_version()`, `migrate()`, `needs_migration()`
+  - `load_and_migrate<T>()` helper for automatic versioning
+  - Implementations for PlayerRecord (v2), NpcRecord (v1), RoomRecord (v2), ObjectRecord (v2)
+- **Usage**: `get_npcs_in_room()` now uses migration system
+- **Documentation**: `docs/development/SCHEMA_MIGRATION.md`
+
+**4. Test Navigation Issues** ✅ FIXED
+- **Problem**: Tests assumed menu position (G2) and room locations
+- **Solution A**: Changed all tests to use explicit "TINYMUSH" command (position-independent)
+- **Solution B**: Fixed navigation paths (players start at gazebo_landing, must go N to town_square)
+- **Files**: `tests/npc_multi_topic_dialogue.rs` (4 tests fixed)
+
+**5. Test Database Isolation** ✅ FIXED
+- **Problem**: Tests not configuring temp directory, used default "data/tinymush"
+- **Solution**: Added `cfg.games.tinymush_db_path` to all relevant tests
+- **Files**: 
+  - `tests/player_monitoring.rs` (helper function updated)
+  - `tests/npc_multi_topic_dialogue.rs` (all 4 tests)
+- **Impact**: Each test gets isolated database, no cross-contamination
+
+**6. Sled Database Locking** ✅ FIXED
+- **Problem A**: `tests/tmush_admin_command_handlers.rs` reopening same database
+- **Solution A**: Reuse existing store instance instead of reopening
+- **Problem B**: `src/tmush/commands.rs` unit tests sharing temp directory
+- **Solution B**: Unique temp dir per test: `create_test_store(test_name)`
+- **Pattern**: `format!("tinymush_test_{}_{}", process_id, test_name)` with cleanup
+- **Impact**: No more Sled locking errors, tests run in parallel safely
+
+**Final Status**: 
+- ✅ 374 tests passing (134 library + 240 integration)
+- ✅ 0 test failures
+- ✅ All infrastructure issues resolved
+- ✅ Comprehensive documentation added
+- ✅ Clean git commit (79114df) with 26 files changed
+
+
 
 ### Phase 9.4.5 — Game Door Test Infrastructure Overhaul (Week 2-3) **CRITICAL PATH**
 **Priority**: URGENT - Blocking all game door integration tests

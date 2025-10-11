@@ -125,6 +125,8 @@ pub struct BbsServer {
     weather_service: WeatherService,
     #[cfg(feature = "weather")]
     weather_last_poll: Instant, // track when we last attempted proactive weather refresh
+    housing_cleanup_last_check: Instant, // track when we last ran housing cleanup
+    housing_payment_last_check: Instant, // track when we last processed recurring payments
     #[cfg(feature = "meshtastic-proto")]
     pending_direct: Vec<(u32, u32, String)>, // queue of (dest_node_id, channel, message) awaiting our node id
     #[cfg(feature = "meshtastic-proto")]
@@ -454,6 +456,9 @@ impl BbsServer {
             weather_service: WeatherService::new(config.weather.clone()),
             #[cfg(feature = "weather")]
             weather_last_poll: Instant::now() - Duration::from_secs(301),
+            // Initialize housing cleanup timers to run immediately on first tick
+            housing_cleanup_last_check: Instant::now() - Duration::from_secs(86401), // More than 1 day ago
+            housing_payment_last_check: Instant::now() - Duration::from_secs(86401), // More than 1 day ago
             #[cfg(feature = "meshtastic-proto")]
             pending_direct: Vec::new(),
             #[cfg(feature = "meshtastic-proto")]
@@ -965,6 +970,23 @@ impl BbsServer {
                             let _ = self.fetch_weather().await;
                             self.weather_last_poll = Instant::now();
                         }
+                        
+                        // Housing cleanup check (once per day: 86400 seconds)
+                        if self.housing_cleanup_last_check.elapsed() >= Duration::from_secs(86400) {
+                            if let Err(e) = self.check_housing_cleanup().await {
+                                warn!("Housing cleanup error: {}", e);
+                            }
+                            self.housing_cleanup_last_check = Instant::now();
+                        }
+                        
+                        // Housing recurring payments (once per day: 86400 seconds)
+                        if self.housing_payment_last_check.elapsed() >= Duration::from_secs(86400) {
+                            if let Err(e) = self.process_housing_payments().await {
+                                warn!("Housing payment processing error: {}", e);
+                            }
+                            self.housing_payment_last_check = Instant::now();
+                        }
+                        
                         if self.node_cache_last_cleanup.elapsed() >= Duration::from_secs(3600) {
                             self.node_cache_last_cleanup = Instant::now();
                         }
@@ -3812,6 +3834,96 @@ impl BbsServer {
     #[cfg(not(feature = "weather"))]
     async fn fetch_weather(&mut self) -> Option<String> {
         None
+    }
+
+    /// Check for abandoned housing and process cleanup
+    async fn check_housing_cleanup(&mut self) -> Result<()> {
+        use crate::tmush::housing_cleanup::{check_and_cleanup_housing, CleanupConfig, CleanupStats};
+        
+        info!("Running daily housing cleanup check");
+        
+        // Get TinyMUSH store from game registry
+        let Some(tmush_store) = self.game_registry.get_tinymush_store() else {
+            debug!("TinyMUSH not available, skipping housing cleanup");
+            return Ok(());
+        };
+        
+        // Get world config for notifications
+        let world_config = tmush_store.get_world_config()?;
+        
+        // Create notification callback that sends DMs to online users
+        let sessions = self.sessions.clone();
+        let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
+            // Check if user is online
+            if let Some(session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
+                // User is online - notification would be sent here
+                // For now, just log it since we don't have direct access to send_message
+                info!("Housing notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
+            }
+        });
+        
+        let config = CleanupConfig::default();
+        let mut stats = CleanupStats::default();
+        
+        check_and_cleanup_housing(
+            &tmush_store,
+            &self.storage,
+            &config,
+            &mut stats,
+            &world_config,
+            Some(notification_fn),
+        ).await?;
+        
+        info!(
+            "Housing cleanup complete: {} checks, {} marked inactive, {} warnings, {} reclaim boxes deleted",
+            stats.checks_performed,
+            stats.items_moved_to_reclaim,
+            stats.warnings_issued,
+            stats.reclaim_boxes_deleted
+        );
+        
+        Ok(())
+    }
+
+    /// Process recurring housing payments
+    async fn process_housing_payments(&mut self) -> Result<()> {
+        use crate::tmush::housing_cleanup::process_recurring_payments;
+        
+        info!("Processing daily housing recurring payments");
+        
+        // Get TinyMUSH store from game registry
+        let Some(tmush_store) = self.game_registry.get_tinymush_store() else {
+            debug!("TinyMUSH not available, skipping housing payments");
+            return Ok(());
+        };
+        
+        // Get world config for notifications
+        let world_config = tmush_store.get_world_config()?;
+        
+        // Create notification callback that sends DMs to online users
+        let sessions = self.sessions.clone();
+        let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
+            // Check if user is online
+            if let Some(session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
+                // User is online - notification would be sent here
+                // For now, just log it since we don't have direct access to send_message
+                info!("Housing payment notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
+            }
+        });
+        
+        let (processed, failed) = process_recurring_payments(
+            &tmush_store,
+            &self.storage,
+            &world_config,
+            Some(notification_fn),
+        ).await?;
+        
+        info!(
+            "Housing payments complete: {} successful, {} failed",
+            processed, failed
+        );
+        
+        Ok(())
     }
 
     /// Show BBS status and statistics

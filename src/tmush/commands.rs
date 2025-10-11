@@ -345,7 +345,7 @@ impl TinyMushProcessor {
             TinyMushCommand::EditRoom(room_id, description) => self.handle_edit_room(session, room_id, description, config).await,
             TinyMushCommand::EditNpc(npc_id, field, value) => self.handle_edit_npc(session, npc_id, field, value, config).await,
             TinyMushCommand::Dialog(npc_id, subcommand, args) => self.handle_dialog(session, npc_id, subcommand, args, config).await,
-            TinyMushCommand::ListAbandoned => self.handle_list_abandoned(session, config).await,
+            TinyMushCommand::ListAbandoned => self.handle_list_abandoned(session, _storage, config).await,
             TinyMushCommand::Admin => self.handle_admin(session, config).await,
             TinyMushCommand::SetAdmin(username, level) => self.handle_set_admin(session, username, level, config).await,
             TinyMushCommand::RemoveAdmin(username) => self.handle_remove_admin(session, username, config).await,
@@ -4733,23 +4733,47 @@ impl TinyMushProcessor {
     async fn handle_list_abandoned(
         &mut self,
         _session: &Session,
+        storage: &Storage,
         _config: &Config,
     ) -> Result<String> {
-        // This is a placeholder command for Phase 7
-        // Full implementation requires integration with Storage for user last_login data
+        use crate::tmush::housing_cleanup::list_abandoned_housing;
         
-        Ok("🏚️  ABANDONED HOUSING REPORT\n\n\
-            This command requires integration with the background cleanup task.\n\n\
-            To check housing status manually, use:\n\
-            - HOME LIST - view your own housing\n\
-            - HOME <id> - check specific housing instance\n\n\
-            Administrator tools will be added in a future update.\n\n\
-            Current implementation status:\n\
-            ✅ Background cleanup task (housing_cleanup.rs)\n\
-            ✅ Periodic checking (30/60/80/90 day thresholds)\n\
-            ✅ Reclaim box system\n\
-            🔄 Admin command integration (pending)\n\n\
-            This command is a placeholder for Phase 7 completion.".to_string())
+        // Get abandoned housing list
+        let abandoned = list_abandoned_housing(&self.store, storage).await
+            .map_err(|e| anyhow::anyhow!("Failed to list abandoned housing: {}", e))?;
+        
+        if abandoned.is_empty() {
+            return Ok("� ABANDONED HOUSING REPORT\n\n\
+                      No housing instances are currently at risk or abandoned.\n\
+                      All players are actively maintaining their housing!".to_string());
+        }
+        
+        let mut output = format!("🏚️  ABANDONED HOUSING REPORT\n\n\
+                                  Found {} housing instances at risk:\n\n", abandoned.len());
+        
+        for (idx, info) in abandoned.iter().enumerate() {
+            output.push_str(&format!(
+                "{}. {} (Owner: {})\n\
+                 Template: {}\n\
+                 {} (Inactive for {} days)\n\
+                 Reclaim Box: {} items\n\n",
+                idx + 1,
+                info.instance_id,
+                info.owner_username,
+                info.template_id,
+                info.status_message(),
+                info.days_inactive,
+                info.reclaim_box_items
+            ));
+        }
+        
+        output.push_str("\nTimeline:\n\
+                        30 days: Items moved to reclaim box\n\
+                        60 days: Housing marked for reclamation\n\
+                        80 days: Final warning issued\n\
+                        90 days: Reclaim box permanently deleted\n");
+        
+        Ok(output)
     }
 
     /// Handle `@ADMIN` command - show admin status and available commands

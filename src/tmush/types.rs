@@ -2259,6 +2259,11 @@ pub struct WorldConfig {
     pub err_housing_template_not_found: String,
     pub msg_housing_rented: String,
     pub msg_housing_list_header: String,
+    pub msg_housing_inactive_warning: String,
+    pub msg_housing_payment_due: String,
+    pub msg_housing_payment_failed: String,
+    pub msg_housing_payment_success: String,
+    pub msg_housing_final_warning: String,
     
     // === HOME/TELEPORT SYSTEM MESSAGES ===
     pub err_teleport_in_combat: String,
@@ -2485,6 +2490,11 @@ impl Default for WorldConfig {
             err_housing_template_not_found: "Housing template '{name}' not found. Type HOUSING LIST to see available options.".to_string(),
             msg_housing_rented: "Congratulations! You've acquired {name}.\nType HOME to visit your new space!".to_string(),
             msg_housing_list_header: "=== Available Housing ===\n\nType RENT <id> to acquire housing.\nType HOUSING INFO <id> for more details.".to_string(),
+            msg_housing_inactive_warning: "⚠️ HOUSING NOTICE: Your housing '{name}' has been inactive for {days} days.\nItems will be moved to a reclaim box at 30 days. Your housing will be marked for reclamation at 60 days.\nLog in regularly to maintain your housing, or type RECLAIM to retrieve items.".to_string(),
+            msg_housing_payment_due: "💰 HOUSING PAYMENT: Your monthly payment of {amount} credits for '{name}' is due.\nPayment will be automatically deducted from your wallet or bank account.".to_string(),
+            msg_housing_payment_failed: "❌ HOUSING PAYMENT FAILED: Unable to deduct {amount} credits for '{name}'.\nYou have insufficient funds. Your housing has been marked inactive.\nItems have been moved to your reclaim box. Type RECLAIM to retrieve them.".to_string(),
+            msg_housing_payment_success: "✅ HOUSING PAYMENT: Successfully paid {amount} credits for '{name}'.\nYour next payment is due in 30 days.".to_string(),
+            msg_housing_final_warning: "🔴 FINAL WARNING: Your housing '{name}' has been inactive for {days} days.\nYour reclaim box will be permanently deleted at 90 days.\nLog in now to retrieve your items with the RECLAIM command!".to_string(),
             
             // Home/teleport system messages
             err_teleport_in_combat: "You can't teleport while in combat!".to_string(),
