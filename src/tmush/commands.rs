@@ -169,47 +169,36 @@ pub enum Direction {
 
 /// TinyMUSH session state and command processor
 pub struct TinyMushProcessor {
-    store: Option<TinyMushStore>,
+    store: TinyMushStore,
     room_manager: Option<RoomManager>,
 }
 
-impl Default for TinyMushProcessor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl TinyMushProcessor {
-    pub fn new() -> Self {
+    /// Create a new processor with a shared store instance.
+    /// 
+    /// Using a shared store ensures all processors see consistent data without
+    /// the multi-handle caching issues that occur when each processor opens
+    /// its own Sled database handle.
+    pub fn new(store: TinyMushStore) -> Self {
         Self { 
-            store: None,
+            store,
             room_manager: None,
         }
     }
 
-    /// Initialize or get the TinyMUSH store for this session
-    async fn get_store(&mut self, config: &Config) -> Result<&TinyMushStore, TinyMushError> {
-        if self.store.is_none() {
-            let db_path = config.games.tinymush_db_path
-                .as_deref()
-                .unwrap_or("data/tinymush");
-            
-            debug!("Opening TinyMUSH store at: {}", db_path);
-            let store = TinyMushStore::open(db_path)?;
-            self.store = Some(store);
-        }
-        
-        Ok(self.store.as_ref().unwrap())
+    /// Get the TinyMUSH store reference
+    fn store(&self) -> &TinyMushStore {
+        &self.store
     }
 
     /// Initialize or get the room manager for this session
-    async fn get_room_manager(&mut self, config: &Config) -> Result<&mut RoomManager, TinyMushError> {
+    async fn get_room_manager(&mut self) -> Result<&mut RoomManager, TinyMushError> {
         if self.room_manager.is_none() {
-            // Ensure store is initialized first, then clone it for the room manager
+            // Clone the store for the room manager
             // Cloning TinyMushStore is cheap - all internal Sled types are Arc-based
-            let store = self.get_store(config).await?.clone();
+            let store = self.store.clone();
             
-            debug!("Creating TinyMUSH room manager (reusing existing store)");
+            debug!("Creating TinyMUSH room manager (using shared store)");
             let room_manager = RoomManager::new(store);
             self.room_manager = Some(room_manager);
         }
@@ -217,12 +206,7 @@ impl TinyMushProcessor {
         Ok(self.room_manager.as_mut().unwrap())
     }
 
-    /// Get the store reference (assumes store is already initialized)
-    fn store(&self) -> &TinyMushStore {
-        self.store.as_ref().expect("TinyMUSH store not initialized")
-    }
-
-    /// Get world configuration (assumes store is already initialized)
+    /// Get world configuration
     async fn get_world_config(&self) -> Result<crate::tmush::types::WorldConfig, TinyMushError> {
         self.store().get_world_config()
     }
@@ -232,15 +216,8 @@ impl TinyMushProcessor {
         &mut self,
         session: &mut Session,
         _storage: &mut Storage,
-        config: &Config,
+        _config: &Config,
     ) -> Result<String> {
-        let _store = match self.get_store(config).await {
-            Ok(store) => store,
-            Err(e) => {
-                return Ok(format!("TinyMUSH unavailable: {}", e));
-            }
-        };
-
         // Create or load player  
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
@@ -297,11 +274,6 @@ impl TinyMushProcessor {
         _storage: &mut Storage,
         config: &Config,
     ) -> Result<String> {
-        // Ensure store is initialized
-        if let Err(e) = self.get_store(config).await {
-            return Ok(format!("TinyMUSH unavailable: {}", e));
-        }
-
         let parsed_command = self.parse_command(command);
         debug!(
             "TinyMUSH command parsed: session={} command={:?}",
@@ -1000,7 +972,7 @@ impl TinyMushProcessor {
         };
 
         // Get room manager
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         
         // Get current room
         let current_room = match room_manager.get_room(&player.current_room) {
@@ -1121,7 +1093,7 @@ impl TinyMushProcessor {
 
         // If no target specified, show own location (original WHERE behavior)
         if target_username.is_none() {
-            let room_manager = self.get_room_manager(config).await?;
+            let room_manager = self.get_room_manager().await?;
             
             match room_manager.get_room(&player.current_room) {
                 Ok(room) => {
@@ -1155,7 +1127,7 @@ impl TinyMushProcessor {
             }
         } else {
             // Target specified - admin command to locate another player
-            let store = self.get_store(config).await?;
+            let store = self.store();
             
             // Check if caller is admin
             if !player.is_admin() {
@@ -1186,7 +1158,7 @@ impl TinyMushProcessor {
             response.push_str(&format!("\nCurrent Location: {}\n", target_player.current_room));
             
             // Try to get room details
-            let room_mgr = self.get_room_manager(config).await?;
+            let room_mgr = self.get_room_manager().await?;
             if let Ok(room) = room_mgr.get_room(&target_player.current_room) {
                 response.push_str(&format!("Room: {}\n", room.name));
             }
@@ -1206,7 +1178,7 @@ impl TinyMushProcessor {
         };
 
         let current_room_id = &player.current_room;
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         
         // Build map display showing all rooms and their connections
         let mut response = String::new();
@@ -1725,7 +1697,7 @@ impl TinyMushProcessor {
     /// Handle SAY command - speak to room
     async fn handle_say(&mut self, session: &Session, text: String, config: &Config) -> Result<String> {
         if text.trim().is_empty() {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             let world_config = store.get_world_config()?;
             return Ok(world_config.err_say_what);
         }
@@ -1736,7 +1708,7 @@ impl TinyMushProcessor {
         };
 
         // Get other players in the same room
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         let players_in_room = room_manager.get_players_in_room(&player.current_room);
         let others_count = players_in_room.len().saturating_sub(1); // Exclude self
 
@@ -1773,7 +1745,7 @@ impl TinyMushProcessor {
         };
 
         // Check if target player exists and is in same room
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         let players_in_room = room_manager.get_players_in_room(&player.current_room);
         
         let target_lower = target.to_lowercase();
@@ -1817,7 +1789,7 @@ impl TinyMushProcessor {
         };
 
         // Get other players in the same room
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         let players_in_room = room_manager.get_players_in_room(&player.current_room);
         let others_count = players_in_room.len().saturating_sub(1); // Exclude self
 
@@ -1848,7 +1820,7 @@ impl TinyMushProcessor {
         };
 
         // Get other players in the same room
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         let players_in_room = room_manager.get_players_in_room(&player.current_room);
         let others_count = players_in_room.len().saturating_sub(1); // Exclude self
 
@@ -1880,7 +1852,7 @@ impl TinyMushProcessor {
         };
 
         // Get other players in the same room
-        let room_manager = self.get_room_manager(config).await?;
+        let room_manager = self.get_room_manager().await?;
         let players_in_room = room_manager.get_players_in_room(&player.current_room);
         let others_count = players_in_room.len().saturating_sub(1); // Exclude self
 
@@ -3260,7 +3232,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Get world config for error messages
         let world_config = store.get_world_config()?;
@@ -3379,7 +3351,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let mut player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         let world_config = store.get_world_config().unwrap_or_default();
         
         // Get current room to check if we're at a housing office
@@ -3480,7 +3452,7 @@ impl TinyMushProcessor {
         use chrono::Utc;
         
         let mut player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         let world_config = store.get_world_config().unwrap_or_default();
         
         match subcommand {
@@ -3744,7 +3716,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         let world_config = store.get_world_config().unwrap_or_default();
         
         // Check player owns housing
@@ -3789,7 +3761,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         let world_config = store.get_world_config().unwrap_or_default();
         
         // Check player owns housing
@@ -3828,7 +3800,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         let world_config = store.get_world_config().unwrap_or_default();
         
         // Get all housing instances player owns or has guest access to
@@ -3900,7 +3872,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // If target is None, lock current room
         if target.is_none() {
@@ -3978,7 +3950,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // If target is None, unlock current room
         if target.is_none() {
@@ -4064,7 +4036,7 @@ impl TinyMushProcessor {
         
         // Get instances and housing rooms first (separate scope)
         let (mut current_instance, housing_rooms) = {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             
             // Check if player owns housing
             let instances = store.get_player_housing_instances(&player.username)?;
@@ -4092,7 +4064,7 @@ impl TinyMushProcessor {
             
             // Find all guests currently in the housing
             let guests_to_kick = {
-                let room_manager = self.get_room_manager(config).await?;
+                let room_manager = self.get_room_manager().await?;
                 let mut guests = Vec::new();
                 for room_id in &housing_rooms {
                     let players_in_room = room_manager.get_players_in_room(room_id);
@@ -4107,7 +4079,7 @@ impl TinyMushProcessor {
             
             // Teleport them
             for guest_username in guests_to_kick {
-                let store = self.get_store(config).await?;
+                let store = self.store();
                 if let Ok(mut guest_player) = store.get_player_async(&guest_username).await {
                     guest_player.current_room = "town_square".to_string();
                     let _ = store.put_player_async(guest_player).await;
@@ -4116,7 +4088,7 @@ impl TinyMushProcessor {
             
             // Clear guest list
             current_instance.guests.clear();
-            let store = self.get_store(config).await?;
+            let store = self.store();
             store.put_housing_instance(&current_instance)?;
             
             return Ok(format!(
@@ -4132,7 +4104,7 @@ impl TinyMushProcessor {
         
         // Check if the player is currently in the housing
         let was_in_housing = {
-            let room_manager = self.get_room_manager(config).await?;
+            let room_manager = self.get_room_manager().await?;
             let mut found = false;
             for room_id in &housing_rooms {
                 let players_in_room = room_manager.get_players_in_room(room_id);
@@ -4146,7 +4118,7 @@ impl TinyMushProcessor {
         
         // Teleport if in housing
         if was_in_housing {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             if let Ok(mut target_player) = store.get_player_async(&target).await {
                 target_player.current_room = "town_square".to_string();
                 store.put_player_async(target_player).await?;
@@ -4155,7 +4127,7 @@ impl TinyMushProcessor {
         
         // Remove from guest list
         current_instance.guests.retain(|g| g != &target);
-        let store = self.get_store(config).await?;
+        let store = self.store();
         store.put_housing_instance(&current_instance)?;
         
         if was_in_housing {
@@ -4183,7 +4155,7 @@ impl TinyMushProcessor {
         // For now, allowing any authenticated user for testing
         let player = self.get_or_create_player(session).await?;
 
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Update the configuration field
         match store.update_world_config_field(&field, &value, &player.username) {
@@ -4203,7 +4175,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let _player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         let world_config = store.get_world_config()?;
 
@@ -4287,7 +4259,7 @@ impl TinyMushProcessor {
         // TODO: Add proper role-based permissions when admin system is implemented
         // For now, allowing any authenticated user for testing
         
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Validate description length (500 char max)
         const MAX_DESC_LENGTH: usize = 500;
@@ -4352,7 +4324,7 @@ impl TinyMushProcessor {
         // TODO: Add proper role-based permissions
         // For now, allowing any authenticated user for alpha testing
         
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Get the NPC
         let mut npc = match store.get_npc(&npc_id) {
@@ -4456,7 +4428,7 @@ impl TinyMushProcessor {
         // TODO: Add proper role-based permissions
         // For now, allowing any authenticated user for alpha testing
         
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Get the NPC
         let mut npc = match store.get_npc(&npc_id) {
@@ -4832,7 +4804,7 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         let mut response = String::from("🛡️  ADMIN STATUS\n\n");
         response.push_str(&format!("Player: {}\n", player.display_name));
@@ -4933,7 +4905,7 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Check if caller is admin
         if let Err(e) = store.require_admin(&player.username) {
@@ -5023,7 +4995,7 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Check if caller is admin
         if let Err(e) = store.require_admin(&player.username) {
@@ -5103,7 +5075,7 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Anyone can view admin list
         match store.list_admins() {
@@ -5194,7 +5166,7 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Check if caller is admin
         if !player.is_admin() {
@@ -5326,7 +5298,7 @@ impl TinyMushProcessor {
 
         // Try to interpret target as a player first
         {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             if let Ok(target_player) = store.get_player(&target_lower) {
                 destination = target_player.current_room.clone();
                 destination_name = format!("{}'s location: {}", target_player.display_name, destination);
@@ -5339,7 +5311,7 @@ impl TinyMushProcessor {
 
         // If not a player, treat as room ID
         if !found_player {
-            let room_mgr = self.get_room_manager(config).await?;
+            let room_mgr = self.get_room_manager().await?;
             if room_mgr.get_room(&target_lower).is_ok() {
                 destination = target_lower.clone();
                 destination_name = destination.clone();
@@ -5350,7 +5322,7 @@ impl TinyMushProcessor {
         
         // Teleport the admin
         {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             player.current_room = destination.clone();
             store.put_player(player.clone())?;
         }
@@ -5360,7 +5332,7 @@ impl TinyMushProcessor {
         response.push_str(&format!("Teleporting to {}\n\n", destination_name));
 
         // Show room description - get fresh borrows
-        let room_mgr = self.get_room_manager(config).await?;
+        let room_mgr = self.get_room_manager().await?;
         if let Ok(room) = room_mgr.get_room(&destination) {
             response.push_str(&format!("=== {} ===\n\n", room.name));
             response.push_str(&format!("{}\n\n", room.long_desc));
@@ -5374,7 +5346,7 @@ impl TinyMushProcessor {
             }
 
             // Show other players in the room - need store again
-            let store = self.get_store(config).await?;
+            let store = self.store();
             let players_here: Vec<String> = store.list_player_ids()?
                 .iter()
                 .filter_map(|username| {
@@ -5413,7 +5385,7 @@ impl TinyMushProcessor {
     /// Handle HELP command
     async fn handle_help(&mut self, _session: &Session, topic: Option<String>, config: &Config) -> Result<String> {
         // Load world config for help text
-        let store = self.get_store(config).await?;
+        let store = self.store();
         let world_config = store.get_world_config()?;
         
         match topic.as_deref() {
@@ -5681,7 +5653,7 @@ impl TinyMushProcessor {
         // 1. Collect all items from all housing rooms
         let mut items_moved = 0;
         {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             for room_id in instance.room_mappings.values() {
                 if let Ok(mut room) = store.get_room_async(room_id).await {
                     // Move all items to reclaim box
@@ -5702,7 +5674,7 @@ impl TinyMushProcessor {
         // Collect all players to teleport
         let mut players_to_teleport = Vec::new();
         {
-            let room_manager = self.get_room_manager(config).await?;
+            let room_manager = self.get_room_manager().await?;
             for room_id in &housing_rooms {
                 let players_in_room = room_manager.get_players_in_room(room_id);
                 players_to_teleport.extend(players_in_room);
@@ -5711,7 +5683,7 @@ impl TinyMushProcessor {
         
         // Now teleport them
         for username in players_to_teleport {
-            let store = self.get_store(config).await?;
+            let store = self.store();
             if let Ok(mut player) = store.get_player_async(&username).await {
                 player.current_room = "town_square".to_string();
                 store.put_player_async(player).await?;
@@ -5739,7 +5711,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         let item_name_upper = item_name.to_uppercase();
         
@@ -5799,7 +5771,7 @@ impl TinyMushProcessor {
         config: &Config,
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
-        let store = self.get_store(config).await?;
+        let store = self.store();
         
         // Get all player's housing instances (including those with reclaim boxes)
         let instances = store.get_player_housing_instances(&player.username)?;
@@ -6677,8 +6649,15 @@ pub async fn handle_tinymush_command(
     storage: &mut Storage,
     config: &Config,
 ) -> Result<String> {
-    // Create processor instance (could be cached in future)
-    let mut processor = TinyMushProcessor::new();
+    // For direct routing, open a temporary store
+    // In production, this function should receive the shared store from the server
+    let db_path = config.games.tinymush_db_path
+        .as_deref()
+        .unwrap_or("data/tinymush");
+    let store = TinyMushStore::open(db_path)
+        .map_err(|e| anyhow::anyhow!("Failed to open TinyMUSH store: {}", e))?;
+    
+    let mut processor = TinyMushProcessor::new(store);
     processor.process_command(session, command, storage, config).await
 }
 
@@ -6690,10 +6669,20 @@ pub fn should_route_to_tinymush(session: &Session) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tmush::storage::TinyMushStore;
+
+    fn create_test_store(test_name: &str) -> TinyMushStore {
+        // Create a unique temporary store for each test
+        let temp_dir = std::env::temp_dir().join(format!("tinymush_test_{}_{}", std::process::id(), test_name));
+        // Clean up if it exists
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        TinyMushStore::open(&temp_dir).expect("Failed to create test store")
+    }
 
     #[test]
     fn test_command_parsing() {
-        let processor = TinyMushProcessor::new();
+        let store = create_test_store("command_parsing");
+        let processor = TinyMushProcessor::new(store);
         
         // Movement commands
         assert_eq!(processor.parse_command("n"), TinyMushCommand::Move(Direction::North));
@@ -6719,7 +6708,7 @@ mod tests {
 
     #[test]
     fn test_direction_parsing() {
-        let processor = TinyMushProcessor::new();
+        let store = create_test_store("direction_parsing"); let processor = TinyMushProcessor::new(store);
         
         assert_eq!(processor.parse_command("n"), TinyMushCommand::Move(Direction::North));
         assert_eq!(processor.parse_command("s"), TinyMushCommand::Move(Direction::South));
@@ -6735,7 +6724,7 @@ mod tests {
 
     #[test]
     fn test_empty_input() {
-        let processor = TinyMushProcessor::new();
+        let store = create_test_store("empty_input"); let processor = TinyMushProcessor::new(store);
         assert_eq!(processor.parse_command(""), TinyMushCommand::Unknown("".to_string()));
         assert_eq!(processor.parse_command("   "), TinyMushCommand::Unknown("".to_string()));
     }

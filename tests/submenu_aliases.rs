@@ -1,17 +1,19 @@
 use meshbbs::config::Config;
+mod common;
 use meshbbs::storage::Storage;
 
 #[tokio::test]
 async fn message_area_aliases() {
     let cfg = Config::default();
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
+    let registry = common::empty_game_registry();
     let mut session = meshbbs::bbs::session::Session::new("s_ma".into(), "node_ma".into());
     session.login("tester".into(), 1).await.unwrap();
     session.state = meshbbs::bbs::session::SessionState::MainMenu;
 
     // Long-form should be rejected once logged in.
     let areas_full = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "MESSAGES", &mut storage, &cfg)
+        .process(&mut session, "MESSAGES", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -21,7 +23,7 @@ async fn message_area_aliases() {
 
     // Short form still works and transitions to topics menu.
     let areas_short = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "M", &mut storage, &cfg)
+        .process(&mut session, "M", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -34,7 +36,7 @@ async fn message_area_aliases() {
 
     // Long-form READ should now be rejected, while short-form R lists messages.
     let r_full = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "READ", &mut storage, &cfg)
+        .process(&mut session, "READ", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -43,7 +45,7 @@ async fn message_area_aliases() {
     );
 
     let r_short = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "R", &mut storage, &cfg)
+        .process(&mut session, "R", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -56,13 +58,14 @@ async fn message_area_aliases() {
 async fn user_menu_aliases() {
     let cfg = Config::default();
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
+    let registry = common::empty_game_registry();
     let mut session = meshbbs::bbs::session::Session::new("s_um".into(), "node_um".into());
     session.login("tester2".into(), 1).await.unwrap();
     session.state = meshbbs::bbs::session::SessionState::MainMenu;
 
     // Long-form USER should now be rejected to reinforce concise inputs.
     let full = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "USER", &mut storage, &cfg)
+        .process(&mut session, "USER", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -72,7 +75,7 @@ async fn user_menu_aliases() {
 
     // Short form P opens preferences.
     let short = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "P", &mut storage, &cfg)
+        .process(&mut session, "P", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(

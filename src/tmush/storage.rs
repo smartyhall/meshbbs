@@ -107,6 +107,24 @@ pub struct TinyMushStore {
 }
 
 impl TinyMushStore {
+    /// Get access to the underlying Sled database for transactions.
+    /// 
+    /// This is useful for test helpers that need atomic operations with
+    /// strong visibility guarantees across multiple database handles.
+    #[allow(dead_code)]
+    pub fn db(&self) -> &sled::Db {
+        &self._db
+    }
+    
+    /// Get access to the primary tree for transactions.
+    /// 
+    /// This is useful for test helpers that need atomic operations on player
+    /// records with strong visibility guarantees across multiple handles.
+    #[allow(dead_code)]
+    pub fn primary_tree(&self) -> &sled::Tree {
+        &self.primary
+    }
+    
     /// Open (or create) the TinyMUSH store rooted at `path`. When `seed_world` is true the
     /// canonical "Old Towne Mesh" rooms are inserted if no world rooms exist yet.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, TinyMushError> {
@@ -241,14 +259,20 @@ impl TinyMushStore {
         let Some(bytes) = self.primary.get(&key)? else {
             return Err(TinyMushError::NotFound(format!("player: {}", username)));
         };
-        let record: PlayerRecord = Self::deserialize(bytes)?;
-        if record.schema_version != PLAYER_SCHEMA_VERSION {
-            return Err(TinyMushError::SchemaMismatch {
-                entity: "player",
-                expected: PLAYER_SCHEMA_VERSION,
-                found: record.schema_version,
-            });
+        
+        // Use migration system to load and auto-migrate if needed
+        use crate::tmush::migration::{load_and_migrate, Migratable};
+        let (record, was_migrated): (PlayerRecord, bool) = load_and_migrate(&bytes, username)
+            .map_err(|e| TinyMushError::Bincode(bincode::Error::from(
+                bincode::ErrorKind::Custom(format!("Failed to load player: {}", e))
+            )))?;
+        
+        // If migration occurred, save the migrated version back to storage
+        if was_migrated {
+            log::info!("Auto-migrated PlayerRecord '{}', saving updated version", username);
+            self.put_player(record.clone())?;
         }
+        
         Ok(record)
     }
 
@@ -509,9 +533,22 @@ impl TinyMushStore {
         let key = format!("npcs:{}", npc_id).into_bytes();
         let data = self
             .npcs
-            .get(key)?
+            .get(key.clone())?
             .ok_or_else(|| TinyMushError::NotFound(format!("NPC not found: {}", npc_id)))?;
-        let npc: NpcRecord = Self::deserialize(data)?;
+        
+        // Use migration system to load and auto-migrate if needed
+        use crate::tmush::migration::{load_and_migrate, Migratable};
+        let (npc, was_migrated): (NpcRecord, bool) = load_and_migrate(&data, npc_id)
+            .map_err(|e| TinyMushError::Bincode(bincode::Error::from(
+                bincode::ErrorKind::Custom(format!("Failed to load NPC: {}", e))
+            )))?;
+        
+        // If migration occurred, save the migrated version back to storage
+        if was_migrated {
+            log::info!("Auto-migrated NpcRecord '{}', saving updated version", npc_id);
+            self.put_npc(npc.clone())?;
+        }
+        
         Ok(npc)
     }
 
@@ -533,8 +570,27 @@ impl TinyMushStore {
     pub fn get_npcs_in_room(&self, room_id: &str) -> Result<Vec<NpcRecord>, TinyMushError> {
         let mut npcs = Vec::new();
         for item in self.npcs.scan_prefix(b"npcs:") {
-            let (_, value) = item?;
-            let npc: NpcRecord = Self::deserialize(value)?;
+            let (key, value) = item?;
+            
+            // Extract NPC ID from key for migration logging
+            let npc_id = std::str::from_utf8(&key)
+                .ok()
+                .and_then(|s| s.strip_prefix("npcs:"))
+                .unwrap_or("unknown");
+            
+            // Use migration system to load and auto-migrate if needed
+            use crate::tmush::migration::{load_and_migrate, Migratable};
+            let (npc, was_migrated): (NpcRecord, bool) = load_and_migrate(&value, npc_id)
+                .map_err(|e| TinyMushError::Bincode(bincode::Error::from(
+                    bincode::ErrorKind::Custom(format!("Failed to load NPC {}: {}", npc_id, e))
+                )))?;
+            
+            // If migration occurred, save the migrated version back to storage
+            if was_migrated {
+                log::info!("Auto-migrated NpcRecord '{}' in get_npcs_in_room, saving updated version", npc_id);
+                self.put_npc(npc.clone())?;
+            }
+            
             if npc.room_id == room_id {
                 npcs.push(npc);
             }
@@ -1851,9 +1907,25 @@ impl TinyMushStore {
     }
 
     pub fn seed_npcs_if_needed(&self) -> Result<usize, TinyMushError> {
-        if self.npcs.iter().next().is_some() {
-            return Ok(0);
+        // Check if NPCs exist by trying to iterate the tree
+        // If deserialization fails (schema mismatch), clear old data and reseed
+        match self.npcs.iter().next() {
+            Some(Ok(_)) => {
+                // NPCs exist and are valid, no seeding needed
+                return Ok(0);
+            }
+            Some(Err(e)) => {
+                // NPCs exist but have deserialization errors (schema mismatch)
+                log::warn!("Found corrupted NPC data, clearing and reseeding: {}", e);
+                // Clear all NPC data
+                self.npcs.clear()?;
+                self.npcs.flush()?;
+            }
+            None => {
+                // No NPCs exist, proceed with seeding
+            }
         }
+        
         let npcs = crate::tmush::seed_starter_npcs();
         let mut inserted = 0usize;
         for npc in npcs {

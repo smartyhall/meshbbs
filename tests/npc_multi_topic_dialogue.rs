@@ -11,6 +11,7 @@ async fn test_talk_with_topic_wares() {
     let _td = tempfile::tempdir().unwrap();
     cfg.storage.data_dir = _td.path().to_string_lossy().to_string();
     cfg.games.tinymush_enabled = true;
+    cfg.games.tinymush_db_path = Some(format!("{}/tinymush", _td.path().to_string_lossy()));
 
     let mut server = BbsServer::new(cfg.clone()).await.unwrap();
 
@@ -20,15 +21,15 @@ async fn test_talk_with_topic_wares() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    // Enter TinyMUSH
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    // Enter TinyMUSH - use explicit game name instead of menu position
+    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
     
     // Register
     server.route_test_text_direct(&node_key, "REGISTER Alice password123").await.unwrap();
     server.route_test_text_direct(&node_key, "password123").await.unwrap();
 
-    // Move to South Market (Mira's location)
-    server.route_test_text_direct(&node_key, "S").await.unwrap();
+    // Move to Town Square, then to South Market (Mira's location)
+    server.route_test_text_direct(&node_key, "N").await.unwrap();
     server.route_test_text_direct(&node_key, "S").await.unwrap();
 
     // Test TALK with topic
@@ -52,6 +53,7 @@ async fn test_talk_list_topics() {
     let _td = tempfile::tempdir().unwrap();
     cfg.storage.data_dir = _td.path().to_string_lossy().to_string();
     cfg.games.tinymush_enabled = true;
+    cfg.games.tinymush_db_path = Some(format!("{}/tinymush", _td.path().to_string_lossy()));
 
     let mut server = BbsServer::new(cfg.clone()).await.unwrap();
 
@@ -60,12 +62,12 @@ async fn test_talk_list_topics() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
     server.route_test_text_direct(&node_key, "REGISTER Bob password123").await.unwrap();
     server.route_test_text_direct(&node_key, "password123").await.unwrap();
 
-    // Move to South Market
-    server.route_test_text_direct(&node_key, "S").await.unwrap();
+    // Move to Town Square, then to South Market
+    server.route_test_text_direct(&node_key, "N").await.unwrap();
     server.route_test_text_direct(&node_key, "S").await.unwrap();
 
     // Test LIST keyword
@@ -91,6 +93,7 @@ async fn test_talk_invalid_topic() {
     let _td = tempfile::tempdir().unwrap();
     cfg.storage.data_dir = _td.path().to_string_lossy().to_string();
     cfg.games.tinymush_enabled = true;
+    cfg.games.tinymush_db_path = Some(format!("{}/tinymush", _td.path().to_string_lossy()));
 
     let mut server = BbsServer::new(cfg.clone()).await.unwrap();
 
@@ -99,12 +102,12 @@ async fn test_talk_invalid_topic() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
     server.route_test_text_direct(&node_key, "REGISTER Charlie password123").await.unwrap();
     server.route_test_text_direct(&node_key, "password123").await.unwrap();
 
-    // Move to South Market
-    server.route_test_text_direct(&node_key, "S").await.unwrap();
+    // Move to Town Square, then to South Market
+    server.route_test_text_direct(&node_key, "N").await.unwrap();
     server.route_test_text_direct(&node_key, "S").await.unwrap();
 
     // Test invalid topic
@@ -130,6 +133,7 @@ async fn test_talk_guard_warning_topic() {
     let _td = tempfile::tempdir().unwrap();
     cfg.storage.data_dir = _td.path().to_string_lossy().to_string();
     cfg.games.tinymush_enabled = true;
+    cfg.games.tinymush_db_path = Some(format!("{}/tinymush", _td.path().to_string_lossy()));
 
     let mut server = BbsServer::new(cfg.clone()).await.unwrap();
 
@@ -138,12 +142,13 @@ async fn test_talk_guard_warning_topic() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
     server.route_test_text_direct(&node_key, "REGISTER Diana password123").await.unwrap();
     server.route_test_text_direct(&node_key, "password123").await.unwrap();
 
-    // Move to North Gate (Guard's location)
+    // Move to Town Square, then to North Gate (Guard's location)
     server.route_test_text_direct(&node_key, "N").await.unwrap();
+    server.route_test_text_direct(&node_key, "W").await.unwrap();
 
     // Test Guard's warning topic
     let before = server.test_messages().len();

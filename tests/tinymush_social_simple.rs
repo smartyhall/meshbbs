@@ -2,12 +2,16 @@
 //! Tests the basic functionality without database conflicts
 
 use meshbbs::tmush::commands::{TinyMushCommand, TinyMushProcessor};
+use meshbbs::tmush::TinyMushStore;
 use meshbbs::bbs::session::Session;
+use tempfile::TempDir;
 
 #[tokio::test]
 async fn test_social_command_parsing() {
     // Test that we can parse social commands correctly
-    let processor = TinyMushProcessor::new();
+    let dir = TempDir::new().expect("tempdir");
+    let store = TinyMushStore::open(dir.path().join("tinymush")).expect("store");
+    let processor = TinyMushProcessor::new(store.clone());
     
     // Test SAY parsing
     let parsed = processor.parse_command("SAY hello world");

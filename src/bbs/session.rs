@@ -151,6 +151,7 @@ impl Session {
         command: &str,
         storage: &mut Storage,
         config: &crate::config::Config,
+        game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
         self.update_activity();
 
@@ -161,7 +162,7 @@ impl Session {
         );
 
         let processor = CommandProcessor::new();
-        let response = processor.process(self, command, storage, config).await?;
+        let response = processor.process(self, command, storage, config, game_registry).await?;
 
         Ok(response)
     }

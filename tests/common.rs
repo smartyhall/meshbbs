@@ -28,3 +28,8 @@ pub fn writable_fixture() -> tempfile::TempDir {
     }
     tmp
 }
+
+/// Create an empty GameRegistry for tests that don't need any door games
+pub fn empty_game_registry() -> meshbbs::bbs::GameRegistry {
+    meshbbs::bbs::GameRegistry::new()
+}

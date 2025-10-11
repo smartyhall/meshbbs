@@ -143,6 +143,8 @@ pub struct BbsServer {
     startup_welcome_queue: Vec<(tokio::time::Instant, crate::meshtastic::NodeDetectionEvent)>, // (when_to_send, event)
     #[cfg(feature = "meshtastic-proto")]
     startup_welcomes_queued: bool, // track if we've already queued startup welcomes
+    /// Game registry holding all door game resources
+    game_registry: crate::bbs::GameRegistry,
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
@@ -476,6 +478,7 @@ impl BbsServer {
             startup_welcome_queue: Vec::new(),
             #[cfg(feature = "meshtastic-proto")]
             startup_welcomes_queued: false,
+            game_registry: crate::bbs::GameRegistry::new(),
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -484,6 +487,24 @@ impl BbsServer {
         if !server.config.message_topics.is_empty() {
             Self::merge_toml_topics_to_runtime(&mut server.storage, &server.config).await?;
         }
+        
+        // Initialize door game resources in the registry
+        if server.config.games.tinymush_enabled {
+            let db_path = server.config.games.tinymush_db_path
+                .as_deref()
+                .unwrap_or("data/tinymush");
+            
+            match crate::tmush::storage::TinyMushStore::open(db_path) {
+                Ok(store) => {
+                    info!("[games] TinyMUSH store initialized at: {}", db_path);
+                    server.game_registry = server.game_registry.with_tinymush(store);
+                }
+                Err(e) => {
+                    warn!("[games] TinyMUSH store initialization failed: {}", e);
+                }
+            }
+        }
+        
         // Announce enabled games at startup
         if server.config.games.tinyhack_enabled {
             info!(
@@ -1375,23 +1396,161 @@ impl BbsServer {
             .await
             .map(|_| ())
     }
+    /// Test helper to create a TinyMUSH player WITH admin level in one atomic operation.
+    /// 
+    /// This helper must be called BEFORE entering TinyMUSH with "G1". It creates the player
+    /// record directly in the database with admin privileges, avoiding the Sled caching issue
+    /// where different handles see stale data.
+    /// 
+    /// # Arguments
+    /// * `node_key` - The session node key
+    /// * `level` - Admin level (1=Moderator, 2=Admin, 3=Sysop)
+    /// 
+    /// # Returns
+    /// * `Ok(())` if player was created successfully
+    /// * `Err` if the session wasn't found or creation failed
+    #[allow(dead_code)]
+    pub async fn test_tmush_create_player_with_admin(&mut self, node_key: &str, level: u8) -> Result<()> {
+        use crate::tmush::types::PlayerRecord;
+        
+        let session = self.sessions.get(node_key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
+        let username = session.display_name();
+        
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Create player with admin level in one atomic operation using transaction
+        let result = store.primary_tree().transaction(|tx_tree| {
+            let key = format!("players:{}", username.to_ascii_lowercase());
+            
+            // Check if player already exists
+            if tx_tree.get(key.as_bytes())?.is_some() {
+                return Err(sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Player {} already exists", username)
+                ));
+            }
+            
+            // Create new player with admin privileges
+            let mut player = PlayerRecord::new(
+                &username,
+                &username,
+                crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+            );
+            player.grant_admin(level);
+            player.touch();
+            
+            // Serialize and insert
+            let player_bytes = bincode::serialize(&player)
+                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Failed to serialize player: {}", e)
+                ))?;
+            
+            tx_tree.insert(key.as_bytes(), player_bytes.as_slice())?;
+            
+            Ok(())
+        });
+        
+        result.map_err(|e| anyhow::anyhow!("Transaction failed: {:?}", e))?;
+        
+        // Flush the entire database to ensure cross-handle visibility
+        store.db().flush()?;
+        
+        // VERIFY: Read back the player to confirm admin was set
+        let verify_player = store.get_player(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to verify player creation: {}", e))?;
+        if !verify_player.is_admin() {
+            return Err(anyhow::anyhow!("Player created but admin flag not set! Level={:?}", verify_player.admin_level));
+        }
+        eprintln!("✓ Verified player {} has admin level {:?}", username, verify_player.admin_level);
+        
+        Ok(())
+    }
+
+    /// Test helper to grant admin privileges using Sled transaction for atomicity.
+    /// 
+    /// This uses a transaction to ensure the write is immediately visible to all
+    /// other handles/processes reading the same database, avoiding cache issues.
     #[allow(dead_code)]
     pub async fn test_tmush_grant_admin(&mut self, username: &str, level: u8) -> Result<()> {
-        use crate::tmush::storage::TinyMushStore;
-        let db_path = std::path::Path::new(&self.config.storage.data_dir).join("tinymush");
-        let store = TinyMushStore::open(&db_path).map_err(|e| anyhow::anyhow!("Failed to open TinyMUSH store: {}", e))?;
+        use crate::tmush::types::PlayerRecord;
         
-        // For test scenarios, directly modify the player record without permission checks
-        // This bypasses the require_admin check in grant_admin()
-        let mut player = store.get_player(username)
-            .map_err(|e| anyhow::anyhow!("Failed to get player: {}", e))?;
-        player.grant_admin(level);
-        store.put_player(player)
-            .map_err(|e| anyhow::anyhow!("Failed to save player: {}", e))?;
+        // Use the shared store from game_registry instead of opening a new connection
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Use Tree transaction for atomic read-modify-write
+        let result = store.primary_tree().transaction(|tx_tree| {
+            // Construct the key (same as TinyMushStore::players_key)
+            let key = format!("players:{}", username.to_ascii_lowercase());
+            
+            // Read current player record
+            let player_bytes = tx_tree.get(key.as_bytes())?
+                .ok_or(sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Player not found: {}", username)
+                ))?;
+            
+            // Deserialize
+            let mut player: PlayerRecord = bincode::deserialize(&player_bytes)
+                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Failed to deserialize player: {}", e)
+                ))?;
+            
+            // Modify
+            player.grant_admin(level);
+            player.touch();
+            
+            // Serialize
+            let new_bytes = bincode::serialize(&player)
+                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Failed to serialize player: {}", e)
+                ))?;
+            
+            // Write back atomically
+            tx_tree.insert(key.as_bytes(), new_bytes.as_slice())?;
+            
+            Ok(())
+        });
+        
+        result.map_err(|e| anyhow::anyhow!("Transaction failed: {:?}", e))?;
+        
+        // Flush the entire database to ensure cross-handle visibility
+        store.db().flush()?;
+        
         Ok(())
     }
     
-    /// Test helper to force TinyMUSH player record creation.
+    /// Test helper to create a TinyMUSH player WITH admin level in one operation.
+    /// This avoids Sled caching issues that occur when creating and then modifying a player.
+    #[allow(dead_code)]
+    pub async fn test_tmush_create_admin_player(&mut self, node_key: &str, level: u8) -> Result<()> {
+        use crate::tmush::types::PlayerRecord;
+        
+        let session = self.sessions.get(node_key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
+        let username = session.display_name();
+        
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Check if player already exists
+        if store.get_player(&username).is_ok() {
+            return Err(anyhow::anyhow!("Player {} already exists", username));
+        }
+        
+        // Create player with admin level in one operation
+        let mut player = PlayerRecord::new(
+            &username,
+            &username,
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+        );
+        player.grant_admin(level);
+        
+        store.put_player(player)
+            .map_err(|e| anyhow::anyhow!("Failed to create admin player: {}", e))?;
+        
+        Ok(())
+    }    /// Test helper to force TinyMUSH player record creation.
     /// 
     /// Call this IMMEDIATELY after route_test_text_direct("G2") to directly
     /// create a TinyMUSH player record. This bypasses lazy initialization
@@ -1405,7 +1564,6 @@ impl BbsServer {
     /// * `Err` if the session wasn't found or creation failed
     #[allow(dead_code)]
     pub async fn test_tmush_ensure_player_exists(&mut self, node_key: &str) -> Result<()> {
-        use crate::tmush::storage::TinyMushStore;
         use crate::tmush::types::PlayerRecord;
         
         // Get the username from the session
@@ -1413,10 +1571,9 @@ impl BbsServer {
             .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
         let username = session.display_name();
         
-        // Open TinyMUSH store and create player directly
-        let db_path = std::path::Path::new(&self.config.storage.data_dir).join("tinymush");
-        let store = TinyMushStore::open(&db_path)
-            .map_err(|e| anyhow::anyhow!("Failed to open TinyMUSH store: {}", e))?;
+        // Get TinyMUSH store from game registry (shared cache)
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
         
         // Check if player already exists
         if store.get_player(&username).is_ok() {
@@ -1541,12 +1698,13 @@ impl BbsServer {
     }
 
     async fn process_help_text(
+        &mut self,
         session: &mut crate::bbs::session::Session,
         storage: &mut crate::storage::Storage,
         config: &crate::config::Config,
     ) -> Result<String> {
         // Process help text via command processor and append one-time shortcuts hint
-        let mut help_text = session.process_command("H", storage, config).await?;
+        let mut help_text = session.process_command("H", storage, config, &self.game_registry).await?;
         if !session.help_seen {
             session.help_seen = true;
             help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
@@ -1956,7 +2114,11 @@ impl BbsServer {
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
                     // Process help command and send response
-                    let help_text = Self::process_help_text(session, &mut self.storage, &self.config).await?;
+                    let mut help_text = session.process_command("H", &mut self.storage, &self.config, &self.game_registry).await?;
+                    if !session.help_seen {
+                        session.help_seen = true;
+                        help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
+                    }
                     self.send_session_message(&node_key, &help_text, true).await?;
                 } else if upper.starts_with("LOGIN ") {
                     // Enforce max_users only if this session is not yet logged in
@@ -2784,8 +2946,12 @@ impl BbsServer {
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
-                    // Process help command and send response
-                    let help_text = Self::process_help_text(session, &mut self.storage, &self.config).await?;
+                    // Process help command and send response (inlined to avoid borrowing conflicts)
+                    let mut help_text = session.process_command("H", &mut self.storage, &self.config, &self.game_registry).await?;
+                    if !session.help_seen {
+                        session.help_seen = true;
+                        help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
+                    }
                     self.send_session_message(&node_key, &help_text, true).await?;
                     return Ok(());
                 } else {
@@ -2797,7 +2963,7 @@ impl BbsServer {
                     };
                     trace!("Session {} generic command '{}'", node_key, log_snippet);
                     let response = session
-                        .process_command(&raw_content, &mut self.storage, &self.config)
+                        .process_command(&raw_content, &mut self.storage, &self.config, &self.game_registry)
                         .await?;
                     if !response.is_empty() {
                         deferred_reply = Some(response);
@@ -3523,7 +3689,7 @@ impl BbsServer {
                 return Ok(());
             } else if upper == "H" || upper == "?" {
                 let mut help_text = session
-                    .process_command("H", &mut self.storage, &self.config)
+                    .process_command("H", &mut self.storage, &self.config, &self.game_registry)
                     .await?;
                 if !session.help_seen {
                     session.help_seen = true;
@@ -3598,14 +3764,25 @@ impl BbsServer {
                             return Ok(());
                         }
                         GameDoorKind::TinyMush => {
-                            // TinyMUSH is handled through regular session routing
-                            // This should not be reached in normal operation
-                            deferred_reply = Some("TinyMUSH game active. Use regular session commands.\n".into());
+                            // Handle TinyMUSH entry like production code does
+                            session.state = super::session::SessionState::TinyMush;
+                            session.current_game_slug = Some(door.slug.to_string());
+                            let username = session.display_name();
+                            
+                            // Initialize TinyMUSH and send welcome using shared store from game registry
+                            if let Some(store) = self.game_registry.get_tinymush_store() {
+                                let mut processor = crate::tmush::commands::TinyMushProcessor::new(store.clone());
+                                let welcome = processor.initialize_player(session, &mut self.storage, &self.config).await?;
+                                self.send_session_message(node_key, &welcome, true).await?;
+                            } else {
+                                self.send_session_message(node_key, "TinyMUSH is not available", true).await?;
+                            }
+                            return Ok(());
                         }
                     }
                 } else {
                     let response = session
-                        .process_command(&raw_content, &mut self.storage, &self.config)
+                        .process_command(&raw_content, &mut self.storage, &self.config, &self.game_registry)
                         .await?;
                     if !response.is_empty() {
                         deferred_reply = Some(response);

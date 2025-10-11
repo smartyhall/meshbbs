@@ -10,6 +10,7 @@ pub mod currency;
 pub mod errors;
 pub mod housing_cleanup;
 pub mod inventory;
+pub mod migration;
 pub mod quest;
 pub mod room_manager;
 pub mod shop;

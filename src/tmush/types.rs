@@ -2,9 +2,13 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub const PLAYER_SCHEMA_VERSION: u8 = 1;
-pub const ROOM_SCHEMA_VERSION: u8 = 1;
-pub const OBJECT_SCHEMA_VERSION: u8 = 1;
+// Schema versions are now managed in migration.rs
+// These constants remain for backward compatibility but should reference migration constants
+pub use crate::tmush::migration::{
+    CURRENT_PLAYER_SCHEMA_VERSION as PLAYER_SCHEMA_VERSION,
+    CURRENT_ROOM_SCHEMA_VERSION as ROOM_SCHEMA_VERSION,
+    CURRENT_OBJECT_SCHEMA_VERSION as OBJECT_SCHEMA_VERSION,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -395,7 +399,6 @@ impl DialogNode {
 
 /// Condition for showing dialogue or choices
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
 pub enum DialogCondition {
     /// Check if player has discussed a topic with any NPC
     HasDiscussed { topic: String },
@@ -417,7 +420,6 @@ pub enum DialogCondition {
 
 /// Action to execute when dialogue node is reached (Phase 8.5)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
 pub enum DialogAction {
     /// Give an item to the player
     GiveItem { item_id: String, quantity: u32 },
@@ -445,7 +447,6 @@ pub enum DialogAction {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DialogChoice {
     pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub goto: Option<String>,
     #[serde(default)]
     pub exit: bool,

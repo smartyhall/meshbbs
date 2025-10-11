@@ -240,13 +240,25 @@ impl CommandProcessor {
         command: &str,
         storage: &mut Storage,
         config: &Config,
+        game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
         let raw = command.trim();
         let cmd_upper = raw.to_uppercase();
-        if cmd_upper == "WHERE" || cmd_upper == "W" {
-            let here = self.where_am_i(session, config);
-            return Ok(format!("[BBS] You are at: {}\n", here));
+        
+        match session.state {
+            // Game states - let door games handle their own commands including WHERE
+            SessionState::TinyHack | SessionState::TinyMush => {
+                // Commands handled in game-specific branches below
+            }
+            // BBS states - handle WHERE command for navigation breadcrumbs
+            _ => {
+                if cmd_upper == "WHERE" || cmd_upper == "W" {
+                    let here = self.where_am_i(session, config);
+                    return Ok(format!("[BBS] You are at: {}\n", here));
+                }
+            }
         }
+        
         match session.state {
             SessionState::Connected => {
                 self.handle_initial_connection(session, &cmd_upper, storage, config)
@@ -257,7 +269,7 @@ impl CommandProcessor {
                     .await
             }
             SessionState::MainMenu => {
-                self.handle_main_menu(session, &cmd_upper, storage, config)
+                self.handle_main_menu(session, &cmd_upper, storage, config, game_registry)
                     .await
             }
             SessionState::TinyHack => {
@@ -332,8 +344,13 @@ impl CommandProcessor {
                 }
                 
                 // Forward all other commands to TinyMUSH command processor
-                let mut processor = TinyMushProcessor::new();
-                processor.process_command(session, raw, storage, config).await
+                // Use the shared store to avoid multi-handle caching issues
+                if let Some(store) = game_registry.get_tinymush_store() {
+                    let mut processor = TinyMushProcessor::new(store.clone());
+                    processor.process_command(session, raw, storage, config).await
+                } else {
+                    Ok("TinyMUSH is not available".to_string())
+                }
             }
             SessionState::Topics => {
                 self.handle_topics(session, raw, &cmd_upper, storage, config)
@@ -465,6 +482,7 @@ impl CommandProcessor {
         cmd: &str,
         storage: &mut Storage,
         config: &Config,
+        game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
         let game_doors = games::enabled_doors(&config.games);
         if cmd == "G" || cmd == "GAMES" {
@@ -519,8 +537,13 @@ impl CommandProcessor {
                     );
                     
                     // Initialize TinyMUSH for the user and return welcome screen
-                    let mut processor = TinyMushProcessor::new();
-                    return processor.initialize_player(session, storage, config).await;
+                    // Use the shared store from game registry
+                    if let Some(store) = game_registry.get_tinymush_store() {
+                        let mut processor = TinyMushProcessor::new(store.clone());
+                        return processor.initialize_player(session, storage, config).await;
+                    } else {
+                        return Ok("TinyMUSH is not available".to_string());
+                    }
                 }
             }
         }

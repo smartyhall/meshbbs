@@ -4,13 +4,17 @@
 //! This test suite validates that all TinyMUSH command outputs respect this limit.
 
 use meshbbs::tmush::commands::TinyMushProcessor;
+use meshbbs::tmush::TinyMushStore;
+use tempfile::TempDir;
 
 const MAX_MESSAGE_SIZE: usize = 200;
 
 /// Test all help text outputs are under 200 bytes
 #[test]
 fn test_help_text_under_200_bytes() {
-    let processor = TinyMushProcessor::new();
+    let dir = TempDir::new().expect("tempdir");
+    let store = TinyMushStore::open(dir.path().join("tinymush")).expect("store");
+    let processor = TinyMushProcessor::new(store.clone());
     
     // Test main help
     let main_help = processor.help_main();

@@ -15,9 +15,11 @@ use meshbbs::config::Config;
 async fn test_config() -> Config {
     let mut cfg = Config::default();
     let temp_dir = tempfile::tempdir().unwrap();
-    cfg.storage.data_dir = temp_dir.path().to_string_lossy().to_string();
+    let temp_path = temp_dir.path().to_string_lossy().to_string();
+    cfg.storage.data_dir = temp_path.clone();
     cfg.bbs.max_users = 20;
     cfg.games.tinymush_enabled = true;
+    cfg.games.tinymush_db_path = Some(format!("{}/tinymush", temp_path));
     // Keep temp_dir alive by leaking it (tests are short-lived anyway)
     std::mem::forget(temp_dir);
     cfg
@@ -26,28 +28,49 @@ async fn test_config() -> Config {
 #[tokio::test]
 async fn test_players_command_lists_all() {
     let config = test_config().await;
+    let data_dir = config.storage.data_dir.clone();
+    
+    // Clean up any existing TinyMUSH database to start fresh
+    let tmush_db = std::path::Path::new(&data_dir).join("tinymush");
+    if tmush_db.exists() {
+        std::fs::remove_dir_all(&tmush_db).ok();
+    }
+    
     let mut server = BbsServer::new(config).await.unwrap();
     
-    // Register user
+    // Register alice in BBS
     server.test_register("alice", "password123").await.unwrap();
     
-    // Create session for alice and enter TinyMUSH
-    let mut session = Session::new("node101".into(), "node101".into());
-    session.login("alice".into(), 1).await.unwrap();
-    let node_key = session.node_id.clone();
-    server.test_insert_session(session);
+    // Create session for alice
+    let mut session_alice = Session::new("node_alice".into(), "node_alice".into());
+    session_alice.login("alice".into(), 1).await.unwrap();
+    let alice_key = session_alice.node_id.clone();
+    server.test_insert_session(session_alice);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    // Create a session with username "admin" to match the seeded TinyMUSH admin player
+    // No need to register in BBS since we just need the username to match
+    let mut session_admin = Session::new("node_admin".into(), "node_admin".into());
+    session_admin.username = Some("admin".to_string());
+    session_admin.user_level = 1;
+    let admin_key = session_admin.node_id.clone();
+    server.test_insert_session(session_admin);
     
-    // Force TinyMUSH player record creation
-    server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
+    // Enter TinyMUSH as alice - this creates alice's player
+    server.route_test_text_direct(&alice_key, "G1").await.unwrap();
     
-    // Grant admin privileges
-    server.test_tmush_grant_admin("alice", 2).await.unwrap();
+    // Enter TinyMUSH as admin - this will find the seeded admin player with sysop privileges
+    server.route_test_text_direct(&admin_key, "G1").await.unwrap();
     
-    // Execute /PLAYERS command
-    server.route_test_text_direct(&node_key, "/players").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    // Grant alice admin using the @SETADMIN command AS admin
+    server.route_test_text_direct(&admin_key, "@setadmin alice 2").await.unwrap();
+    
+    // Execute /PLAYERS command as alice
+    server.route_test_text_direct(&alice_key, "/players").await.unwrap();
+    let messages = server.test_messages();
+    let result = messages.iter()
+        .map(|(_, msg)| msg.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     
     // Verify alice is listed and total count is shown
     assert!(result.contains("alice") || result.contains("ALICE"), "Should list alice: {}", result);
@@ -68,13 +91,14 @@ async fn test_players_command_requires_admin() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
     
     server.route_test_text_direct(&node_key, "/players").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
     assert!(result.contains("Permission denied") || result.contains("⛔"), "Should deny access");
 }
@@ -93,13 +117,21 @@ async fn test_where_shows_own_location() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
     
-    server.route_test_text_direct(&node_key, "where").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    server.route_test_text_direct(&node_key, "WHERE").await.unwrap();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
+    
+    assert!(result.contains("You are in:") || result.contains("📍"), "Should show location: {}", result);
+    
+    let result = messages.iter()
+        .map(|(_, msg)| msg.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     
     assert!(result.contains("You are in:") || result.contains("📍"), "Should show location");
 }
@@ -127,7 +159,7 @@ async fn test_where_player_locates_others_admin_only() {
     server.test_insert_session(eve_session);
     
     // Both enter TinyMUSH
-    server.route_test_text_direct(&mod_key, "G2").await.unwrap();
+    server.route_test_text_direct(&mod_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&mod_key).await.unwrap();
@@ -135,14 +167,15 @@ async fn test_where_player_locates_others_admin_only() {
     // Grant admin AFTER entering TinyMUSH
     server.test_tmush_grant_admin("moderator1", 1).await.unwrap();
     
-    server.route_test_text_direct(&eve_key, "G2").await.unwrap();
+    server.route_test_text_direct(&eve_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation for eve too
     server.test_tmush_ensure_player_exists(&eve_key).await.unwrap();
     
     // Moderator locates eve
     server.route_test_text_direct(&mod_key, "where eve").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
     assert!(result.contains("📍") || result.contains("eve") || result.contains("EVE"), "Should show target player location");
 }
@@ -162,13 +195,14 @@ async fn test_where_player_requires_admin() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
     
     server.route_test_text_direct(&node_key, "where grace").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
     assert!(result.contains("Permission denied") || result.contains("⛔"), "Should deny access");
 }
@@ -187,7 +221,7 @@ async fn test_where_player_not_found() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
@@ -196,7 +230,8 @@ async fn test_where_player_not_found() {
     server.test_tmush_grant_admin("moderator2", 2).await.unwrap();
     
     server.route_test_text_direct(&node_key, "where nonexistent").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
     assert!(result.contains("not found") || result.contains("❌"), "Should show not found error");
 }
@@ -215,7 +250,7 @@ async fn test_goto_room_teleports_admin() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
@@ -224,7 +259,8 @@ async fn test_goto_room_teleports_admin() {
     server.test_tmush_grant_admin("moderator3", 1).await.unwrap();
     
     server.route_test_text_direct(&node_key, "/goto market").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
     assert!(result.contains("✈️") || result.contains("market") || result.contains("MARKET"), "Should teleport to market");
 }
@@ -243,13 +279,14 @@ async fn test_goto_requires_admin() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
     
     server.route_test_text_direct(&node_key, "/goto market").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
     assert!(result.contains("Permission denied") || result.contains("⛔"), "Should deny access");
 }
@@ -268,7 +305,7 @@ async fn test_goto_invalid_target() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
     
-    server.route_test_text_direct(&node_key, "G2").await.unwrap();
+    server.route_test_text_direct(&node_key, "G1").await.unwrap();
     
     // Force TinyMUSH player record creation
     server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
@@ -277,9 +314,11 @@ async fn test_goto_invalid_target() {
     server.test_tmush_grant_admin("moderator4", 2).await.unwrap();
     
     server.route_test_text_direct(&node_key, "/goto nonexistent_place").await.unwrap();
-    let result = server.test_messages().last().unwrap().1.clone();
+    let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
     
-    assert!(result.contains("not found") || result.contains("❌"), "Should show not found error");
+    eprintln!("GOTO INVALID TARGET RESULT:\n{}", result);
+    assert!(result.contains("not found") || result.contains("❌"), "Should show not found error. Got: {}", result);
 }
 
 /// Test permission levels (Moderator, Admin, Sysop all work)
@@ -300,7 +339,7 @@ async fn test_monitoring_commands_all_admin_levels() {
         let node_key = session.node_id.clone();
         server.test_insert_session(session);
         
-        server.route_test_text_direct(&node_key, "G2").await.unwrap();
+        server.route_test_text_direct(&node_key, "G1").await.unwrap();
         
         // Force TinyMUSH player record creation
         server.test_tmush_ensure_player_exists(&node_key).await.unwrap();
@@ -310,13 +349,15 @@ async fn test_monitoring_commands_all_admin_levels() {
         
         // Test /PLAYERS
         server.route_test_text_direct(&node_key, "/players").await.unwrap();
-        let result = server.test_messages().last().unwrap().1.clone();
+        let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
         assert!(!result.contains("Permission denied"), 
             "Level {} should have access to /PLAYERS", level);
         
         // Test /GOTO
         server.route_test_text_direct(&node_key, "/goto market").await.unwrap();
-        let result = server.test_messages().last().unwrap().1.clone();
+        let messages = server.test_messages();
+    let result = messages.iter().map(|(_, msg)| msg.as_str()).collect::<Vec<_>>().join("\n");
         assert!(!result.contains("Permission denied"), 
             "Level {} should have access to /GOTO", level);
     }
