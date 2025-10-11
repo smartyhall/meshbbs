@@ -17,6 +17,7 @@ pub mod room_manager;
 pub mod shop;
 pub mod state;
 pub mod storage;
+pub mod trigger;
 pub mod tutorial;
 pub mod types;
 
