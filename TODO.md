@@ -533,133 +533,6 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [x] Integration tests for housing lifecycle (10 tests passing)
 
 **Housing System Status**: ✅ **100% COMPLETE!** All storage, commands, lifecycle management, notifications, and recurring payments fully implemented and tested. System is production-ready for alpha testing. 387 total tests passing!
-- [x] Housing data structures (HousingPermissions, HousingTemplateRoom, HousingTemplate, HousingInstance) — types.rs
-- [x] Housing storage trees (TREE_HOUSING_TEMPLATES, TREE_HOUSING_INSTANCES) — storage.rs
-- [x] Housing CRUD methods (10 methods):
-  - [x] get_housing_template, put_housing_template, list_housing_templates, delete_housing_template
-  - [x] get_housing_instance, get_player_housing_instances, put_housing_instance, list_housing_instances, delete_housing_instance
-  - [x] count_template_instances (for max_instances enforcement)
-- [x] clone_housing_template method (creates rooms, preserves connectivity, maps template → instance IDs) — storage.rs
-- [x] Housing abstraction system for multi-world support:
-  - [x] RoomFlag::HousingOffice - marks locations providing housing services
-  - [x] HousingTemplate.tags - filter templates by theme (["modern", "urban"], ["fantasy", "burrow"], etc.)
-  - [x] HousingTemplate.category - grouping (apartment, house, burrow, treehouse, etc.)
-  - [x] RoomRecord.housing_filter_tags - configure which templates each office shows
-  - [x] HousingTemplate.matches_filter() - check if template matches office's tag filter
-  - [x] WorldConfig housing messages (7 fields): err_housing_not_at_office, err_housing_no_templates, etc.
-- [x] Housing template seeding (studio_apartment, basic_apartment, luxury_flat templates with tags)
-- [ ] Housing commands:
-  - [x] HOUSING - show player's owned housing status
-  - [x] HOUSING LIST - show available templates catalog (location-restricted to HousingOffice rooms)
-  - [x] RENT <template_id> - clone template to create player instance (COMPLETE - full validation, currency handling, location restrictions)
-  - [ ] HOME command (3-phase implementation):
-    - [x] **Phase 1 (MVP)**: Basic teleport to primary housing - COMPLETE
-      - [x] Add PlayerRecord.primary_housing_id field
-      - [x] Add PlayerRecord.last_teleport field for cooldown
-      - [x] Add PlayerRecord.in_combat field
-      - [x] Add RoomFlag::NoTeleportOut for teleport restrictions
-      - [x] Add 6 WorldConfig teleport messages (err_teleport_in_combat, err_teleport_restricted, err_teleport_cooldown, err_no_housing, err_teleport_no_access, msg_teleport_success)
-      - [x] HOME command: teleports to primary housing with validations
-      - [x] Validation: Check in_combat flag → block with err_teleport_in_combat
-      - [x] Validation: Check RoomFlag::NoTeleportOut → block with err_teleport_restricted
-      - [x] Validation: Check cooldown (world_config.home_cooldown_seconds, default 300) → block with err_teleport_cooldown
-      - [x] Validation: Check player has active housing → block with err_no_housing
-      - [x] WorldConfig: home_cooldown_seconds field (default 300 = 5 minutes)
-      - [x] Set last_teleport timestamp after successful teleport
-    - [x] **Phase 2 (Polish)**: Multi-home management - COMPLETE
-      - [x] HOME LIST - show all accessible housing instances with status
-      - [x] Display format: [★ Primary] ID. Name (Category) - ACCESS_TYPE
-      - [x] Show access types: OWNED, GUEST, GUILD, BUSINESS
-      - [x] HOME <id> - teleport to specific housing instance by ID/number
-      - [x] HOME SET <id> - designate a housing instance as primary home
-      - [x] Update primary_housing_id when using HOME SET
-      - [x] Auto-prompt if multiple housing and no primary set
-      - [x] Number-based selection (HOME 1, HOME 2) or ID-based (HOME studio_apt_123)
-    - [ ] **Phase 3 (Advanced)**: Extended access types — IN PROGRESS
-      - [x] Guest access tracking (show instances where player is on guests list) - COMPLETE (commit 7f49cc3)
-        - [x] get_guest_housing_instances() storage method
-        - [x] HOME LIST shows owned + guest housing with unified numbering
-        - [x] HOME <id> supports teleporting to guest housing
-        - [x] Access type clearly marked: OWNED vs GUEST
-      - [ ] Guild hall support (HousingInstance.access_type enum)
-      - [ ] Business property support (owned businesses accessible via HOME)
-      - [ ] Quest-based teleport restrictions (Quest.restrictions.allow_teleport)
-      - [ ] Area-specific teleport rules (RoomFlag::QuestRestricted)
-  - [x] DESCRIBE <text> - customize current room description (COMPLETE - commit 2130878)
-    - [x] Check player is in a housing room they own or have guest access to
-    - [x] Check HousingPermissions.can_edit_description flag
-    - [x] Update RoomRecord.long_desc for current room
-    - [x] Validate description length (500 char max)
-    - [x] DESCRIBE (no args) - show current description and edit permissions
-    - [x] Context-aware: works in current housing room only
-    - [x] 5 WorldConfig messages for full i18n support
-  - [x] INVITE <player> / UNINVITE <player> - guest management (COMPLETE - commit 42f0ca1)
-    - [x] Add 7 WorldConfig fields for guest management messages
-    - [x] Validate player owns housing and is in housing room
-    - [x] Check target player exists
-    - [x] Add/remove from HousingInstance.guests list
-    - [x] Prevent duplicate invitations and invalid removals
-  - [ ] LOCK / UNLOCK - access control & object protection
-    - [x] **Phase 1: Data Model Changes** (COMPLETE - commit 7714f5b)
-      - [x] Add ObjectRecord.owner field (Option<String>)
-      - [x] Add ObjectRecord.locked field (bool, default false)
-      - [x] Add ObjectRecord.ownership_history field (Vec<OwnershipTransfer>)
-      - [x] Add RoomRecord.locked field (bool, default false)
-      - [x] Add HousingInstance.reclaim_box field (Vec<String>)
-      - [x] Add HousingInstance.inactive_since field (Option<DateTime<Utc>>)
-      - [x] Create OwnershipTransfer struct (owner, timestamp, reason)
-      - [x] Create OwnershipReason enum (Created, Purchased, Traded, etc.)
-      - [x] Update all constructors and test helpers
-      - [x] All 124 library tests passing
-    - [x] **Phase 2: Room Access Control** (COMPLETE - commit a6a504a)
-      - [x] LOCK command - lock current housing room (guests can't enter)
-      - [x] UNLOCK command - unlock current housing room
-      - [x] Check room.locked in movement validation (can_enter_room)
-      - [x] Only owner and guests can enter locked rooms
-      - [x] Command parsing for LOCK/UNLOCK
-    - [x] **Phase 3: Guest Management** (COMPLETE - commit 1bfa0ae)
-      - [x] KICK <player> - remove specific guest from current housing
-      - [x] KICK ALL - remove all guests from current housing
-      - [x] Teleport kicked players to town square
-      - [x] Command parsing for KICK
-      - [x] Owner-only validation and informative messages
-    - [x] **Phase 4: Item Protection** (COMPLETE - commit db68d92)
-      - [x] LOCK <item> - mark item as locked (guests can't take)
-      - [x] UNLOCK <item> - remove lock from item
-      - [x] Check item.locked ownership validation
-      - [x] Show 🔒 indicator for locked items in inventory
-      - [x] TODO added in TAKE command for future implementation
-    - [x] **Phase 5: Ownership Tracking** (COMPLETE - commit 73ba7c7)
-      - [x] Record ownership_history on item creation (new_player_owned)
-      - [x] Record ownership_history on BUY (Purchased reason)
-      - [x] Add reason codes enum (Created, Traded, Gifted, Dropped, PickedUp, etc.)
-      - [x] HISTORY <item> command - view ownership audit trail (owner only)
-      - [x] TODOs added for GIVE/TRADE/DROP/TAKE when implemented
-      - [ ] Preserve history for 90 days after item deletion (storage layer TODO)
-    - [x] **Phase 6: Reclaim Box System** (commit ca01a76)
-      - [x] Move items to reclaim_box helper: move_housing_to_reclaim_box()
-      - [x] Move people to town square on housing deletion (teleport loop)
-      - [x] Return companions to owner's companion list (TODO in helper)
-      - [x] RECLAIM command - view items in reclaim box (cross-housing display)
-      - [x] RECLAIM <item> - retrieve item from reclaim box (with ownership tracking)
-      - [x] WorldConfig messages for reclaim operations
-      - [x] move_housing_to_reclaim_box() ready for future housing deletion command
-      - [x] Ownership tracking integration (Reclaimed reason)
-    - [x] **Phase 7: Abandonment/Cleanup** (commit 2b19752)
-      - [x] housing_cleanup module with check_and_cleanup_housing()
-      - [x] list_abandoned_housing() for admin visibility  
-      - [x] @LISTABANDONED command (placeholder pending full Storage integration)
-      - [x] Track inactive_since when owner doesn't login (checked against last_login)
-      - [x] check_and_cleanup_housing() for periodic scans (30/60/80/90 day thresholds)
-      - [x] Mark housing inactive at 30 days (sets inactive_since, active=false)
-      - [x] Delete reclaim box items at 90 days (permanent deletion)
-      - [x] AbandonedHousingInfo struct with status_message() helper
-      - [x] CleanupConfig and CleanupStats for configuration and tracking
-      - [ ] Background task integration (scheduler/cron for automated checks)
-      - [ ] Notification system for warnings at 30/60/80 days
-- [ ] Integration tests for housing lifecycle (template → rent → customize → guest access)
-- [ ] Housing instance cleanup (inactive/abandoned housing reclamation)
-- [ ] Housing cost deduction and payment system (recurring_cost for rental tracking)
 
 **Housing System Architecture:**
 - **Template-based**: World builders create HousingTemplate blueprints with multiple HousingTemplateRoom entries
@@ -973,7 +846,22 @@ At 1000 users with 10 objects each (10,000 objects total):
 - [x] Fixed test isolation with temp directory configuration
 - [x] Documentation in `docs/development/TMUSH_ADMIN_COMMANDS.md`
 
-**Test Status**: 10/10 integration tests passing as part of 374 total tests.
+**Test Status**: 10/10 integration tests passing as part of 387 total tests.
+
+### Phase 9.4.5 — Infrastructure Maintenance & Technical Debt ✅ COMPLETE
+**Context**: Critical infrastructure fixes completed during Phase 9.4 integration testing. These improvements ensure test reliability, data integrity, and proper resource management across the codebase.
+
+**Completed Fixes** (2025-10-11, Commit 79114df):
+- ✅ **NPC Serialization**: Fixed bincode 1.3 incompatibility with serde attributes (InvalidBoolEncoding errors resolved)
+- ✅ **GameRegistry Pattern**: Centralized Sled store management prevents cache coherency issues
+- ✅ **Schema Migration System**: Migratable trait enables automatic versioning for PlayerRecord, NpcRecord, RoomRecord, ObjectRecord
+- ✅ **Test Isolation**: Fixed database conflicts, unique temp directories per test, proper cleanup
+- ✅ **Sled Locking**: Eliminated database reopening issues, tests run in parallel safely
+
+**Documentation**:
+- `docs/development/SCHEMA_MIGRATION.md` - Migration system guide
+- `src/bbs/game_registry.rs` - Centralized resource management pattern
+- `src/tmush/migration.rs` - Migratable trait implementation
 
 **Infrastructure Improvements Completed**:
 - Fixed temp directory configuration for TinyMUSH stores in tests
@@ -981,301 +869,9 @@ At 1000 users with 10 objects each (10,000 objects total):
 - Created unique temp directories per test for proper isolation
 - All tests now use isolated databases to prevent data contamination
 
-### Phase 9.4.5 — Critical Infrastructure Fixes ✅ COMPLETE
-**Priority**: URGENT - Blocking test development
-**Effort**: 6 hours (actual)
-**Completion Date**: 2025-10-11
-**Commit**: 79114df
+**Result**: 387 tests passing (134 library + 253 integration), zero failures, all infrastructure stable.
 
-#### Problems Discovered and Fixed
-
-**1. NPC Serialization Errors** ✅ FIXED
-- **Problem**: `InvalidBoolEncoding(X)` errors when deserializing NPC records
-- **Root Cause**: Bincode 1.3 incompatible with certain serde attributes:
-  - `#[serde(skip_serializing_if = "Option::is_none")]` on DialogChoice.goto
-  - `#[serde(tag = "type")]` on DialogCondition and DialogAction enums
-- **Solution**: Removed incompatible serde attributes from `src/tmush/types.rs`
-- **Impact**: NPCs with dialogue trees now serialize/deserialize correctly
-- **Validation**: Created `tests/npc_serialization_test.rs` to prevent regression
-
-**2. GameRegistry Pattern** ✅ IMPLEMENTED
-- **Problem**: Multiple code paths opening same Sled store causing cache coherency issues
-- **Solution**: Created `src/bbs/game_registry.rs` for centralized resource management
-- **Pattern**: Single Arc<TinyMushStore> shared across all BBS code
-- **Methods**: Builder pattern with `with_tinymush()`, `with_tinyhack()`, getter methods
-- **Impact**: Prevents Sled database conflicts, enables proper test isolation
-
-**3. Schema Migration System** ✅ IMPLEMENTED
-- **Problem**: Data schema changes breaking existing databases
-- **Solution**: Created `src/tmush/migration.rs` with Migratable trait
-- **Components**: 
-  - Migratable trait with `current_schema_version()`, `migrate()`, `needs_migration()`
-  - `load_and_migrate<T>()` helper for automatic versioning
-  - Implementations for PlayerRecord (v2), NpcRecord (v1), RoomRecord (v2), ObjectRecord (v2)
-- **Usage**: `get_npcs_in_room()` now uses migration system
-- **Documentation**: `docs/development/SCHEMA_MIGRATION.md`
-
-**4. Test Navigation Issues** ✅ FIXED
-- **Problem**: Tests assumed menu position (G2) and room locations
-- **Solution A**: Changed all tests to use explicit "TINYMUSH" command (position-independent)
-- **Solution B**: Fixed navigation paths (players start at gazebo_landing, must go N to town_square)
-- **Files**: `tests/npc_multi_topic_dialogue.rs` (4 tests fixed)
-
-**5. Test Database Isolation** ✅ FIXED
-- **Problem**: Tests not configuring temp directory, used default "data/tinymush"
-- **Solution**: Added `cfg.games.tinymush_db_path` to all relevant tests
-- **Files**: 
-  - `tests/player_monitoring.rs` (helper function updated)
-  - `tests/npc_multi_topic_dialogue.rs` (all 4 tests)
-- **Impact**: Each test gets isolated database, no cross-contamination
-
-**6. Sled Database Locking** ✅ FIXED
-- **Problem A**: `tests/tmush_admin_command_handlers.rs` reopening same database
-- **Solution A**: Reuse existing store instance instead of reopening
-- **Problem B**: `src/tmush/commands.rs` unit tests sharing temp directory
-- **Solution B**: Unique temp dir per test: `create_test_store(test_name)`
-- **Pattern**: `format!("tinymush_test_{}_{}", process_id, test_name)` with cleanup
-- **Impact**: No more Sled locking errors, tests run in parallel safely
-
-**Final Status**: 
-- ✅ 374 tests passing (134 library + 240 integration)
-- ✅ 0 test failures
-- ✅ All infrastructure issues resolved
-- ✅ Comprehensive documentation added
-- ✅ Clean git commit (79114df) with 26 files changed
-
-
-
-### Phase 9.4.5 — Game Door Test Infrastructure Overhaul (Week 2-3) **CRITICAL PATH**
-**Priority**: URGENT - Blocking all game door integration tests
-**Effort**: 1-2 weeks (comprehensive solution)
-**Context**: Second time deferring integration tests due to async/persistence timing issues
-
-#### Problem Domain Analysis
-
-**Root Cause**: Architectural mismatch between production async design and test synchronization needs.
-
-**The Issue**:
-1. Game doors (TinyHack, TinyMUSH) use **lazy initialization**:
-   - Entry command (G1/G2) only changes session state
-   - Player records created on NEXT game command
-   - Async persistence operations not immediately visible
-   
-2. Tests assume **synchronous behavior**:
-   - route_test_text_direct() returns immediately
-   - Subsequent test helpers expect records to exist
-   - Race conditions cause "record not found" errors
-
-3. **No coordination layer** between:
-   - BBS layer (sessions, routing)
-   - Game layer (player records, state)
-   - Storage layer (persistence)
-   - Test layer (verification)
-
-**Affected Systems**:
-- ❌ TinyMUSH integration tests (current blocker)
-- ❌ TinyHack integration tests (previously deferred)
-- ❌ Future game door tests (will hit same issues)
-
-#### Multi-Step Implementation Plan
-
-**Step 1: Define Test Helper Contracts** (2 hours)
-- [ ] Document required test helper signatures
-- [ ] Define coordination protocol between layers
-- [ ] Specify async/await guarantees for tests
-- [ ] Create trait `GameDoorTestSupport` for common interface
-- [ ] Document which helpers are game-specific vs generic
-
-**Step 2: Implement Generic BBS Test Helpers** (4 hours)
-- [ ] `test_wait_for_session_state()` - poll until state change completes
-  - [ ] Accepts: node_key, expected_state, timeout
-  - [ ] Returns: Result<(), TimeoutError>
-  - [ ] Used by: All game door tests
-  - [ ] Test coverage: Unit tests for timeout, success, invalid state
-  
-- [ ] `test_ensure_logged_in()` - guarantee user logged in and session exists
-  - [ ] Accepts: username, user_level
-  - [ ] Returns: Result<String> (node_key)
-  - [ ] Creates session if missing, logs in user
-  - [ ] Test coverage: Already logged in, new user, existing user
-  
-- [ ] `test_verify_persistence()` - generic storage sync helper
-  - [ ] Accepts: check_fn: Fn() -> Result<bool>, timeout, poll_interval
-  - [ ] Returns: Result<(), TimeoutError>
-  - [ ] Polls check_fn until true or timeout
-  - [ ] Test coverage: Immediate success, delayed success, timeout
-
-**Step 3: Implement TinyMUSH-Specific Test Helpers** (3 hours)
-- [ ] `test_tmush_create_player()` - force synchronous player creation
-  - [ ] Accepts: username, starting_room
-  - [ ] Returns: Result<PlayerRecord>
-  - [ ] Directly creates TinyMUSH player record
-  - [ ] Bypasses lazy initialization
-  - [ ] Test coverage: New player, duplicate player, invalid room
-  
-- [ ] `test_tmush_enter_and_init()` - complete TinyMUSH initialization
-  - [ ] Accepts: node_key, username
-  - [ ] Returns: Result<PlayerRecord>
-  - [ ] Sends G2 command
-  - [ ] Waits for session state change
-  - [ ] Sends "look" to trigger get_or_create_player()
-  - [ ] Polls until player record exists
-  - [ ] Test coverage: Success path, timeout, invalid session
-  
-- [ ] `test_tmush_grant_admin_safe()` - retry-capable admin granting
-  - [ ] Accepts: username, level, max_retries
-  - [ ] Returns: Result<(), GrantError>
-  - [ ] Waits for player record if not exists
-  - [ ] Grants admin with retry logic
-  - [ ] Test coverage: Immediate success, delayed success, timeout
-  
-- [ ] `test_tmush_player_exists()` - non-blocking existence check
-  - [ ] Accepts: username
-  - [ ] Returns: bool
-  - [ ] Used for polling loops
-  - [ ] No errors on missing player
-  - [ ] Test coverage: Exists, doesn't exist, invalid store
-
-**Step 4: Implement TinyHack-Specific Test Helpers** (2 hours)
-- [ ] `test_tinyhack_create_game()` - force game state creation
-  - [ ] Accepts: username, initial_position
-  - [ ] Returns: Result<GameState>
-  - [ ] Creates save file synchronously
-  - [ ] Test coverage: New game, existing game, corrupted save
-  
-- [ ] `test_tinyhack_enter_and_init()` - complete TinyHack initialization
-  - [ ] Accepts: node_key, username
-  - [ ] Returns: Result<GameState>
-  - [ ] Sends G1 command
-  - [ ] Waits for session state change
-  - [ ] Polls until save file exists
-  - [ ] Test coverage: New player, returning player, timeout
-  
-- [ ] `test_tinyhack_verify_save()` - check save file persistence
-  - [ ] Accepts: username, expected_fields
-  - [ ] Returns: Result<GameState>
-  - [ ] Polls until save file exists and is valid
-  - [ ] Test coverage: Immediate, delayed, corrupted, timeout
-
-**Step 5: Create Reusable Test Infrastructure Module** (3 hours)
-- [ ] Create `tests/common/mod.rs` for shared helpers
-- [ ] Create `tests/common/game_door.rs` - generic game door helpers
-- [ ] Create `tests/common/tinymush.rs` - TinyMUSH-specific helpers
-- [ ] Create `tests/common/tinyhack.rs` - TinyHack-specific helpers
-- [ ] Create `tests/common/sync.rs` - async/await synchronization primitives
-- [ ] Document usage patterns in `tests/common/README.md`
-- [ ] Add examples for each helper function
-
-**Step 6: Refactor Existing Tests** (4 hours)
-- [ ] Update `tests/tinyhack_integration.rs` to use new helpers:
-  - [ ] Replace manual session creation with test_ensure_logged_in()
-  - [ ] Replace save file polling with test_tinyhack_verify_save()
-  - [ ] Add test_tinyhack_enter_and_init() for initialization
-  - [ ] Verify all tests still pass
-  
-- [ ] Update `tests/player_monitoring.rs` to use new helpers:
-  - [ ] Replace manual player creation with test_tmush_create_player()
-  - [ ] Replace grant_admin with test_tmush_grant_admin_safe()
-  - [ ] Use test_tmush_enter_and_init() for setup
-  - [ ] Add proper wait/polling for persistence
-  - [ ] Verify all 12 tests pass
-
-**Step 7: Integration Test Implementation** (3 hours)
-- [ ] Implement all 12 player monitoring tests
-- [ ] Test `/PLAYERS` command (2 tests)
-- [ ] Test `WHERE` command (4 tests)
-- [ ] Test `/GOTO` command (5 tests)
-- [ ] Test permission enforcement (1 test covering all levels)
-- [ ] Verify all tests pass reliably (5+ consecutive runs)
-
-**Step 8: Documentation & Examples** (2 hours)
-- [ ] Document test infrastructure in `docs/development/TESTING_GUIDE.md`
-- [ ] Create example test file: `tests/examples/game_door_test_template.rs`
-- [ ] Add troubleshooting section for common test issues
-- [ ] Document timing parameters (timeouts, poll intervals)
-- [ ] Add section on when to use which helper
-- [ ] Document the generic GameDoorTestSupport trait
-
-#### Validation Criteria
-
-**Must Pass Before Completion**:
-1. ✅ All new helpers have unit tests with >80% coverage
-2. ✅ TinyMUSH integration tests: all 12 tests passing
-3. ✅ TinyHack integration tests: all existing tests still passing
-4. ✅ Run tests 10 times: 0 flakes or race conditions
-5. ✅ No impact on production code performance or behavior
-6. ✅ Documentation complete with working examples
-7. ✅ All helpers follow consistent naming: test_<game>_<action>()
-8. ✅ Zero compiler warnings in test code
-
-**Acceptance Test**:
-```bash
-# Must pass 10 consecutive times without failures:
-for i in {1..10}; do
-  cargo test --test player_monitoring && \
-  cargo test --test tinyhack_integration || exit 1
-done
-```
-
-#### Design Principles
-
-**1. Separation of Concerns**:
-- BBS layer helpers (sessions, routing) - work for ALL games
-- Game layer helpers (records, state) - game-specific
-- Storage layer helpers (persistence) - generic retry/poll logic
-- No cross-layer dependencies in helpers
-
-**2. Composability**:
-- Each helper does ONE thing well
-- Helpers can be chained for complex scenarios
-- No hidden side effects or global state
-
-**3. Discoverability**:
-- Clear naming: `test_<system>_<action>()`
-- Comprehensive documentation
-- Working examples for common patterns
-
-**4. Reliability**:
-- All helpers have timeouts (no infinite loops)
-- Clear error messages on failure
-- Retry logic with exponential backoff where appropriate
-
-**5. Future-Proof**:
-- Generic patterns work for new game doors
-- Trait-based abstractions for common operations
-- Easy to extend without breaking existing tests
-
-#### Risk Mitigation
-
-**Risk 1: Breaking Production Code**
-- Mitigation: All helpers in `#[cfg(test)]` blocks only
-- Mitigation: No changes to production async behavior
-- Mitigation: Extensive testing of production code after changes
-
-**Risk 2: Test Infrastructure Becomes Unmaintainable**
-- Mitigation: Keep helpers simple and focused
-- Mitigation: Document each helper's purpose clearly
-- Mitigation: Regular refactoring as patterns emerge
-
-**Risk 3: Timing Issues Persist**
-- Mitigation: Configurable timeouts for different environments
-- Mitigation: Poll intervals tuned to balance speed/reliability
-- Mitigation: Clear error messages when timing out
-
-**Risk 4: Game Door Divergence**
-- Mitigation: GameDoorTestSupport trait enforces consistency
-- Mitigation: Shared patterns in tests/common/game_door.rs
-- Mitigation: Regular review of test patterns across games
-
-#### Success Metrics
-
-- ✅ 0 deferred integration test suites after completion
-- ✅ <5 minutes to write new game door integration test
-- ✅ 100% reliability on CI/CD (no flakes)
-- ✅ New game doors can reuse 80%+ of test infrastructure
-- ✅ Test execution time: <10 seconds for full suite
-
-**Status**: Test infrastructure overhaul planned and scoped. This is CRITICAL PATH work that unblocks all future game door testing. Estimated 1-2 weeks for comprehensive solution. Implementation should begin before continuing with new feature development.
+---
 
 ### Phase 9.5 — World Event Commands (Week 2)
 - [ ] Admin migration command: `/CONVERT_CURRENCY <decimal|multitier>`
@@ -1369,7 +965,75 @@ done
 
 ## Future Enhancements (Post-Launch)
 
+### Test Infrastructure Improvements (If Needed)
+**Context**: Deferred work for game door test infrastructure. Current test suite (387 tests) is stable and sufficient for alpha launch. This section documents potential improvements if async/persistence timing issues resurface.
+
+**Game Door Test Infrastructure Overhaul** - **DEFERRED**
+**Priority**: Low (only if test reliability issues emerge)
+**Effort**: 1-2 weeks (comprehensive solution)
+**Context**: Current tests work reliably. This documents architectural improvements if needed.
+
+(See detailed implementation plan in archived TODO sections if infrastructure improvements become necessary)
+
 ### Economy Enhancements
+- [ ] Item quality/condition system for value degradation
+- [ ] Reputation discounts based on player standing
+- [ ] Vendor NPC dialog integration
+- [ ] Vendor scripting for specific merchants (Bakery, General Store, etc.)
+- [ ] Bank vault storage for items (limited slots)
+- [ ] Interest/fees configuration (optional, world-level)
+- [ ] Bank NPC integration at specific locations
+- [ ] Dynamic market prices based on supply/demand
+- [ ] Auction house system
+- [ ] Crafting system integration
+
+### Social Features
+- [ ] Admin migration command: `/CONVERT_CURRENCY <decimal|multitier>`
+- [ ] Batch conversion for all player wallets
+- [ ] Batch conversion for all item values
+- [ ] Batch conversion for all shop inventories
+- [ ] Batch conversion for all bank accounts
+- [ ] Conversion validation and integrity checks
+- [ ] Migration rollback capability
+- [ ] Migration audit logging with before/after values
+- [ ] Dry-run mode for testing conversion
+
+### Logging & Observability (Week 3-4)
+- [ ] Structured logging pipelines:
+  - [ ] Action log (player commands, movement)
+  - [ ] Security log (failed auth, abuse attempts)
+  - [ ] Trade log (all economic transactions)
+  - [ ] Admin log (admin commands, world modifications)
+- [ ] Log retention policies (rotation, compression)
+- [ ] Log query interface for admins
+- [ ] Real-time monitoring dashboard (Grafana integration)
+- [ ] Alert system for suspicious activity
+
+### Backup & Recovery (Week 5)
+- [ ] Automated backup routines (Sled database snapshots)
+- [ ] Backup retention policies (daily, weekly, monthly)
+- [ ] Backup verification tests
+- [ ] Restore procedures and drills
+- [ ] Point-in-time recovery capability
+- [ ] Disaster recovery documentation
+
+### Mesh Resilience (Week 6)
+- [ ] Reconnect autosave/resume flow
+- [ ] Session recovery after disconnection
+- [ ] Graceful degradation under high latency
+- [ ] Message queue persistence for offline players
+- [ ] Automatic retry for failed operations
+- [ ] Connection health monitoring
+
+---
+
+### Notes
+- Update this checklist alongside implementation progress so it stays authoritative.
+- Cross-link PRs/issues next to items as they're tackled.
+- When an item reaches `[x]`, note the commit hash or PR number for traceability.
+- See `docs/development/PHASE5_PROGRESS.md` for detailed Phase 5 progress tracking.
+- Phase 5 is now COMPLETE with all 5 weeks finished and 263 tests passing.
+- Next focus: Phase 6 Week 1 - Tutorial System implementation.
 - [ ] Item quality/condition system for value degradation
 - [ ] Reputation discounts based on player standing
 - [ ] Vendor NPC dialog integration

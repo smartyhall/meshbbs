@@ -7,6 +7,7 @@ pub mod achievement;
 pub mod commands;
 pub mod companion;
 pub mod currency;
+pub mod currency_migration;
 pub mod errors;
 pub mod housing_cleanup;
 pub mod inventory;

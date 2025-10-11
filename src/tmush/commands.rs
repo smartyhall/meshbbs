@@ -155,6 +155,16 @@ pub enum TinyMushCommand {
     Players,                // /PLAYERS - list all players with status and location
     Goto(String),           // /GOTO <player|room> - teleport to player or room
     
+    /// World Event Commands (Phase 9.5)
+    ///
+    /// These commands enable administrators to manage world-wide events and migrations:
+    /// - `/CONVERT_CURRENCY <decimal|multitier> [--dry-run]`: Convert all currency in the world
+    ///   - Converts player wallets, bank accounts, item values, and shop inventories
+    ///   - Use --dry-run flag to preview changes without applying them
+    ///   - Logs all conversions for audit purposes
+    ///   - Requires admin level 3 (sysop)
+    ConvertCurrency(String, bool), // /CONVERT_CURRENCY <type> [--dry-run] - migrate all currency (sysop only)
+    
     // Unrecognized command
     Unknown(String),
 }
@@ -352,6 +362,9 @@ impl TinyMushProcessor {
             TinyMushCommand::Admins => self.handle_admins(session, config).await,
             TinyMushCommand::Players => self.handle_players(session, config).await,
             TinyMushCommand::Goto(target) => self.handle_goto(session, target, config).await,
+            TinyMushCommand::ConvertCurrency(currency_type, dry_run) => {
+                self.handle_convert_currency(session, currency_type, dry_run, config).await
+            },
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -929,6 +942,21 @@ impl TinyMushProcessor {
                 } else {
                     TinyMushCommand::Unknown("Usage: /GOTO <player|room>\nExample: /GOTO alice or /GOTO town_square".to_string())
                 }
+            },
+            "/CONVERT_CURRENCY" | "/CONVERTCURRENCY" | "/MIGRATE" => {
+                if parts.len() < 2 {
+                    return TinyMushCommand::Unknown("Usage: /CONVERT_CURRENCY <decimal|multitier> [--dry-run]\nExample: /CONVERT_CURRENCY multitier\nExample: /CONVERT_CURRENCY decimal --dry-run".to_string());
+                }
+                
+                let currency_type = parts[1].to_lowercase();
+                if currency_type != "decimal" && currency_type != "multitier" {
+                    return TinyMushCommand::Unknown("Invalid currency type. Must be 'decimal' or 'multitier'.\nUsage: /CONVERT_CURRENCY <decimal|multitier> [--dry-run]".to_string());
+                }
+                
+                // Check for --dry-run flag
+                let dry_run = parts.len() > 2 && parts[2].eq_ignore_ascii_case("--dry-run");
+                
+                TinyMushCommand::ConvertCurrency(currency_type, dry_run)
             },
 
             _ => TinyMushCommand::Unknown(input),
@@ -5389,6 +5417,105 @@ impl TinyMushProcessor {
             if !players_here.is_empty() {
                 response.push_str(&format!("\nPlayers here: {}\n", players_here.join(", ")));
             }
+        }
+
+        Ok(response)
+    }
+
+    /// Handle `/CONVERT_CURRENCY` command - migrate all currency in the world
+    /// 
+    /// This is a powerful sysop-only command that converts all currency in the world between
+    /// Decimal and MultiTier systems. It affects:
+    /// - All player wallets
+    /// - All player bank accounts
+    /// - All item currency values
+    /// - All shop inventory items
+    /// 
+    /// The conversion uses a standard ratio: 100 copper = 1 decimal unit (e.g., $1.00 = 100cp)
+    /// 
+    /// Use --dry-run flag to preview changes without applying them.
+    /// 
+    /// # Arguments
+    /// - `session`: Current player session
+    /// - `currency_type`: Target currency type ("decimal" or "multitier")
+    /// - `dry_run`: If true, preview changes without applying them
+    /// - `config`: Server configuration
+    /// 
+    /// # Returns
+    /// Detailed conversion report with success/failure counts and errors
+    /// 
+    /// # Example
+    /// ```text
+    /// /CONVERT_CURRENCY multitier --dry-run  # Preview conversion
+    /// /CONVERT_CURRENCY multitier             # Actually perform conversion
+    /// ```
+    async fn handle_convert_currency(
+        &mut self,
+        session: &Session,
+        currency_type: String,
+        dry_run: bool,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check admin privileges - requires sysop level (3)
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. This command requires sysop privileges.".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+
+        if player.admin_level.unwrap_or(0) < 3 {
+            return Ok(format!(
+                "⛔ Permission denied. This command requires sysop level (3).\nYour level: {}\n\nThis is a world-altering command that affects all players.",
+                player.admin_level.unwrap_or(0)
+            ));
+        }
+
+        let to_multitier = currency_type == "multitier";
+        let target_type = if to_multitier { "MultiTier" } else { "Decimal" };
+        
+        let mut response = String::new();
+        response.push_str("═══════════════════════════════════════\n");
+        response.push_str(&format!("🔄 CURRENCY MIGRATION TO {}\n", target_type.to_uppercase()));
+        response.push_str("═══════════════════════════════════════\n\n");
+
+        if dry_run {
+            response.push_str("⚠️  DRY RUN MODE - No changes will be made\n\n");
+        } else {
+            response.push_str("⚠️  WARNING: This will convert all currency in the world!\n\n");
+        }
+
+        // Perform the conversion
+        let result = crate::tmush::currency_migration::migrate_all_currency(
+            &store,
+            to_multitier,
+            dry_run,
+        ).map_err(|e| anyhow::anyhow!(e))?;
+
+        // Report results
+        response.push_str("Results:\n");
+        response.push_str(&format!("✅ Successful conversions: {}\n", result.success_count));
+        response.push_str(&format!("❌ Failed conversions: {}\n", result.failure_count));
+        response.push_str(&format!("💰 Total amount converted: {} base units\n\n", result.total_converted));
+
+        if !result.errors.is_empty() {
+            response.push_str("Errors:\n");
+            for (i, error) in result.errors.iter().take(10).enumerate() {
+                response.push_str(&format!("  {}. {}\n", i + 1, error));
+            }
+            if result.errors.len() > 10 {
+                response.push_str(&format!("  ... and {} more errors\n", result.errors.len() - 10));
+            }
+            response.push_str("\n");
+        }
+
+        if dry_run {
+            response.push_str("💡 Run without --dry-run to apply these changes.\n");
+        } else {
+            response.push_str("✅ Currency migration complete!\n");
+            response.push_str("📝 All conversions have been logged for audit.\n");
         }
 
         Ok(response)
