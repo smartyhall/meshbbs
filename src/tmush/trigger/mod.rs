@@ -17,10 +17,16 @@
 /// message("text") && condition ? action : fallback
 /// ```
 
+pub mod parser;
+pub mod evaluator;
+
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
 use crate::tmush::types::{ObjectTrigger, PlayerRecord, RoomRecord, ObjectRecord};
 use std::time::{Duration, Instant};
+
+pub use parser::{parse_script, AstNode, BinaryOperator};
+pub use evaluator::{Evaluator, Value};
 
 /// Maximum script length in characters
 pub const MAX_SCRIPT_LENGTH: usize = 512;
@@ -175,10 +181,10 @@ pub enum TriggerResult {
 /// # Returns
 /// Result of trigger execution with messages to send to player
 pub fn execute_trigger(
-    trigger: ObjectTrigger,
+    _trigger: ObjectTrigger,
     script: &str,
     context: &mut TriggerContext,
-    _store: &TinyMushStore,
+    store: &TinyMushStore,
 ) -> Result<TriggerResult, TinyMushError> {
     // Validate script length
     if script.is_empty() {
@@ -198,11 +204,25 @@ pub fn execute_trigger(
         return Ok(TriggerResult::TimedOut);
     }
     
-    // TODO: Parse and execute script (Phase 2)
-    // For now, just return a placeholder
-    Ok(TriggerResult::Success(vec![
-        format!("🎯 Trigger {:?} fired (not yet implemented)", trigger)
-    ]))
+    // Parse the script
+    let ast = match parse_script(script) {
+        Ok(ast) => ast,
+        Err(e) => return Ok(TriggerResult::Failed(format!("Parse error: {}", e))),
+    };
+    
+    // Evaluate the script
+    let mut evaluator = Evaluator::new(context, store);
+    match evaluator.evaluate(&ast) {
+        Ok(_) => {
+            let messages = evaluator.messages().to_vec();
+            if messages.is_empty() {
+                Ok(TriggerResult::Skipped)
+            } else {
+                Ok(TriggerResult::Success(messages))
+            }
+        }
+        Err(e) => Ok(TriggerResult::Failed(format!("Execution error: {}", e))),
+    }
 }
 
 /// Validate a trigger script for syntax errors
@@ -226,27 +246,8 @@ pub fn validate_script(script: &str) -> Result<(), String> {
         ));
     }
     
-    // TODO: Implement full syntax validation (Phase 2)
-    // For now, just do basic checks
-    
-    // Check for balanced parentheses
-    let mut depth = 0;
-    for ch in script.chars() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth < 0 {
-                    return Err("Unbalanced parentheses: too many ')'".to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    
-    if depth != 0 {
-        return Err("Unbalanced parentheses: unclosed '('".to_string());
-    }
+    // Parse the script to validate syntax
+    parse_script(script)?;
     
     Ok(())
 }
