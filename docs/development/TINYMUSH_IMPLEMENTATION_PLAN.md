@@ -321,29 +321,198 @@ Created comprehensive tutorial system with location-based progression, NPC inter
 - ⏳ Quest journal persists across reconnects; achievements saved.
 - ⏳ Analytics instrumentation (completion rates) reporting.
 
-## Phase 7 – Housing, Building, Triggers (Weeks 9-11)
+## Phase 7 – Housing, Building, Triggers (Weeks 9-11) ✅ HOUSING & BUILDING COMPLETE
 
 **Spec References**: _Housing_, _MUSH Building System_, _Triggers_.
 
-**Objectives**
-- Deliver apartment/hotel instancing with personalization.
-- Implement housing customization via context-aware `DESCRIBE` command.
-- Implement builder permissions, `/dig`, `/link`, `/describe` commands (admin/builder-only).
-- Provide trigger scripting (simple event-action system as per spec).
+**Status**: ✅ Housing system complete, ✅ Builder commands complete, 🚧 Trigger engine in progress
 
+**Objectives**
+- ✅ Deliver apartment/hotel instancing with personalization.
+- ✅ Implement housing customization via context-aware `DESCRIBE` command.
+- ✅ Implement builder permissions, `/dig`, `/link`, `/describe` commands (admin/builder-only).
+- 🚧 Provide trigger scripting (simple event-action system as per spec).
+
+### Week 1-2: Housing System ✅ COMPLETE
 **Tasks**
-1. Housing manager for instanced spaces with persistence and quotas.
-2. Housing customization: `DESCRIBE` command (context-aware, works in owned housing).
-3. Builder role enforcement (Architect/Creator permissions).
-4. Trigger engine with safe sandbox (limited scripting DSL).
-5. Abuse prevention: rate limits, resource quotas, moderation hooks.
-6. Tests for housing decoration, trigger creation, security boundaries.
+1. ✅ Housing manager for instanced spaces with persistence and quotas.
+2. ✅ Housing customization: `DESCRIBE` command (context-aware, works in owned housing).
+3. ✅ Guest list management (INVITE, UNINVITE, GUESTLIST commands).
+4. ✅ Housing rental and purchase system with templates.
+5. ✅ Room locking and security (LOCK/UNLOCK commands).
+6. ✅ Tests for housing decoration, access control, persistence.
+
+### Week 3-4: Builder Permission System ✅ COMPLETE
+**Tasks**
+1. ✅ Builder role enforcement (3-tier: Apprentice/Builder/Architect permissions).
+2. ✅ `/BUILDER` command - show builder status and available commands.
+3. ✅ `/SETBUILDER <player> <level>` - grant builder privileges (admin level 3).
+4. ✅ `/REMOVEBUILDER <player>` - revoke builder privileges.
+5. ✅ `/BUILDERS` - list all builders with levels.
+6. ✅ Permission helper methods in PlayerRecord.
+
+### Week 3-4: World Manipulation Commands ✅ COMPLETE
+**Tasks**
+1. ✅ `/DIG <direction> <room_name>` - create new room with bidirectional exits (builder level 2+).
+2. ✅ `/DESCRIBE <target> <text>` - set descriptions for rooms and objects (builder level 1+).
+3. ✅ `/LINK <direction> <destination>` - create one-way exit (builder level 2+).
+4. ✅ `/UNLINK <direction>` - remove exit (builder level 2+).
+5. ✅ `/SETFLAG <target> <flag>` - modify room/object flags (builder level 2+).
+6. ✅ `/CREATE <object>` - create new objects (builder level 1+).
+7. ✅ `/DESTROY <object>` - delete objects with safe container handling (builder level 3+).
+8. ✅ delete_object() storage method with container safety (move contents, block nested).
+9. ✅ Object description editing and flag modification.
+
+### Week 5-6: Trigger Engine 🚧 IN PROGRESS
+
+**Trigger System Design**:
+- **Core Triggers**: OnEnter, OnLook, OnTake, OnDrop, OnUse, OnPoke
+- **Future Triggers**: OnIdle (rate-limited), OnFollow (companions), OnCombat/OnHeal (defer to combat system)
+- **DSL**: Simple single-line expressions with pipe operators
+- **Storage**: `actions: HashMap<ObjectTrigger, String>` already exists in ObjectRecord
+- **Security**: 512 char max, 100ms timeout, 10 actions max, sandboxed execution
+
+**Phase 1: Core Trigger Types (Days 1-2)**
+- [ ] Implement trigger types enum (already exists, verify completeness)
+- [ ] Design trigger execution context structure
+- [ ] Define trigger hook points in game commands
+
+**Phase 2: DSL Parser & Validator (Days 3-5)**
+- [ ] Design DSL syntax specification
+  - [ ] Basic actions: `message()`, `message_room()`, `teleport()`, `grant_item()`, `consume()`, `heal()`, `damage()`
+  - [ ] World actions: `unlock_exit()`, `lock_exit()`, `spawn_object()`, `set_flag()`, `clear_flag()`
+  - [ ] Quest actions: `grant_quest_progress()`, `complete_quest()`
+- [ ] Implement condition checks
+  - [ ] Inventory: `has_item()`, `inventory_count()`
+  - [ ] Quest: `has_quest()`, `quest_complete()`
+  - [ ] Flags: `flag_set()`, `room_flag()`
+  - [ ] Location: `current_room`, `in_room()`
+  - [ ] Time: `time_between()`, game time
+  - [ ] Companion: `loyalty > X`
+  - [ ] Random: `random_chance()`, `random()`
+- [ ] Build tokenizer and AST parser
+  - [ ] Parse expressions with operators (&&, ||, ?, :)
+  - [ ] Parse function calls with arguments
+  - [ ] Parse literals (strings, numbers, booleans)
+- [ ] Implement script validator
+  - [ ] Syntax validation
+  - [ ] Unknown function detection
+  - [ ] Type checking for arguments
+  - [ ] Nested depth checking (max 5 levels)
+  - [ ] Script length validation (max 512 chars)
+
+**Phase 3: Execution Engine (Days 6-8)**
+- [ ] Build execution context structure
+  - [ ] Player state (username, inventory, location, quests)
+  - [ ] Object state (id, name, flags, owner)
+  - [ ] Room state (id, name, flags, items)
+  - [ ] Execution metadata (depth, action count, message count)
+- [ ] Implement action dispatcher
+  - [ ] Message actions (message, message_room)
+  - [ ] Movement actions (teleport)
+  - [ ] Item actions (grant_item, consume)
+  - [ ] World manipulation (unlock_exit, lock_exit, set_flag, clear_flag)
+  - [ ] Spawn actions (spawn_object)
+  - [ ] Quest actions (grant_quest_progress)
+- [ ] Implement condition evaluator
+  - [ ] Inventory checks
+  - [ ] Quest checks
+  - [ ] Flag checks
+  - [ ] Location checks
+  - [ ] Time checks
+  - [ ] Random checks
+- [ ] Variable substitution engine
+  - [ ] `$player`, `$player_name`
+  - [ ] `$object`, `$object_id`
+  - [ ] `$room`, `$room_id`
+  - [ ] `$time`
+- [ ] Execution limits and safety
+  - [ ] Timeout after 100ms
+  - [ ] Max 10 actions per trigger
+  - [ ] Max 3 messages per trigger
+  - [ ] Execution depth tracking (prevent recursion)
+  - [ ] Rate limiting (max 100 executions/minute per object)
+- [ ] Error handling
+  - [ ] Graceful failure (log, don't crash)
+  - [ ] User-friendly error messages
+  - [ ] Admin execution logs
+
+**Phase 4: Builder Commands (Days 9-10)**
+- [ ] `/SETTRIGGER <object> <trigger_type> <script>` - Set/update trigger
+  - [ ] Permission check (owner or architect level 3)
+  - [ ] Syntax validation before saving
+  - [ ] Store in object.actions HashMap
+  - [ ] Provide detailed syntax error feedback
+- [ ] `/CLEARTRIGGER <object> <trigger_type>` - Remove trigger
+  - [ ] Permission check
+  - [ ] Remove from actions HashMap
+- [ ] `/LISTTRIGGERS <object>` - Show all triggers
+  - [ ] Display type, script preview (60 chars)
+  - [ ] Show length and last execution time
+- [ ] `/TESTTRIGGER <object> <trigger_type>` - Dry-run test
+  - [ ] Execute in test mode (no side effects)
+  - [ ] Show actions that would execute
+  - [ ] Show condition evaluations
+  - [ ] Builder level 2+ required
+
+**Phase 5: Integration (Days 11-12)**
+- [ ] Hook OnLook into `/LOOK <object>` command
+- [ ] Hook OnTake into `/TAKE <object>` command
+- [ ] Hook OnDrop into `/DROP <object>` command
+- [ ] Hook OnUse into `/USE <object>` command
+- [ ] Hook OnPoke into `/POKE <object>` command (create command if needed)
+- [ ] Hook OnEnter into move_player function
+  - [ ] Fire for all objects in room
+  - [ ] Batch execution with rate limiting
+  - [ ] Handle multiple players entering simultaneously
+
+**Phase 6: Testing & Security (Days 13-14)**
+- [ ] Unit tests for trigger parser
+  - [ ] Valid syntax parsing
+  - [ ] Invalid syntax rejection
+  - [ ] Edge cases (empty, very long, malformed)
+- [ ] Unit tests for execution engine
+  - [ ] Action execution correctness
+  - [ ] Condition evaluation correctness
+  - [ ] Variable substitution correctness
+  - [ ] Execution limits enforcement
+- [ ] Integration tests
+  - [ ] OnLook quest clue scenario
+  - [ ] OnUse consumable healing scenario
+  - [ ] OnDrop puzzle altar scenario
+  - [ ] OnEnter room ambience scenario
+  - [ ] OnTake cursed item scenario
+  - [ ] OnPoke pet interaction scenario
+- [ ] Security tests
+  - [ ] Runaway trigger detection (prevent infinite loops)
+  - [ ] Execution timeout (100ms limit)
+  - [ ] Rate limiting (100 exec/min per object)
+  - [ ] Action limit enforcement (10 max)
+  - [ ] Message limit enforcement (3 max)
+  - [ ] Script injection attempts
+  - [ ] Privilege escalation attempts
+- [ ] Performance tests
+  - [ ] 100 objects with OnEnter in room
+  - [ ] 1000 trigger executions under load
+  - [ ] Memory usage validation
 
 **Exit Criteria**
-- Players can customize their housing room descriptions via `DESCRIBE`.
-- Builders can create rooms/objects within quotas; admins can audit.
-- Trigger engine handles sample scenarios ("feep" button) safely.
-- Housing data backed up and restorable via admin tools.
+- ✅ Players can customize their housing room descriptions via `DESCRIBE`.
+- ✅ Builders can create rooms/objects within quotas; admins can audit.
+- ✅ Housing data backed up and restorable via admin tools.
+- ✅ Builder permission system functional with 3-tier access control.
+- ✅ All world manipulation commands functional (DIG, LINK, DESCRIBE, SETFLAG, CREATE, DESTROY).
+- ✅ Safe object deletion with container handling.
+- 🚧 Trigger engine handles sample scenarios safely:
+  - [ ] OnLook reveals quest clues based on player state
+  - [ ] OnUse consumables heal player and are consumed
+  - [ ] OnDrop triggers puzzle mechanics (altar acceptance)
+  - [ ] OnEnter provides room ambience without spam
+  - [ ] OnTake applies item effects (curses, blessings)
+  - [ ] OnPoke provides interactive feedback
+- [ ] Trigger security validated (no exploits, proper sandboxing)
+- [ ] Trigger builder commands functional and intuitive
+- [ ] All 392+ tests passing
 
 **Command Distinction**:
 - `DESCRIBE <text>` - Player housing customization (context-aware, permission-checked)

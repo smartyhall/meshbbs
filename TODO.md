@@ -584,16 +584,134 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 
 **Builder Commands Status**: ✅ **100% COMPLETE!** All core functionality implemented (392 tests passing). Permission system with 3-tier access control. Full world manipulation: rooms, exits, objects, descriptions, flags. Safe object deletion with container handling. Undo/redo and audit logging deferred as future enhancements.
 
-### Trigger Engine (Week 5-6)
-- [ ] Trigger DSL design (safe, sandboxed)
-- [ ] Trigger types: OnEnter, OnLook, OnTake, OnDrop, OnUse, OnPoke
-- [ ] Trigger execution engine
-- [ ] Trigger variable substitution ($player, $object, etc.)
-- [ ] Trigger actions: message, teleport, grant_item, spawn_mob
-- [ ] Trigger condition evaluation (has_item, flag_set, etc.)
-- [ ] Abuse prevention: execution limits, resource quotas
-- [ ] Security review for trigger sandboxing
-- [ ] Tests for runaway triggers and infinite loops
+### Trigger Engine (Week 5-6) 🚧 IN PROGRESS
+**Goal**: Interactive objects with safe, sandboxed scripting for dynamic world-building
+
+#### Phase 1: Core Trigger Types (6 essential triggers)
+- [ ] **OnEnter** - Fires when player enters room with object (ambience, traps, quest triggers)
+- [ ] **OnLook** - Fires when player examines object (hidden clues, dynamic descriptions)
+- [ ] **OnTake** - Fires when player picks up object (quest items, cursed items)
+- [ ] **OnDrop** - Fires when player drops object (puzzles, altars, environmental reactions)
+- [ ] **OnUse** - Fires when player uses object (consumables, tools, magical items)
+- [ ] **OnPoke** - Fires when player pokes object (humor, pet interaction, discovery)
+
+#### Phase 2: DSL Parser & Validator
+- [ ] Design simple DSL syntax (single-line expressions with pipe operators)
+  - [ ] Basic actions: `message()`, `message_room()`, `teleport()`, `grant_item()`
+  - [ ] Consumable actions: `consume()`, `heal()`, `damage()`
+  - [ ] World manipulation: `unlock_exit()`, `lock_exit()`, `spawn_object()`
+  - [ ] State changes: `set_flag()`, `clear_flag()`, `grant_quest_progress()`
+- [ ] Implement condition checks
+  - [ ] Inventory: `has_item()`, `inventory_count()`
+  - [ ] Quest state: `has_quest()`, `quest_complete()`
+  - [ ] Flags: `flag_set()`, `room_flag()`
+  - [ ] Location: `current_room`, `in_room()`
+  - [ ] Time: `time_between()`, game time checks
+  - [ ] Companion: `loyalty > X`, companion state checks
+  - [ ] Random: `random_chance()`, probability checks
+- [ ] Build trigger script parser
+  - [ ] Tokenizer for DSL syntax
+  - [ ] AST (Abstract Syntax Tree) builder
+  - [ ] Validation: syntax errors, unknown functions, type checking
+  - [ ] Max script length: 512 characters
+- [ ] Script validator with safety checks
+  - [ ] Detect infinite loops (no recursion)
+  - [ ] Validate function names and arguments
+  - [ ] Check nested depth (max 5 levels)
+  - [ ] Verify action permissions
+
+#### Phase 3: Execution Engine
+- [ ] Build sandboxed trigger executor
+  - [ ] Execution context with player/object/room state
+  - [ ] Action dispatcher (route to actual game functions)
+  - [ ] Condition evaluator (check game state)
+  - [ ] Max execution time: 100ms per trigger
+  - [ ] Max actions per trigger: 10
+  - [ ] Max messages per trigger: 3
+- [ ] Variable substitution
+  - [ ] `$player` - Player username
+  - [ ] `$player_name` - Player display name
+  - [ ] `$object` - Object name
+  - [ ] `$object_id` - Object ID
+  - [ ] `$room` - Current room name
+  - [ ] `$room_id` - Current room ID
+  - [ ] `$time` - In-game time
+- [ ] Error handling
+  - [ ] Graceful failures (log error, don't crash)
+  - [ ] User-friendly error messages
+  - [ ] Admin execution logs (builder level 3+)
+- [ ] Rate limiting & abuse prevention
+  - [ ] Track trigger executions per object (max 100/minute)
+  - [ ] Disable runaway triggers automatically
+  - [ ] Global trigger disable flag (admin emergency shutoff)
+  - [ ] Per-player trigger cooldowns (prevent spam)
+
+#### Phase 4: Builder Commands
+- [ ] `/SETTRIGGER <object> <trigger_type> <script>` - Set/update trigger
+  - [ ] Permission check: owner or architect level 3
+  - [ ] Validate script syntax before saving
+  - [ ] Store in object.actions HashMap
+  - [ ] Provide syntax error feedback
+- [ ] `/CLEARTRIGGER <object> <trigger_type>` - Remove trigger
+  - [ ] Permission check: owner or architect level 3
+  - [ ] Remove from object.actions
+- [ ] `/LISTTRIGGERS <object>` - Show all triggers on object
+  - [ ] Display trigger type and script preview (first 60 chars)
+  - [ ] Show script length and last execution time
+- [ ] `/TESTTRIGGER <object> <trigger_type>` - Dry-run trigger test
+  - [ ] Execute in test mode (no side effects)
+  - [ ] Show what actions would execute
+  - [ ] Show condition evaluation results
+  - [ ] Builder level 2+ required
+
+#### Phase 5: Integration with Game Commands
+- [ ] Hook OnLook into `/LOOK <object>` command
+- [ ] Hook OnTake into `/TAKE <object>` command
+- [ ] Hook OnDrop into `/DROP <object>` command
+- [ ] Hook OnUse into `/USE <object>` command
+- [ ] Hook OnPoke into `/POKE <object>` command
+- [ ] Hook OnEnter into room navigation (move_player)
+  - [ ] Fire for all objects in room when player enters
+  - [ ] Batch execution with rate limiting
+
+#### Phase 6: Testing & Security
+- [ ] Unit tests for trigger parser
+  - [ ] Valid syntax parsing
+  - [ ] Invalid syntax rejection
+  - [ ] Edge cases (empty scripts, very long scripts)
+- [ ] Unit tests for execution engine
+  - [ ] Action execution (message, teleport, etc.)
+  - [ ] Condition evaluation (has_item, flag_set, etc.)
+  - [ ] Variable substitution
+- [ ] Integration tests for trigger behaviors
+  - [ ] OnLook reveals quest clues
+  - [ ] OnUse consumable healing
+  - [ ] OnDrop puzzle mechanics
+  - [ ] OnEnter room ambience
+- [ ] Security tests
+  - [ ] Runaway trigger detection (infinite loops)
+  - [ ] Execution time limits (timeout after 100ms)
+  - [ ] Action rate limiting (prevent spam)
+  - [ ] Privilege escalation attempts
+  - [ ] Script injection attacks
+- [ ] Performance tests
+  - [ ] 100 objects with OnEnter in single room
+  - [ ] 1000 trigger executions under load
+  - [ ] Memory usage validation
+
+#### Phase 7: Advanced Features (Optional, Post-MVP)
+- [ ] OnIdle triggers with rate limiting (ambience, NPC behavior)
+  - [ ] Min interval: 30 seconds
+  - [ ] Max idle triggers per room: 10
+  - [ ] Disable in crowded rooms (>20 players)
+- [ ] OnFollow triggers (companion behavior)
+  - [ ] Move to companion-specific system
+- [ ] OnCombat triggers (defer until combat system exists)
+- [ ] OnHeal triggers (defer until healing system exists)
+- [ ] Trigger templates/library (common patterns)
+- [ ] Visual trigger editor for builders (web UI)
+
+**Trigger Engine Status**: 🚧 **0% COMPLETE** - Design approved, ready to implement core triggers
 
 ---
 

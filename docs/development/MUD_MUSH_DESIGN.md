@@ -1255,39 +1255,108 @@ room with Feep, it will emit:
 (~130 bytes)
 ```
 
-**Object Triggers (Simple Scripting):**
+**Object Triggers (Interactive Scripting System):**
 
 ```
-Objects support simple triggers:
+Objects support interactive triggers
+for dynamic world-building.
 
-ON_ENTER: Room entry
-ON_LOOK: Someone examines it
-ON_TAKE: Someone picks it up
-ON_DROP: Someone drops it
-ON_USE: Someone uses it
-ON_POKE: Someone pokes it
+CORE TRIGGERS (Phase 7):
+OnEnter: Player enters room
+OnLook: Player examines object
+OnTake: Player picks up object
+OnDrop: Player drops object
+OnUse: Player uses object
+OnPoke: Player pokes/prods object
 
-Each trigger: max 30 chars
-Can emit messages or sounds
-(~190 bytes)
+FUTURE TRIGGERS (Phase 8+):
+OnIdle: Periodic (ambience)
+OnFollow: Companion behavior
+OnCombat: Combat initiated
+OnHeal: Healing action
+
+Script limit: 512 characters
+Execution limit: 100ms timeout
+Actions per trigger: 10 max
+Messages per trigger: 3 max
+(~195 bytes)
 ```
 
-**Example Object Behaviors:**
+**Trigger DSL Syntax:**
 
 ```
-SINGING STONE (created by bob)
-→ L stone
-*The stone hums softly*
-A smooth river stone that
-vibrates with inner music.
+Simple single-line expressions:
 
-→ A use stone
-*The stone sings a brief melody*
-You feel peaceful.
+ACTIONS:
+message("text") - Send to player
+message_room("text") - To room
+teleport("room_id") - Move player
+grant_item("id") - Give item
+consume() - Delete this item
+unlock_exit("dir") - Unlock door
+lock_exit("dir") - Lock door
+set_flag("flag") - Add flag
+spawn_object("id","room") - Create
 
-ON_LOOK: *The stone hums softly*
-ON_USE: *sings melody* Feel peaceful
-(~185 bytes)
+CONDITIONS:
+has_item("id") - Check inventory
+has_quest("id") - Check quest
+flag_set("flag") - Check flag
+room_flag("flag") - Check room
+current_room == "id" - Location
+random_chance(50) - 50% prob
+
+OPERATORS:
+&& - AND logic
+|| - OR logic
+? : - Conditional (if/then/else)
+
+VARIABLES:
+$player - Username
+$object - Object name
+$room - Room name
+(~195 bytes for 2 messages)
+```
+
+**Example Trigger Scripts:**
+
+```
+HEALING POTION (consumable)
+OnUse: check(consumable) ? 
+  (heal(50) && consume() && 
+   message("You feel refreshed!")) : 
+  message("Can't use this")
+
+ANCIENT KEY (puzzle item)
+OnUse: current_room == "door_room" ?
+  (unlock_exit("north") && 
+   message("Door clicks open!")) :
+  message("Key doesn't fit here")
+
+QUEST CLUE (dynamic description)
+OnLook: has_quest("ancient_ruins") ?
+  message("The symbol glows!") :
+  message("Old worn parchment")
+
+ALTAR (drop trigger puzzle)
+OnDrop: room_flag("altar_room") ?
+  (message("Altar accepts offering!") &&
+   unlock_exit("north") &&
+   grant_quest_progress("temple",1)) :
+  message("Nothing happens")
+
+COMPANION PET (interactive)
+OnPoke: random_chance(33) ?
+  message("Pet wags tail") :
+  random_chance(50) ?
+    message("Pet licks hand") :
+    message("Pet barks playfully")
+
+FIREPLACE (ambient with timing)
+OnIdle(60): time_between(18,6) ?
+  message("Fire flickers") :
+  message("Embers glow softly")
+(~195 bytes per example, split across multiple messages)
 ```
 
 ### Room Building Commands
@@ -1306,6 +1375,70 @@ ON_USE: *sings melody* Feel peaceful
 Builder Level Required: 2+
 Max rooms per player: 5
 (~195 bytes)
+```
+
+### Trigger Builder Commands
+
+```
+=== TRIGGER COMMANDS ===
+
+/SETTRIGGER <obj> <type> <script>
+  Set trigger on object
+  Example:
+  /SETTRIGGER key OnUse 
+    current_room=="door" ?
+    unlock_exit("north") :
+    message("No lock here")
+
+/CLEARTRIGGER <obj> <type>
+  Remove trigger from object
+
+/LISTTRIGGERS <obj>
+  Show all triggers on object
+  Displays: type, script preview,
+  length, last execution time
+
+/TESTTRIGGER <obj> <type>
+  Dry-run test (no side effects)
+  Shows: actions, conditions,
+  variable values
+
+Permission: Owner or Architect
+(~195 bytes for 2 messages)
+```
+
+**Trigger Command Examples:**
+
+```
+→ /SETTRIGGER potion OnUse
+  consume() && heal(50) &&
+  message("Refreshing!")
+
+✅ Trigger set on 'Health Potion'
+Type: OnUse
+Script: 48 chars
+Validated: ✓
+
+→ /LISTTRIGGERS potion
+
+HEALTH POTION - Triggers:
+• OnUse: consume() && heal(50)...
+  [48 chars] Last: 5 min ago
+• OnLook: message("Red liquid")
+  [24 chars] Last: never
+
+→ /TESTTRIGGER potion OnUse
+
+🧪 TEST MODE (no changes)
+Actions that would execute:
+  1. consume() → would delete item
+  2. heal(50) → would heal player
+  3. message("Refreshing!")
+     → would show message
+
+Conditions: (none)
+Variables: $player=alice
+(~195 bytes per message)
 ```
 
 ### Housing Customization Commands
@@ -1489,7 +1622,7 @@ pub struct PlayerLimits {
     max_exits: u8,              // Per room: 8
     max_description_len: usize, // 80 chars for rooms
     max_object_desc_len: usize, // 60 chars for objects
-    max_action_len: usize,      // 30 chars for triggers
+    max_action_len: usize,      // 512 chars for triggers
     room_create_cost: u32,      // 10 gold
     exit_create_cost: u32,      // 10 gold
     object_create_cost: u32,    // 5 gold
@@ -1507,6 +1640,64 @@ pub fn can_create_room(player: &MudPlayer) -> Result<(), String> {
     Ok(())
 }
 ```
+
+### Trigger Security & Safety
+
+**Execution Limits:**
+
+```rust
+pub struct TriggerLimits {
+    max_script_length: usize,    // 512 chars
+    max_execution_time_ms: u64,  // 100ms timeout
+    max_actions_per_trigger: u8, // 10 actions max
+    max_messages_per_trigger: u8,// 3 messages max
+    max_nested_depth: u8,        // 5 levels deep
+    max_executions_per_minute: u16, // 100/min per object
+}
+```
+
+**Sandboxing:**
+- No file system access
+- No network access
+- No recursive trigger chains
+- Read-only player data (except allowed mutations)
+- Can't escalate permissions
+- Can't access other players' data
+
+**Abuse Prevention:**
+
+```
+Trigger executions tracked per object:
+• Rate limit: 100 executions/minute
+• Runaway detection: auto-disable
+• Execution logs: admin level 3+ only
+• Global kill switch: admin emergency
+
+If trigger exceeds limits:
+1. Execution halted immediately
+2. Error logged with object ID
+3. Builder notified of failure
+4. Trigger disabled after 5 failures
+
+Admin can:
+• View execution history
+• Disable triggers globally
+• Ban malicious scripts
+• Reset execution counters
+(~195 bytes per message)
+```
+
+**Security Testing:**
+
+All triggers validated before execution:
+✅ Syntax check (parse errors rejected)
+✅ Function whitelist (unknown = error)
+✅ Argument type checking
+✅ Nested depth validation (max 5)
+✅ Script length validation (max 512)
+✅ No SQL injection vectors
+✅ No command injection vectors
+✅ No privilege escalation attempts
 
 ### Data Persistence
 
