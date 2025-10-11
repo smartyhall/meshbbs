@@ -6059,6 +6059,24 @@ impl TinyMushProcessor {
     /// > /DESCRIBE here A dark and mysterious cave filled with ancient crystals
     /// ✅ Updated description for 'Mysterious Cave'
     /// ```
+    /// Handle `/DESCRIBE` command for targeting specific rooms or objects
+    ///
+    /// Sets the description of a specified target. Use "here" to describe the current room.
+    /// Use an object name to describe objects in the current room.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 1+ (Apprentice)
+    /// - Can only edit rooms you own or have permission to edit
+    /// - Can only edit objects you own or have permission to edit
+    ///
+    /// # Example
+    /// ```text
+    /// > /DESCRIBE here A dark and mysterious cave filled with ancient crystals
+    /// ✅ Updated description for 'Mysterious Cave'
+    ///
+    /// > /DESCRIBE sword An ancient blade forged in dragon fire
+    /// ✅ Updated description for 'Ancient Sword'
+    /// ```
     async fn handle_describe_target(
         &mut self,
         session: &Session,
@@ -6097,8 +6115,50 @@ impl TinyMushProcessor {
             return Ok(format!("✅ Updated description for '{}'", room.name));
         }
 
-        // Handle objects (future enhancement)
-        Ok(format!("❌ Target '{}' not found. Use 'here' to describe the current room.", target))
+        // Handle objects - search in current room
+        let room = store.get_room(&player.current_room)?;
+        
+        // Find object in room (case-insensitive search by ID or name)
+        let object_result = room.items.iter()
+            .find_map(|id| {
+                // Try exact ID match first
+                if id.to_lowercase() == target.to_lowercase() {
+                    return store.get_object(id).ok();
+                }
+                // Try matching by object name
+                if let Ok(obj) = store.get_object(id) {
+                    if obj.name.to_lowercase() == target.to_lowercase() {
+                        return Some(obj);
+                    }
+                }
+                None
+            });
+
+        match object_result {
+            Some(mut object) => {
+                // Check if player owns the object or is architect
+                let can_edit = match &object.owner {
+                    crate::tmush::types::ObjectOwner::Player { username: owner } => {
+                        owner == &username || player.has_builder_level(3)
+                    },
+                    crate::tmush::types::ObjectOwner::World => player.has_builder_level(3),
+                };
+
+                if !can_edit {
+                    return Ok("⛔ You don't have permission to edit this object.\nOnly the object owner or an Architect can edit it.".to_string());
+                }
+
+                // Update description
+                object.description = description;
+                store.put_object(object.clone())?;
+
+                Ok(format!("✅ Updated description for '{}'", object.name))
+            },
+            None => Ok(format!(
+                "❌ Target '{}' not found.\nUse 'here' to describe the current room, or specify an object name.",
+                target
+            ))
+        }
     }
 
     /// Handle `/LINK` command - create an exit from current room to destination
@@ -6243,6 +6303,29 @@ impl TinyMushProcessor {
     /// > /SETFLAG here -dark
     /// ✅ Removed flag 'dark' from 'Mysterious Cave'
     /// ```
+    /// Handle `/SETFLAG` command - modify flags on rooms or objects
+    ///
+    /// Adds or removes flags from rooms or objects. Prefix flag with - to remove it.
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 2+ (Builder)
+    ///
+    /// # Room Flags
+    /// safe, dark, indoor, shop, questlocation, pvpenabled, playercreated, private,
+    /// moderated, instanced, crowded, housingoffice, noteleportout
+    ///
+    /// # Object Flags
+    /// questitem, consumable, equipment, keyitem, container, magical, companion
+    ///
+    /// # Example
+    /// ```text
+    /// > /SETFLAG here safe
+    /// ✅ Added flag 'safe' to 'Mysterious Cave'
+    /// > /SETFLAG here -dark
+    /// ✅ Removed flag 'dark' from 'Mysterious Cave'
+    /// > /SETFLAG sword magical
+    /// ✅ Added flag 'magical' to 'Ancient Sword'
+    /// ```
     async fn handle_set_flag(
         &mut self,
         session: &Session,
@@ -6300,7 +6383,62 @@ impl TinyMushProcessor {
                 Ok(format!("✅ Added flag '{}' to '{}'", flag_name, room.name))
             }
         } else {
-            Ok(format!("❌ Target '{}' not found. Use 'here' to modify the current room.", target))
+            // Handle objects - search in current room
+            let room = store.get_room(&player.current_room)?;
+            
+            // Find object in room (case-insensitive search by ID or name)
+            let object_result = room.items.iter()
+                .find_map(|id| {
+                    // Try exact ID match first
+                    if id.to_lowercase() == target.to_lowercase() {
+                        return store.get_object(id).ok();
+                    }
+                    // Try matching by object name
+                    if let Ok(obj) = store.get_object(id) {
+                        if obj.name.to_lowercase() == target.to_lowercase() {
+                            return Some(obj);
+                        }
+                    }
+                    None
+                });
+
+            match object_result {
+                Some(mut object) => {
+                    // Check permissions
+                    let can_edit = match &object.owner {
+                        crate::tmush::types::ObjectOwner::Player { username: owner } => {
+                            owner == &username || player.has_builder_level(3)
+                        },
+                        crate::tmush::types::ObjectOwner::World => player.has_builder_level(3),
+                    };
+
+                    if !can_edit {
+                        return Ok("⛔ You don't have permission to edit this object.".to_string());
+                    }
+
+                    // Parse object flag
+                    let flag = match parse_object_flag(flag_name) {
+                        Some(f) => f,
+                        None => return Ok(format!("❌ Unknown object flag: {}\nValid flags: questitem, consumable, equipment, keyitem, container, magical, companion", flag_name)),
+                    };
+
+                    if remove {
+                        object.flags.retain(|f| f != &flag);
+                        store.put_object(object.clone())?;
+                        Ok(format!("✅ Removed flag '{}' from '{}'", flag_name, object.name))
+                    } else {
+                        if !object.flags.contains(&flag) {
+                            object.flags.push(flag);
+                        }
+                        store.put_object(object.clone())?;
+                        Ok(format!("✅ Added flag '{}' to '{}'", flag_name, object.name))
+                    }
+                },
+                None => Ok(format!(
+                    "❌ Target '{}' not found.\nUse 'here' to modify the current room, or specify an object name.",
+                    target
+                ))
+            }
         }
     }
 
@@ -6374,6 +6512,30 @@ impl TinyMushProcessor {
     /// ⚠️  WARNING: This will permanently delete the object!
     /// ✅ Deleted object 'ancient_sword_1234'
     /// ```
+    /// Handle `/DESTROY` command - permanently delete an object
+    ///
+    /// Permanently deletes the specified object from the world. This action cannot be undone.
+    ///
+    /// # Container Safety
+    /// - If object is an empty container: deleted immediately
+    /// - If container has items (non-containers): contents moved to room, then deleted
+    /// - If container has nested containers: ERROR - must empty nested containers first
+    ///
+    /// # Permission Requirements
+    /// - Requires builder level 3 (Architect)
+    /// - Destructive action with no undo
+    ///
+    /// # Example
+    /// ```text
+    /// > /DESTROY ancient_sword_1234
+    /// ✅ Deleted object 'ancient_sword_1234'
+    ///
+    /// > /DESTROY treasure_chest
+    /// ✅ Deleted container 'treasure_chest' (3 items moved to room)
+    ///
+    /// > /DESTROY nested_box
+    /// ❌ Container 'Nested Box' contains other containers. Empty it first.
+    /// ```
     async fn handle_destroy(
         &mut self,
         session: &Session,
@@ -6390,24 +6552,48 @@ impl TinyMushProcessor {
         }
 
         // Get current room
-        let mut room = store.get_room(&player.current_room)?;
+        let room = store.get_room(&player.current_room)?;
 
-        // Find object in room
+        // Find object in room (case-insensitive search)
         let object_id = room.items.iter()
-            .find(|id| id.to_lowercase() == object_name.to_lowercase())
+            .find(|id| {
+                // Try exact match first
+                if id.to_lowercase() == object_name.to_lowercase() {
+                    return true;
+                }
+                // Try matching by object name
+                if let Ok(obj) = store.get_object(id) {
+                    if obj.name.to_lowercase() == object_name.to_lowercase() {
+                        return true;
+                    }
+                }
+                false
+            })
             .cloned();
 
         match object_id {
             Some(id) => {
-                // Remove from room
-                room.items.retain(|item_id| item_id != &id);
-                store.put_room(room)?;
-
-                // TODO: Implement proper object deletion in storage layer
-                // For now, we just remove it from the room's item list
-                // The object still exists in storage but is orphaned
-
-                Ok(format!("✅ Removed object '{}' from room (object orphaned in storage)", id))
+                // Get the object to show its name in response
+                let object = store.get_object(&id)?;
+                
+                // Attempt to delete the object (handles container safety)
+                match store.delete_object(&id, &player.current_room) {
+                    Ok(relocated_items) => {
+                        if relocated_items.is_empty() {
+                            Ok(format!("✅ Deleted object '{}'", object.name))
+                        } else {
+                            Ok(format!(
+                                "✅ Deleted container '{}' ({} items moved to this room)",
+                                object.name,
+                                relocated_items.len()
+                            ))
+                        }
+                    },
+                    Err(crate::tmush::errors::TinyMushError::ContainerNotEmpty(msg)) => {
+                        Ok(format!("❌ {}", msg))
+                    },
+                    Err(e) => Ok(format!("❌ Failed to delete object: {}", e))
+                }
             },
             None => Ok(format!("❌ Object '{}' not found in current room.", object_name))
         }
@@ -7782,6 +7968,21 @@ fn parse_room_flag(s: &str) -> Option<crate::tmush::types::RoomFlag> {
         "crowded" => Some(Crowded),
         "housingoffice" => Some(HousingOffice),
         "noteleportout" => Some(NoTeleportOut),
+        _ => None,
+    }
+}
+
+/// Parse an object flag string into an ObjectFlag enum
+fn parse_object_flag(s: &str) -> Option<crate::tmush::types::ObjectFlag> {
+    use crate::tmush::types::ObjectFlag::*;
+    match s.to_lowercase().as_str() {
+        "questitem" => Some(QuestItem),
+        "consumable" => Some(Consumable),
+        "equipment" => Some(Equipment),
+        "keyitem" => Some(KeyItem),
+        "container" => Some(Container),
+        "magical" => Some(Magical),
+        "companion" => Some(Companion),
         _ => None,
     }
 }

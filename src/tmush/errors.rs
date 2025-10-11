@@ -47,6 +47,10 @@ pub enum TinyMushError {
     #[error("permission denied: {0}")]
     PermissionDenied(String),
     
+    /// Container has nested containers (cannot delete until empty)
+    #[error("container not empty: {0}")]
+    ContainerNotEmpty(String),
+    
     /// Internal error (task join errors, unexpected conditions)
     #[error("internal error: {0}")]
     Internal(String),
