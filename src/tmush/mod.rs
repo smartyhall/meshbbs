@@ -29,7 +29,8 @@ pub use achievement::{
 };
 pub use builder_commands::{
     handle_when_command, handle_script_command, handle_done_command,
-    handle_cancel_command, ScriptBuilder,
+    handle_cancel_command, handle_wizard_command, handle_wizard_step,
+    ScriptBuilder, WizardSession, WizardState,
 };
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};
 pub use companion::{
