@@ -6651,31 +6651,55 @@ impl TinyMushProcessor {
 
         match subcommand.as_str() {
             "status" => {
-                // TODO: Get actual scheduler status from server state
-                // For now, show placeholder
-                Ok(
+                // Load current configuration
+                use crate::storage::backup_scheduler::BackupSchedulerConfig;
+                let config = BackupSchedulerConfig::load().unwrap_or_default();
+                
+                let status_text = if config.enabled { "✅ Enabled" } else { "❌ Disabled" };
+                
+                Ok(format!(
                     "═══════════════════════════════════════\n\
                     ⚙️  AUTOMATIC BACKUP CONFIGURATION\n\
                     ═══════════════════════════════════════\n\n\
-                    Status: Enabled (placeholder)\n\
-                    Frequency: Every 6 hours (placeholder)\n\
-                    Database: data/tinymush\n\
-                    Backup Path: data/backups\n\n\
+                    Status: {}\n\
+                    Frequency: {}\n\
+                    Database: {}\n\
+                    Backup Path: {}\n\n\
                     Retention Policy:\n\
-                    - Daily backups: Keep last 7\n\
-                    - Weekly backups: Keep last 4\n\
-                    - Monthly backups: Keep last 12\n\n\
-                    Last Backup: (not yet implemented)\n\
-                    Next Backup: (not yet implemented)"
-                    .to_string()
-                )
+                    - Daily backups: Keep last {}\n\
+                    - Weekly backups: Keep last {}\n\
+                    - Monthly backups: Keep last {}\n\n\
+                    ℹ️  Changes take effect on next server restart or\n\
+                    when the scheduler next checks (every minute).",
+                    status_text,
+                    config.frequency.description(),
+                    config.db_path.display(),
+                    config.backup_path.display(),
+                    config.retention.daily_count,
+                    config.retention.weekly_count,
+                    config.retention.monthly_count,
+                ))
             }
             "enable" => {
-                // TODO: Actually enable scheduler
-                Ok("✅ Automatic backups enabled\n\nBackups will be created according to the configured frequency.".to_string())
+                use crate::storage::backup_scheduler::BackupSchedulerConfig;
+                let mut config = BackupSchedulerConfig::load().unwrap_or_default();
+                config.enabled = true;
+                config.save()?;
+                
+                Ok(format!(
+                    "✅ Automatic backups enabled\n\n\
+                    Frequency: {}\n\
+                    Backups will be created {}",
+                    config.frequency.description(),
+                    config.frequency.description().to_lowercase()
+                ))
             }
             "disable" => {
-                // TODO: Actually disable scheduler
+                use crate::storage::backup_scheduler::BackupSchedulerConfig;
+                let mut config = BackupSchedulerConfig::load().unwrap_or_default();
+                config.enabled = false;
+                config.save()?;
+                
                 Ok("✅ Automatic backups disabled\n\nManual backups can still be created with /BACKUP.".to_string())
             }
             "frequency" | "freq" => {
@@ -6701,7 +6725,11 @@ impl TinyMushProcessor {
                         Ok("❌ Use '/BACKUPCONFIG disable' to disable automatic backups".to_string())
                     }
                     Some(freq) => {
-                        // TODO: Actually set frequency in scheduler
+                        use crate::storage::backup_scheduler::BackupSchedulerConfig;
+                        let mut config = BackupSchedulerConfig::load().unwrap_or_default();
+                        config.frequency = freq;
+                        config.save()?;
+                        
                         Ok(format!(
                             "✅ Backup frequency set to: {}\n\n\
                             Backups will be created {}",

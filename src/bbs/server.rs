@@ -127,6 +127,7 @@ pub struct BbsServer {
     weather_last_poll: Instant, // track when we last attempted proactive weather refresh
     housing_cleanup_last_check: Instant, // track when we last ran housing cleanup
     housing_payment_last_check: Instant, // track when we last processed recurring payments
+    backup_scheduler: Option<crate::storage::backup_scheduler::BackupScheduler>, // automatic backup scheduler
     #[cfg(feature = "meshtastic-proto")]
     pending_direct: Vec<(u32, u32, String)>, // queue of (dest_node_id, channel, message) awaiting our node id
     #[cfg(feature = "meshtastic-proto")]
@@ -459,6 +460,18 @@ impl BbsServer {
             // Initialize housing cleanup timers to run immediately on first tick
             housing_cleanup_last_check: Instant::now() - Duration::from_secs(86401), // More than 1 day ago
             housing_payment_last_check: Instant::now() - Duration::from_secs(86401), // More than 1 day ago
+            // Initialize backup scheduler
+            backup_scheduler: {
+                use crate::storage::backup_scheduler::{BackupScheduler, BackupSchedulerConfig};
+                let scheduler_config = BackupSchedulerConfig::load()
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to load backup scheduler config, using defaults: {}", e);
+                        BackupSchedulerConfig::default()
+                    });
+                info!("Backup scheduler initialized: enabled={}, frequency={:?}", 
+                      scheduler_config.enabled, scheduler_config.frequency);
+                Some(BackupScheduler::new(scheduler_config))
+            },
             #[cfg(feature = "meshtastic-proto")]
             pending_direct: Vec::new(),
             #[cfg(feature = "meshtastic-proto")]
@@ -855,6 +868,39 @@ impl BbsServer {
 
         Ok(())
     }
+
+    /// Check if it's time to create an automatic backup and create one if so.
+    ///
+    /// This method should be called periodically from the main event loop.
+    /// The scheduler determines if a backup is needed based on UTC time boundaries
+    /// and the configured frequency.
+    ///
+    /// # Behavior
+    /// - Respects automatic backup configuration (enabled/disabled, frequency)
+    /// - Scheduling occurs on UTC boundaries (hourly, 2h, 4h, 6h, 12h, daily)
+    /// - Automatically applies retention policy after creating backups
+    /// - Prevents duplicate backups within the same minute boundary
+    /// - Reloads configuration from disk periodically (respects in-game changes)
+    async fn check_and_backup(&mut self) -> Result<()> {
+        if let Some(ref mut scheduler) = self.backup_scheduler {
+            // Reload config from disk to pick up changes from /BACKUPCONFIG commands
+            let _ = scheduler.reload_config();
+            
+            match scheduler.check_and_backup() {
+                Ok(Some(backup_id)) => {
+                    info!("Automatic backup created: {}", backup_id);
+                }
+                Ok(None) => {
+                    // No backup needed at this time
+                }
+                Err(e) => {
+                    warn!("Failed to create automatic backup: {}", e);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 4. **Session Management**: Handles user session lifecycle and timeouts
     /// 5. **Weather Updates**: Provides proactive weather information (if enabled)
     /// 6. **Audit Logging**: Records security and administrative events
@@ -992,6 +1038,11 @@ impl BbsServer {
                         }
                         if let Err(e) = self.check_and_send_ident().await {
                             debug!("Ident beacon error: {}", e);
+                        }
+                        
+                        // Check if automatic backup is needed
+                        if let Err(e) = self.check_and_backup().await {
+                            debug!("Backup scheduler error: {}", e);
                         }
                     },
 

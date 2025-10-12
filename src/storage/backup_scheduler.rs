@@ -113,6 +113,29 @@ impl Default for BackupSchedulerConfig {
     }
 }
 
+impl BackupSchedulerConfig {
+    /// Load configuration from file, or return default if file doesn't exist
+    pub fn load() -> Result<Self> {
+        let path = "data/backup_scheduler.json";
+        if std::path::Path::new(path).exists() {
+            let content = std::fs::read_to_string(path)?;
+            let config: BackupSchedulerConfig = serde_json::from_str(&content)?;
+            Ok(config)
+        } else {
+            Ok(Self::default())
+        }
+    }
+
+    /// Save configuration to file
+    pub fn save(&self) -> Result<()> {
+        let path = "data/backup_scheduler.json";
+        std::fs::create_dir_all("data")?;
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+}
+
 /// Backup scheduler state tracker
 pub struct BackupScheduler {
     config: BackupSchedulerConfig,
@@ -158,6 +181,30 @@ impl BackupScheduler {
     pub fn set_frequency(&mut self, frequency: BackupFrequency) {
         self.config.frequency = frequency;
         info!("Backup frequency set to: {}", frequency.description());
+    }
+
+    /// Reload configuration from disk if it has changed
+    pub fn reload_config(&mut self) -> Result<bool> {
+        match BackupSchedulerConfig::load() {
+            Ok(new_config) => {
+                // Check if config actually changed
+                let changed = new_config.enabled != self.config.enabled 
+                    || new_config.frequency != self.config.frequency;
+                
+                if changed {
+                    info!("Backup scheduler config changed: enabled={}, frequency={:?}", 
+                          new_config.enabled, new_config.frequency);
+                    self.config = new_config;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                debug!("Failed to reload backup scheduler config: {}", e);
+                Ok(false)
+            }
+        }
     }
 
     /// Check if it's time to create a backup and create one if so.
