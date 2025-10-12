@@ -1,6 +1,6 @@
 # Economy & Trading Guide
 
-TinyMUSH features a dual-currency economy with gold and platinum, along with shops, banking, and player-to-player trading systems.
+TinyMUSH features a flexible currency system that can be configured as either modern decimal currency (like credits or dollars) or fantasy multi-tier currency (like gold/silver/copper). The game also includes shops, banking, and player-to-player trading systems.
 
 ## Table of Contents
 - [Currency System](#currency-system)
@@ -12,33 +12,48 @@ TinyMUSH features a dual-currency economy with gold and platinum, along with sho
 
 ## Currency System
 
-### Dual Currency
+### Currency Modes
 
-**Gold (g)**
-- Primary currency for everyday transactions
-- Used for: shops, housing rent, item purchases
-- Easier to earn through quests and activities
+The server administrator configures which currency system the game uses. Your game will use one of these two modes:
 
-**Platinum (p)**
-- Premium currency for rare items and services
-- Used for: special shops, rare equipment, premium housing
-- Harder to earn, more valuable
+#### Fantasy Multi-Tier Currency
+Traditional fantasy-style coins with conversion between tiers:
+- **Copper (c)** - Base currency for small purchases
+- **Silver (s)** - Mid-tier (typically 10 copper = 1 silver)
+- **Gold (g)** - High-tier (typically 100 copper = 1 gold)
 
-### Conversion
+**Example:** `5g 3s 7c` means 5 gold, 3 silver, 7 copper
 
-Currency conversion is not available in-game. Gold and platinum are separate economies with distinct uses.
+#### Modern Decimal Currency
+Modern-style currency with decimal subdivisions:
+- **Credits/Dollars** - Single currency with cents
+- **Display:** `¤12.34` or `$1.50`
+
+**Example:** `¤100.00` means 100 credits
+
+> **Note:** The examples in this guide assume fantasy multi-tier currency (gold/silver/copper), but the concepts apply to both systems. Your server's currency display will match its configuration.
 
 ### Checking Your Balance
 
 ```
-INVENTORY     # Shows gold and platinum balance
+INVENTORY     # Shows currency balance and items
 ```
 
-**Example Output:**
+**Example Output (Multi-Tier):**
 ```
 Your Inventory:
-Gold: 450g
-Platinum: 12p
+Currency: 5g 3s 7c (507 copper total)
+
+Carrying:
+- Wooden Sword
+- Health Potion x3
+- Bread x2
+```
+
+**Example Output (Decimal):**
+```
+Your Inventory:
+Currency: ¤507.00
 
 Carrying:
 - Wooden Sword
@@ -59,9 +74,9 @@ QUEST <id>     # View quest details
 ```
 
 **Quest Rewards:**
-- Easy quests: 50-100g
-- Medium quests: 150-300g
-- Hard quests: 400-800g + platinum
+- Easy quests: 50-100c (or ¤0.50-1.00 in decimal)
+- Medium quests: 150-300c
+- Hard quests: 400-800c
 - Daily quests: Repeatable for consistent income
 
 **See Also:** [Quest Guide](quests.md)
@@ -78,14 +93,14 @@ SELL <item>     # Sell an item to the shop
 **Example:**
 ```
 > SELL Wooden Sword
-You sold Wooden Sword for 25g.
+You sold Wooden Sword for 25c.
 ```
 
-**Item Values:**
-- Weapons: 20-500g depending on quality
-- Armor: 30-600g depending on type
-- Consumables: 5-50g
-- Crafting materials: 10-100g
+**Item Values (Multi-Tier Example):**
+- Weapons: 20-500c depending on quality
+- Armor: 30-600c depending on type
+- Consumables: 5-50c
+- Crafting materials: 10-100c
 
 ### Companion Activities
 
@@ -200,37 +215,37 @@ You sold 10x Iron Ore for 150g.
 - **Location:** Town Square
 - **Sells:** Basic supplies, food, tools
 - **Buys:** Most common items
-- **Currency:** Gold
+- **Prices:** 5-50c per item
 
 #### Weapon Shop
 - **Location:** Market District
 - **Sells:** Swords, axes, bows, ammunition
 - **Buys:** Weapons and combat gear
-- **Currency:** Gold, some platinum items
+- **Prices:** 20-500c
 
 #### Armor Shop
 - **Location:** Market District
 - **Sells:** Helmets, chest armor, shields, boots
 - **Buys:** Armor and protective gear
-- **Currency:** Gold, some platinum items
+- **Prices:** 30-600c
 
 #### Potion Shop
 - **Location:** Market District
 - **Sells:** Healing potions, mana potions, buff potions
 - **Buys:** Herbs, potion ingredients
-- **Currency:** Gold
+- **Prices:** 15-100c
 
 #### Trading Post
 - **Location:** Harbor
 - **Sells:** Rare items, imports, special goods
 - **Buys:** Almost anything
-- **Currency:** Gold and platinum
+- **Prices:** Variable
 
 #### Black Market (if discovered)
 - **Location:** Hidden
 - **Sells:** Rare weapons, forbidden items, powerful potions
 - **Buys:** Stolen goods, rare materials
-- **Currency:** Platinum only
+- **Prices:** Very high
 
 ## Banking
 
@@ -246,16 +261,22 @@ Banks are found in major towns:
 #### DEPOSIT - Store Money
 
 ```
-DEPOSIT <amount> <currency>
+DEPOSIT <amount>
 ```
 
-**Examples:**
+**Examples (Multi-Tier):**
 ```
-> DEPOSIT 500 gold
-You deposited 500g. New balance: 1,200g
+> DEPOSIT 500
+You deposited 500c. New balance: 12g 7c
 
-> DEPOSIT 10 platinum
-You deposited 10p. New balance: 45p
+> DEPOSIT 5g 3s
+You deposited 5g 3s (530c). New balance: 18g 7c
+```
+
+**Examples (Decimal):**
+```
+> DEPOSIT 50.00
+You deposited ¤50.00. New balance: ¤125.07
 ```
 
 **Deposit Benefits:**
@@ -266,16 +287,19 @@ You deposited 10p. New balance: 45p
 #### WITHDRAW - Retrieve Money
 
 ```
-WITHDRAW <amount> <currency>
+WITHDRAW <amount>
 ```
 
-**Examples:**
+**Examples (Multi-Tier):**
 ```
-> WITHDRAW 300 gold
-You withdrew 300g. New balance: 900g
+> WITHDRAW 300
+You withdrew 300c (3g). New balance: 9g 7c
+```
 
-> WITHDRAW 5 platinum
-You withdrew 5p. New balance: 40p
+**Examples (Decimal):**
+```
+> WITHDRAW 75.00
+You withdrew ¤75.00. New balance: ¤50.07
 ```
 
 #### BALANCE - Check Bank Balance
@@ -284,25 +308,30 @@ You withdrew 5p. New balance: 40p
 BALANCE
 ```
 
-**Example Output:**
+**Example Output (Multi-Tier):**
 ```
 Your Bank Account:
-Gold: 900g (Earning 1% interest)
-Platinum: 40p (Earning 1% interest)
+Banked: 9g 7c (Earning 1% interest)
+On hand: 3g 0c
 
-On hand:
-Gold: 300g
-Platinum: 5p
+Total wealth: 12g 7c
+```
 
-Total wealth: 1,200g, 45p
+**Example Output (Decimal):**
+```
+Your Bank Account:
+Banked: ¤50.07 (Earning 1% interest)
+On hand: ¤75.00
+
+Total wealth: ¤125.07
 ```
 
 ### Interest Rates
 
 - **Interest Rate:** 1% per month (30 real-world days)
-- **Minimum Balance:** 100g for interest
+- **Minimum Balance:** 100c (or ¤1.00) for interest
 - **Compound Interest:** Yes
-- **Maximum Interest:** 10g/month on gold, 1p/month on platinum
+- **Maximum Interest:** 10c/month (or ¤0.10)
 
 ### Fees
 
@@ -338,27 +367,33 @@ ACCEPT
 #### OFFER - Add Items/Money to Trade
 
 ```
-OFFER <item>              # Offer an item
-OFFER <amount> <currency> # Offer money
+OFFER <item>       # Offer an item
+OFFER <amount>     # Offer money
 ```
 
-**Examples:**
+**Examples (Multi-Tier):**
 ```
 > OFFER Wooden Sword
 You offered: Wooden Sword
 
-> OFFER 100 gold
-You offered: 100g
+> OFFER 100
+You offered: 100c (1g)
 
-> OFFER 5 platinum
-You offered: 5p
+> OFFER 5g 3s
+You offered: 5g 3s
+```
+
+**Examples (Decimal):**
+```
+> OFFER 10.50
+You offered: ¤10.50
 ```
 
 #### REMOVE - Remove Items from Trade
 
 ```
 REMOVE <item>
-REMOVE <amount> <currency>
+REMOVE <amount>
 ```
 
 #### READY - Mark Yourself as Ready
@@ -390,11 +425,11 @@ You accepted the trade request from Player1.
 === Trade Window ===
 Player1 offers:
   - Iron Sword
-  - 50g
+  - 50c
 
 Player2 offers:
   - Health Potion x5
-  - 100g
+  - 1g
 
 Both parties ready: No
 ===================
@@ -402,8 +437,8 @@ Both parties ready: No
 [Player1] > OFFER Iron Sword
 You offered: Iron Sword
 
-[Player1] > OFFER 50 gold
-You offered: 50g
+[Player1] > OFFER 50
+You offered: 50c
 
 [Player1] > READY
 You are ready. Waiting for Player2...
@@ -411,8 +446,8 @@ You are ready. Waiting for Player2...
 [Player2] > OFFER Health Potion 5
 You offered: 5x Health Potion
 
-[Player2] > OFFER 100 gold
-You offered: 100g
+[Player2] > OFFER 100
+You offered: 100c (1g)
 
 [Player2] > READY
 You are ready.
@@ -420,11 +455,11 @@ You are ready.
 === Trade Complete! ===
 You received:
   - Health Potion x5
-  - 100g
+  - 100c
 
 You gave:
   - Iron Sword
-  - 50g
+  - 50c
 ```
 
 ### Trade Safety
@@ -453,15 +488,15 @@ You gave:
 ### For New Players
 
 **Starting Out:**
-1. Complete starter quests for initial gold
+1. Complete starter quests for initial currency
 2. Don't spend all your money - save for housing
 3. Shop around - prices vary by location
 4. Sell loot instead of hoarding
 
-**Budget Management:**
-- Keep 200-300g emergency fund
-- Save for rent (100-150g/month typical)
-- Budget 50g/week for potions and supplies
+**Budget Management (Multi-Tier Example):**
+- Keep 200-300c emergency fund
+- Save for rent (100-150c/month typical)
+- Budget 50c/week for potions and supplies
 
 ### For Intermediate Players
 
@@ -472,7 +507,7 @@ You gave:
 4. **Treasure Hunting** - Explore for chests and rare finds
 
 **Investment:**
-- Bank excess gold for interest
+- Bank excess currency for interest
 - Upgrade equipment gradually
 - Rent additional homes for prestige
 
@@ -480,14 +515,14 @@ You gave:
 
 **Wealth Building:**
 1. **Companion Training** - Passive income
-2. **High-Value Trades** - Platinum trading
+2. **High-Value Trades** - Trading rare items
 3. **Rare Item Flipping** - Buy rare, sell rarer
 4. **Quest Mastery** - Speed-run high-reward quests
 
-**Platinum Economy:**
-- Focus on hard quests for platinum rewards
-- Trade gold items for platinum items
-- Save platinum for rare shop items
+**Economy Mastery:**
+- Focus on hard quests for maximum rewards
+- Trade valuable items at Trading Post
+- Save currency for rare shop items
 
 ### Market Strategies
 
@@ -496,13 +531,13 @@ You gave:
 - Trading Post pays 75% value for rare items
 - Timing matters - some shops restock weekly
 
-**Item Values:**
+**Item Values (Multi-Tier Example):**
 | Item Type | Shop Buy | Shop Sell | Player Trade |
 |-----------|----------|-----------|--------------|
-| Basic Weapon | 50g | 25g | 30-40g |
-| Rare Weapon | 500g | 250g | 400-600g |
-| Healing Potion | 15g | 7g | 10-12g |
-| Crafting Material | 50g | 25g | 40-80g |
+| Basic Weapon | 50c | 25c | 30-40c |
+| Rare Weapon | 5g | 2g 50c | 4-6g |
+| Healing Potion | 15c | 7c | 10-12c |
+| Crafting Material | 50c | 25c | 40-80c |
 
 ## Troubleshooting
 
