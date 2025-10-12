@@ -190,6 +190,9 @@ impl TinyMushStore {
             
             store.seed_housing_templates_if_needed()?;
             
+            // Seed example trigger objects for Phase 9 testing
+            store.seed_example_trigger_objects()?;
+            
             // Seed initial admin account (default: "admin")
             // In production, this username could come from config
             store.seed_admin_if_needed("admin")?;
@@ -858,6 +861,39 @@ impl TinyMushStore {
             self.put_quest(quest)?;
             inserted += 1;
         }
+        Ok(inserted)
+    }
+
+    /// Seed example trigger objects for Phase 9 testing
+    /// 
+    /// Creates 6 example objects with triggers and places them in the museum
+    /// for players to discover and test.
+    pub fn seed_example_trigger_objects(&self) -> Result<usize, TinyMushError> {
+        // Check if example objects already exist
+        if self.get_object("example_healing_potion").is_ok() {
+            return Ok(0); // Already seeded
+        }
+        
+        let now = Utc::now();
+        let objects = crate::tmush::state::create_example_trigger_objects(now);
+        let mut inserted = 0usize;
+        
+        // Store all objects
+        for object in &objects {
+            self.put_object(object.clone())?;
+            inserted += 1;
+        }
+        
+        // Add objects to the museum room for discovery
+        if let Ok(mut museum) = self.get_room("mesh_museum") {
+            for object in &objects {
+                if !museum.items.contains(&object.id) {
+                    museum.items.push(object.id.clone());
+                }
+            }
+            self.put_room(museum)?;
+        }
+        
         Ok(inserted)
     }
 

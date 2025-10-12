@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 
 use crate::tmush::types::{
     AchievementCategory, AchievementRecord, AchievementTrigger, Direction, RoomFlag, RoomRecord,
+    ObjectRecord, ObjectOwner, ObjectTrigger, CurrencyAmount,
 };
 
 /// Required landing location where new characters are staged before entering the world.
@@ -1024,3 +1025,191 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
     
     Ok(updated)
 }
+
+/// Create example trigger objects for Phase 9 testing
+/// 
+/// This creates 6 example objects demonstrating all trigger types:
+/// - Healing Potion (OnUse with consume + heal)
+/// - Ancient Key (OnLook with quest check, OnUse unlocks exit)
+/// - Mystery Box (OnPoke with random chance)
+/// - Quest Clue (OnLook with dynamic description)
+/// - Teleport Stone (OnUse teleports player)
+/// - Singing Mushroom (OnEnter ambient message)
+pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
+    let mut objects = Vec::new();
+    
+    // 1. Healing Potion - OnUse trigger with consume() and heal()
+    let mut healing_potion = ObjectRecord {
+        id: "example_healing_potion".to_string(),
+        name: "Healing Potion".to_string(),
+        description: "A crystal vial filled with glowing red liquid. When used, it heals wounds and vanishes.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::default(),
+        value: 50,
+        takeable: true,
+        usable: true,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: 1,
+    };
+    healing_potion.actions.insert(
+        ObjectTrigger::OnUse,
+        "message(\"The potion glows brightly as you drink it!\") && heal(50) && consume()".to_string()
+    );
+    objects.push(healing_potion);
+    
+    // 2. Ancient Key - OnLook with quest check, OnUse unlocks exit
+    let mut ancient_key = ObjectRecord {
+        id: "example_ancient_key".to_string(),
+        name: "Ancient Key".to_string(),
+        description: "A tarnished brass key with mysterious runes etched along its length.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::default(),
+        value: 100,
+        takeable: true,
+        usable: true,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: 1,
+    };
+    ancient_key.actions.insert(
+        ObjectTrigger::OnLook,
+        "has_quest(\"cryptkeeper_quest\") ? message(\"The runes glow faintly - you recognize them from your quest!\") : message(\"The runes are indecipherable.\")".to_string()
+    );
+    ancient_key.actions.insert(
+        ObjectTrigger::OnUse,
+        "message(\"The key turns in an invisible lock...\") && unlock_exit(\"north\")".to_string()
+    );
+    objects.push(ancient_key);
+    
+    // 3. Mystery Box - OnPoke with random chance
+    let mut mystery_box = ObjectRecord {
+        id: "example_mystery_box".to_string(),
+        name: "Mystery Box".to_string(),
+        description: "A wooden box covered in question marks. It rattles when poked.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 5,
+        currency_value: CurrencyAmount::default(),
+        value: 25,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: 1,
+    };
+    mystery_box.actions.insert(
+        ObjectTrigger::OnPoke,
+        "random_chance(50) ? message(\"🎁 A small treat pops out!\") : message(\"💨 The box releases a puff of dust.\")".to_string()
+    );
+    objects.push(mystery_box);
+    
+    // 4. Quest Clue - OnLook with dynamic description
+    let mut quest_clue = ObjectRecord {
+        id: "example_quest_clue".to_string(),
+        name: "Tattered Note".to_string(),
+        description: "A yellowed piece of parchment with faded ink.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::default(),
+        value: 5,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: 1,
+    };
+    quest_clue.actions.insert(
+        ObjectTrigger::OnLook,
+        "message(\"The note reads: 'Meet me at the old gazebo when the moon is high. - M'\")".to_string()
+    );
+    objects.push(quest_clue);
+    
+    // 5. Teleport Stone - OnUse teleports player
+    let mut teleport_stone = ObjectRecord {
+        id: "example_teleport_stone".to_string(),
+        name: "Teleport Stone".to_string(),
+        description: "A smooth black stone that hums with magical energy.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 2,
+        currency_value: CurrencyAmount::default(),
+        value: 500,
+        takeable: true,
+        usable: true,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: 1,
+    };
+    teleport_stone.actions.insert(
+        ObjectTrigger::OnUse,
+        "message(\"✨ The stone flashes brilliantly!\") && teleport(\"old_towne_square\")".to_string()
+    );
+    objects.push(teleport_stone);
+    
+    // 6. Singing Mushroom - OnEnter ambient message
+    let mut singing_mushroom = ObjectRecord {
+        id: "example_singing_mushroom".to_string(),
+        name: "Singing Mushroom".to_string(),
+        description: "A peculiar purple mushroom that hums softly to itself.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::default(),
+        value: 10,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: 1,
+    };
+    singing_mushroom.actions.insert(
+        ObjectTrigger::OnEnter,
+        "message(\"🍄 The mushroom chimes a cheerful tune as you enter the room!\")".to_string()
+    );
+    objects.push(singing_mushroom);
+    
+    objects
+}
+
