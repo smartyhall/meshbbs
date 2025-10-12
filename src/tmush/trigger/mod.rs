@@ -20,6 +20,8 @@
 pub mod parser;
 pub mod evaluator;
 pub mod integration;
+pub mod rate_limit;
+pub mod admin;
 
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
@@ -31,6 +33,13 @@ pub use evaluator::{Evaluator, Value};
 pub use integration::{
     execute_on_look, execute_on_take, execute_on_drop, execute_on_use, 
     execute_on_poke, execute_room_on_enter
+};
+pub use rate_limit::{TriggerRateLimiter, RateLimitReason, RateLimitStats};
+pub use admin::{
+    check_trigger_allowed, record_trigger_execution,
+    disable_object_trigger, enable_object_trigger,
+    is_object_trigger_disabled, get_disabled_objects, set_trigger_system_enabled,
+    is_trigger_system_enabled, get_trigger_stats, format_trigger_stats
 };
 
 /// Maximum script length in characters

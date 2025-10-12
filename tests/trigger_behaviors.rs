@@ -11,12 +11,13 @@ use std::collections::HashMap;
 use tempfile::TempDir;
 
 /// Helper to create a test store with a player and room
-fn setup_test_environment() -> (TempDir, TinyMushStore, String, String) {
+fn setup_test_environment(test_name: &str) -> (TempDir, TinyMushStore, String, String) {
     let temp = TempDir::new().unwrap();
     let store = TinyMushStore::open(temp.path()).unwrap();
     
-    // Create test player
-    let player = PlayerRecord::new("test_player", "Test Player", "test_room");
+    // Create test player with unique name based on test
+    let player_name = format!("player_{}", test_name);
+    let player = PlayerRecord::new(&player_name, &player_name, "test_room");
     store.put_player(player).unwrap();
     
     // Create test room
@@ -38,12 +39,12 @@ fn setup_test_environment() -> (TempDir, TinyMushStore, String, String) {
     };
     store.put_room(room).unwrap();
     
-    (temp, store, "test_player".to_string(), "test_room".to_string())
+    (temp, store, player_name, "test_room".to_string())
 }
 
 #[test]
 fn test_healing_potion_use() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("healing_potion");
     
     // Create healing potion with OnUse trigger
     let mut potion = ObjectRecord {
@@ -86,7 +87,7 @@ fn test_healing_potion_use() {
 
 #[test]
 fn test_quest_clue_reveal() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("quest_clue_reveal");
     
     // Create quest clue with OnLook trigger
     let mut clue = ObjectRecord {
@@ -127,7 +128,7 @@ fn test_quest_clue_reveal() {
 
 #[test]
 fn test_mystery_box_poke() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("mystery_box");
     
     // Create mystery box with OnPoke trigger (deterministic for testing)
     let mut box_obj = ObjectRecord {
@@ -168,7 +169,7 @@ fn test_mystery_box_poke() {
 
 #[test]
 fn test_teleport_stone_use() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("mystery_box");
     
     // Create destination room
     let destination = RoomRecord {
@@ -233,7 +234,7 @@ fn test_teleport_stone_use() {
 
 #[test]
 fn test_singing_mushroom_on_enter() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("mystery_box");
     
     // Create singing mushroom with OnEnter trigger
     let mut mushroom = ObjectRecord {
@@ -279,7 +280,7 @@ fn test_singing_mushroom_on_enter() {
 
 #[test]
 fn test_multiple_objects_on_enter() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("mystery_box");
     
     // Create two objects with OnEnter triggers
     let mut obj1 = ObjectRecord {
@@ -355,7 +356,7 @@ fn test_multiple_objects_on_enter() {
 
 #[test]
 fn test_conditional_quest_trigger() {
-    let (_temp, store, player_name, room_id) = setup_test_environment();
+    let (_temp, store, player_name, room_id) = setup_test_environment("mystery_box");
     
     // Create ancient key with quest-conditional trigger
     let mut key = ObjectRecord {

@@ -5,6 +5,7 @@
 //! records, creating the execution context, and running the trigger.
 
 use super::{execute_trigger, TriggerContext, TriggerResult};
+use super::admin::{check_trigger_allowed, record_trigger_execution};
 use crate::tmush::storage::TinyMushStore;
 use crate::tmush::types::{ObjectRecord, ObjectTrigger};
 use log::{error, warn};
@@ -32,6 +33,12 @@ pub fn execute_on_look(
         None => return vec![],
     };
     
+    // Check rate limiting
+    if let Err(reason) = check_trigger_allowed(&object.id, player_username) {
+        warn!("execute_on_look: Rate limited - {}", reason);
+        return vec![];
+    }
+    
     // Get player record
     let player = match store.get_player(player_username) {
         Ok(p) => p,
@@ -54,8 +61,12 @@ pub fn execute_on_look(
     let mut context = TriggerContext::new(&player, object, &room);
     
     // Execute the trigger
-    match execute_trigger(ObjectTrigger::OnLook, script, &mut context, store) {
-        Ok(TriggerResult::Success(messages)) => messages,
+    let result = match execute_trigger(ObjectTrigger::OnLook, script, &mut context, store) {
+        Ok(TriggerResult::Success(messages)) => {
+            // Record successful execution for rate limiting
+            record_trigger_execution(&object.id, player_username);
+            messages
+        },
         Ok(TriggerResult::NoScript) => vec![],
         Ok(TriggerResult::Skipped) => vec![],
         Ok(TriggerResult::RateLimited) => vec![],
@@ -65,7 +76,9 @@ pub fn execute_on_look(
             error!("execute_on_look: Trigger execution failed: {}", e);
             vec![]
         }
-    }
+    };
+    
+    result
 }
 
 /// Execute OnTake trigger when player picks up an object
