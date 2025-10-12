@@ -131,6 +131,7 @@ pub enum TinyMushCommand {
     SetFlag(String, String), // /SETFLAG <target> <flag> - modify flags (builder 2+)
     Create(String),         // /CREATE <object_name> - create object (builder 1+)
     Destroy(String),        // /DESTROY <object> - delete object (builder 3+)
+    Clone(String),          // /CLONE <object> - create copy of owned object (Phase 6)
     
     /// Builder permission management (Phase 7 Week 3)
     ///
@@ -418,6 +419,7 @@ impl TinyMushProcessor {
             TinyMushCommand::SetFlag(target, flag) => self.handle_set_flag(session, target, flag, config).await,
             TinyMushCommand::Create(object_name) => self.handle_create(session, object_name, config).await,
             TinyMushCommand::Destroy(object_name) => self.handle_destroy(session, object_name, config).await,
+            TinyMushCommand::Clone(object_name) => self.handle_clone(session, object_name, config).await,
             TinyMushCommand::Help(topic) => self.handle_help(session, topic, config).await,
             TinyMushCommand::Quit => self.handle_quit(session, config).await,
             TinyMushCommand::Save => self.handle_save(session, config).await,
@@ -1098,6 +1100,14 @@ impl TinyMushProcessor {
                     TinyMushCommand::Destroy(object_name)
                 } else {
                     TinyMushCommand::Unknown("Usage: /DESTROY <object>\nExample: /DESTROY sword".to_string())
+                }
+            },
+            "/CLONE" => {
+                if parts.len() > 1 {
+                    let object_name = parts[1..].join(" ");
+                    TinyMushCommand::Clone(object_name)
+                } else {
+                    TinyMushCommand::Unknown("Usage: /CLONE <object>\nExample: /CLONE sword\nNote: Only owned clonable objects can be cloned".to_string())
                 }
             },
 
@@ -6596,6 +6606,61 @@ impl TinyMushProcessor {
                 }
             },
             None => Ok(format!("❌ Object '{}' not found in current room.", object_name))
+        }
+    }
+
+    /// Handle `/CLONE` command - create a copy of an owned clonable object
+    ///
+    /// Security features:
+    /// - Player must own the source object
+    /// - Object must have Clonable flag set
+    /// - Respects clone depth limits (max 3 generations)
+    /// - Enforces per-player quotas (20 clones/hour)
+    /// - Requires cooldown between clones (60 seconds)
+    /// - Prevents cloning high-value objects (>100 gold)
+    /// - Strips currency value from clones
+    /// - Prevents cloning unique/quest items
+    ///
+    /// ## Usage
+    /// ```text
+    /// > /CLONE sword
+    /// ✨ Cloned 'Iron Sword'!
+    /// Clone ID: #obj_alic...
+    /// Clone Depth: 1/3
+    /// Clone Quota: 19/20 remaining this hour
+    /// ```
+    ///
+    /// See docs/development/CLONING_SECURITY.md for full threat model.
+    async fn handle_clone(
+        &mut self,
+        session: &Session,
+        object_name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::{
+            clone::handle_clone_command,
+            resolver::ResolutionContext,
+        };
+
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Get player state
+        let player = store.get_player(&username.to_lowercase())?;
+
+        // Build resolution context
+        let context = ResolutionContext::new(
+            username.to_lowercase(),
+            player.current_room.clone(),
+            None, // last_examined not needed for cloning
+        );
+
+        // Call the clone handler from the clone module
+        let result = handle_clone_command(&object_name, &context, &store);
+
+        match result {
+            Ok(message) => Ok(message),
+            Err(e) => Ok(format!("❌ Clone failed: {}", e)),
         }
     }
 
