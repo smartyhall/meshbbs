@@ -620,27 +620,40 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - [x] 5 evaluator tests (all passing)
 - [x] Total: 17 trigger module tests passing
 
-#### Phase 4: Natural Language Parser 🚧 NEXT
-- [ ] Design natural language syntax (beginner-friendly)
-  - [ ] Actions: "Say", "Say to room", "Give player", "Teleport player to", "Unlock", "Lock"
-  - [ ] Conditions: "If player has", "If player has quest", "If room flag", "If object flag"
-  - [ ] Logic: "and", "or", "Otherwise:"
-  - [ ] Random: "1 in N chance:"
-  - [ ] No punctuation except colons, no function parentheses
-- [ ] Build natural language tokenizer
-  - [ ] Keyword detection (If, Otherwise, Say, Give, etc.)
-  - [ ] Phrase parsing ("player has key" → has_item("key"))
-  - [ ] Number parsing ("50 health" → 50)
-  - [ ] Indentation-based structure detection
-- [ ] Natural language → AST compiler
-  - [ ] Convert "Say <text>" → Action(message, [text])
-  - [ ] Convert "If player has X:" → BinaryOp with has_item
-  - [ ] Convert "Otherwise:" → else branch of Ternary
-  - [ ] Convert "and"/"or" → BinaryOp(And/Or)
-- [ ] Dual parser support (both advanced DSL and natural language)
-- [ ] Auto-detect syntax type (programmer vs natural)
+#### Phase 4: Natural Language Parser ✅ COMPLETE (commits 553c1de, d5b2d44, 95b6d2b)
+- [x] Design natural language syntax (beginner-friendly)
+  - [x] Actions: "Say", "Say to room", "Give player", "Teleport player to", "Unlock", "Lock"
+  - [x] Conditions: "If player has", "If player has quest", "If room flag", "If object flag"
+  - [x] Logic: "and", "or", "Otherwise:"
+  - [x] Random: "1 in N chance:"
+  - [x] No punctuation except colons, no function parentheses
+- [x] Build natural language tokenizer (commit 553c1de)
+  - [x] Keyword detection (If, Otherwise, Say, Give, etc.) - 18 token types
+  - [x] Multi-word keyword support ("Say to room", "Give player", etc.)
+  - [x] Phrase parsing ("player has key" → has_item("key"))
+  - [x] Number parsing ("50 health" → 50)
+  - [x] Indentation-based structure detection
+  - [x] Fixed infinite loop bug in tokenizer (empty phrase deadlock)
+  - [x] 5 tokenizer tests (all passing)
+- [x] Natural language → AST compiler (commit d5b2d44)
+  - [x] Convert "Say <text>" → Action(message, [text])
+  - [x] Convert "If player has X:" → BinaryOp with has_item
+  - [x] Convert "If player has quest X:" → BinaryOp with has_quest
+  - [x] Convert "Otherwise:" → else branch of Ternary
+  - [x] Convert "and"/"or" → BinaryOp(And/Or)
+  - [x] 9 action compilers (say, give, take, remove, teleport, unlock, lock)
+  - [x] 5 condition patterns (has item/quest, flags, chance)
+  - [x] Fixed pattern matching order bug in condition parser
+  - [x] 7 compiler tests (all passing)
+- [x] Dual parser support and auto-detection (commit 95b6d2b)
+  - [x] SyntaxType enum (Natural vs Advanced)
+  - [x] detect_syntax_type() with keyword detection
+  - [x] Updated parse_script() to route based on syntax
+  - [x] Backward compatible with all existing DSL code
+  - [x] 6 auto-detection tests (all passing)
+- [x] Total: 26 parser tests passing (8 DSL + 5 tokenizer + 7 compiler + 6 routing)
 
-#### Phase 5: Builder Commands & Name Resolution 🚧 NEXT
+#### Phase 5: Builder Commands & Name Resolution 🚧 IN PROGRESS
 - [ ] Name-based object references (no IDs required!)
   - [ ] Parse object names in commands: `/script crystal poke`
   - [ ] "this" keyword: last `/look` target
