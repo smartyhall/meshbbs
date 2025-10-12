@@ -55,6 +55,11 @@ urlencoding = "2.1"
 # File locking for concurrent access protection  
 fs2 = "0.4"
 
+# Backup & recovery support
+tar = "0.4"
+flate2 = "1.0"
+sha2 = "0.10"
+
 # Optional: For direct serial communication with Meshtastic devices
 serialport = { version = "4.0", optional = true }
 
