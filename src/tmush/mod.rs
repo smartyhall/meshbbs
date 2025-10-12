@@ -4,6 +4,7 @@
 //! routing and session plumbing.
 
 pub mod achievement;
+pub mod builder_commands;
 pub mod commands;
 pub mod companion;
 pub mod currency;
@@ -26,6 +27,7 @@ pub use achievement::{
     award_achievement, check_trigger, get_achievements_by_category, get_available_achievements,
     get_earned_achievements, update_achievement_progress,
 };
+pub use builder_commands::handle_when_command;
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};
 pub use companion::{
     auto_follow_companions, dismount_companion, feed_companion, find_companion_in_room,
