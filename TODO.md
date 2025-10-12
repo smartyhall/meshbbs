@@ -849,7 +849,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Integration with trigger execution (all helpers check rate limits)
   - [x] 6 rate limiter unit tests passing
 
-**Trigger Engine Status**: 🚧 **95% COMPLETE** (Phases 1-10 done: 240 tests passing)
+**Trigger Engine Status**: 🎉 **100% COMPLETE** (All phases done: 240 tests passing, commit f34e724)
 - ✅ Phase 1: Foundation (TriggerContext, security, execute_trigger stub)
 - ✅ Phase 2: DSL Parser (tokenizer, AST, 8 tests)
 - ✅ Phase 3: Evaluator (execution engine, 5 tests → 10 tests)
@@ -878,7 +878,12 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - ✅ Integration: All trigger helpers check rate limits before execution
   - ✅ 6 rate limiter unit tests + doc test fixes
   - **Features**: 100 exec/min per object, 1 sec player cooldown, global shutoff
-- 🚧 Phase 11: Documentation & final polish (NEXT)
+- ✅ Phase 11: Documentation & final polish ✅ **100% COMPLETE** (commit f34e724)
+  - ✅ User guide: 380+ lines covering all 6 trigger types for non-programmers
+  - ✅ Admin guide: Complete operational reference with monitoring & troubleshooting
+  - ✅ Three complexity levels: one-liners (/when), scripts (/script), wizard (/wizard)
+  - ✅ Examples, tips, security info, rate limiting explained
+  - **Documentation**: Production-ready, comprehensive coverage
 
 
 
