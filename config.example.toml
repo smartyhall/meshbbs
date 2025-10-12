@@ -1,101 +1,243 @@
-# Example configuration for meshbbs
-# Copy this to config.toml and customize for your setup
+# MeshBBS Configuration File# Example configuration for meshbbs
 
-[bbs]
-name = "meshbbs Station"
-sysop = "sysop"
+# Copy this to config.toml and customize for your installation# Copy this to config.toml and customize for your setup
+
+
+
+[bbs][bbs]
+
+# Display name for your BBS (shown to users)name = "meshbbs Station"
+
+name = "Your MeshBBS Name"sysop = "sysop"
+
 location = "Los Angeles"
-description = "Describe what your BBS is for here in one line"
-max_users = 100
+
+# Sysop (system operator) usernamedescription = "Describe what your BBS is for here in one line"
+
+sysop = "sysop"max_users = 100
+
 session_timeout = 10 # minutes of inactivity before automatic logout
-welcome_message = "Welcome to this Mesh BBS"
-# Public command prefix (single character).
+
+# Location identifier (ZIP code, city name, or grid square)welcome_message = "Welcome to this Mesh BBS"
+
+location = "90210"# Public command prefix (single character).
+
 # Must be one of: ^ ! + $ / >
-# Choose something easy-to-type on your device; default is "^" if omitted.
-public_command_prefix = "^"
+
+# Description of your BBS (shown in welcome messages)# Choose something easy-to-type on your device; default is "^" if omitted.
+
+description = "Some information about your MeshBBS"public_command_prefix = "^"
+
 # Allow public channel LOGIN command (default: true)
-# When set to false, users must initiate login via direct message only.
-# This enhances security by preventing username enumeration on public channels.
+
+# Maximum concurrent users# When set to false, users must initiate login via direct message only.
+
+max_users = 100# This enhances security by preventing username enumeration on public channels.
+
 allow_public_login = true
 
-[meshtastic]
+# Session timeout in minutes of inactivity
+
+session_timeout = 30[meshtastic]
+
 # Serial port for Meshtastic device (Linux/macOS: /dev/ttyUSB0, Windows: COM3)
-port = "/dev/ttyUSB0"
-baud_rate = 115200
+
+# Welcome message shown at loginport = "/dev/ttyUSB0"
+
+welcome_message = "Welcome to this Mesh BBS"baud_rate = 115200
+
 # Optional: Your Meshtastic node ID (used only as a display fallback before the radio reports its ID)
-# If omitted, the server will auto-detect the node ID when the radio connects.
-# node_id = "0x1234ABCD"  # can be decimal or 0xHEX
-# Channel to monitor (0 = primary channel)
+
+# Public command prefix (single character: ^ ! + $ / >)# If omitted, the server will auto-detect the node ID when the radio connects.
+
+# Default is "^" if omitted# node_id = "0x1234ABCD"  # can be decimal or 0xHEX
+
+public_command_prefix = "^"# Channel to monitor (0 = primary channel)
+
 channel = 0
 
-# Writer tuning (optional). Defaults follow Meshtastic fairness. The 2s minimum is enforced.
-# Minimum time between any text sends (ms). Values below 2000 will be clamped to 2000.
-min_send_gap_ms = 2000
-# Retransmit backoff schedule in seconds for reliable DMs
-dm_resend_backoff_seconds = [4, 8, 16]
-# Extra delay before a broadcast immediately after a reliable DM (ms)
-post_dm_broadcast_gap_ms = 1200
-# Gap between consecutive reliable DMs (ms)
-dm_to_dm_gap_ms = 600
+# Allow public channel LOGIN command (security consideration)
 
-[storage]
-# Directory to store BBS data
+# When false, users must initiate login via direct message only# Writer tuning (optional). Defaults follow Meshtastic fairness. The 2s minimum is enforced.
+
+# Recommended: false (prevents username enumeration on public channels)# Minimum time between any text sends (ms). Values below 2000 will be clamped to 2000.
+
+allow_public_login = falsemin_send_gap_ms = 2000
+
+# Retransmit backoff schedule in seconds for reliable DMs
+
+[meshtastic]dm_resend_backoff_seconds = [4, 8, 16]
+
+# Serial port for Meshtastic device# Extra delay before a broadcast immediately after a reliable DM (ms)
+
+# Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/ttyUSB1post_dm_broadcast_gap_ms = 1200
+
+# Windows: COM3, COM4, etc.# Gap between consecutive reliable DMs (ms)
+
+port = "/dev/ttyUSB0"dm_to_dm_gap_ms = 600
+
+
+
+# Baud rate (usually 115200)[storage]
+
+baud_rate = 115200# Directory to store BBS data
+
 data_dir = "./data"
-# Maximum size for a single message (bytes)
-# Maximum payload allowed by Meshtastic practical text frame size is 230 bytes.
+
+# Optional: Your Meshtastic node ID (auto-detected if omitted)# Maximum size for a single message (bytes)
+
+# Example: node_id = "0x1234ABCD"  # can be decimal or 0xHEX# Maximum payload allowed by Meshtastic practical text frame size is 230 bytes.
+
 # Values above 230 will be clamped internally.
-max_message_size = 230
+
+# Channel to monitor (0 = primary channel)max_message_size = 230
+
+channel = 0
 
 [logging]
-level = "info"
-# Log file path (optional)
-file = "meshbbs.log"
-# Security log file (optional)
-security_file = "meshbbs-security.log"
+
+# Identification beacon settingslevel = "info"
+
+[meshtastic.ident]# Log file path (optional)
+
+# Send identification beacon periodicallyfile = "meshbbs.log"
+
+enabled = true# Security log file (optional)
+
+# Beacon interval in seconds (3600 = 1 hour)security_file = "meshbbs-security.log"
+
+interval_seconds = 3600
 
 [security]
-# Optional Argon2 password hashing parameters
-# [security.argon2]
-# memory_kib = 19456
+
+# Writer tuning (optional) - Defaults follow Meshtastic fairness rules# Optional Argon2 password hashing parameters
+
+# Minimum time between any text sends (ms). Values below 2000 clamped to 2000.# [security.argon2]
+
+min_send_gap_ms = 2000# memory_kib = 19456
+
 # time_cost = 2
-# parallelism = 1
+
+# Retransmit backoff schedule in seconds for reliable DMs# parallelism = 1
+
+dm_resend_backoff_seconds = [4, 8, 16]
 
 [ident_beacon]
-# Enable or disable the periodic ident beacon
-enabled = true
-# Frequency of ident beacon broadcasts
-# Options: "5min", "15min", "30min", "1hour", "2hours", "4hours"
-frequency = "15min"
 
-[weather]
-# OpenWeatherMap API key - Get one free from https://openweathermap.org/api
-# Required for weather functionality
+# Extra delay before a broadcast immediately after a reliable DM (ms)# Enable or disable the periodic ident beacon
+
+post_dm_broadcast_gap_ms = 1200enabled = true
+
+# Frequency of ident beacon broadcasts
+
+# Gap between consecutive reliable DMs (ms)# Options: "5min", "15min", "30min", "1hour", "2hours", "4hours"
+
+dm_to_dm_gap_ms = 600frequency = "15min"
+
+
+
+[storage][weather]
+
+# Directory to store BBS data (use absolute path in production)# OpenWeatherMap API key - Get one free from https://openweathermap.org/api
+
+data_dir = "./data"# Required for weather functionality
+
 api_key = "your_api_key_here"
-# Location for weather reports - can be city name, zipcode, or city ID
-# Examples: "Los Angeles", "90210", "5368361"
-location = "Los Angeles"
-# Country code for disambiguation (optional)
+
+# Maximum size for a single message (bytes)# Location for weather reports - can be city name, zipcode, or city ID
+
+# Maximum payload allowed by Meshtastic is 230 bytes# Examples: "Los Angeles", "90210", "5368361"
+
+# Values above 230 will be clamped internallylocation = "Los Angeles"
+
+max_message_size = 230# Country code for disambiguation (optional)
+
 # Use ISO 3166 country codes: "US", "CA", "GB", etc.
-country_code = "US"
-# Units: "metric" (Celsius), "imperial" (Fahrenheit), or "kelvin"
-units = "imperial"
-# Weather cache TTL in seconds (default: 300 = 5 minutes)
-cache_ttl = 300
-# Request timeout in seconds (default: 10)
-timeout = 10
+
+# Automatic backup configurationcountry_code = "US"
+
+[storage.backup]# Units: "metric" (Celsius), "imperial" (Fahrenheit), or "kelvin"
+
+# Enable automatic backupsunits = "imperial"
+
+enabled = true# Weather cache TTL in seconds (default: 300 = 5 minutes)
+
+# Keep backups for this many dayscache_ttl = 300
+
+retention_days = 30# Request timeout in seconds (default: 10)
+
+# How often to create backups (hours)timeout = 10
+
+interval_hours = 24
 
 [games]
-# Optional mini‑games and doors (Games submenu)
-# TinyHack is playable today; TinyMUSH appears as a coming-soon preview when enabled
-tinyhack_enabled = false
+
+[logging]# Optional mini‑games and doors (Games submenu)
+
+# Log level: trace, debug, info, warn, error# TinyHack is playable today; TinyMUSH appears as a coming-soon preview when enabled
+
+level = "info"tinyhack_enabled = false
+
 tinymush_enabled = false
-# tinymush_db_path = "./data/tinymush"
+
+# Optional: Log to file# tinymush_db_path = "./data/tinymush"
+
+# file = "meshbbs.log"
 
 # New User Welcome System
-# Automatically greet nodes with default Meshtastic names
-[welcome]
-enabled = false                     # Enable welcome system
+
+[games]# Automatically greet nodes with default Meshtastic names
+
+# Enable TinyHack roguelike game[welcome]
+
+tinyhack_enabled = trueenabled = false                     # Enable welcome system
+
 public_greeting = true              # Broadcast public welcome
-private_guide = true                # Send private setup guide
-cooldown_minutes = 5                # Wait between welcomes (global rate limit)
+
+# Enable TinyMUSH multi-user gameprivate_guide = true                # Send private setup guide
+
+tinymush_enabled = truecooldown_minutes = 5                # Wait between welcomes (global rate limit)
+
 max_welcomes_per_node = 1           # Max times to welcome same node
+
+[games.tinymush]
+# TinyMUSH data directory (relative to data_dir or absolute)
+data_dir = "./data/tinymush"
+
+[weather]
+# OpenWeatherMap API configuration
+# Get a free API key at: https://openweathermap.org/api
+# IMPORTANT: You must replace this with your actual API key!
+api_key = "REPLACE_WITH_YOUR_API_KEY"
+
+# Default location for weather queries (ZIP code or city name)
+default_location = "90210"
+
+# Temperature units: "metric" (Celsius) or "imperial" (Fahrenheit)
+units = "imperial"
+
+# Cache duration in seconds (3600 = 1 hour)
+cache_duration_seconds = 3600
+
+[welcome]
+# Automatic welcome message system
+# Greets new nodes detected on the mesh network
+enabled = false
+
+# Send welcome via private DM
+private_enabled = false
+# Template variables: {bbs_name}, {node_id}, {node_name}
+private_template = "Welcome to {bbs_name}! This is a bulletin board system. Send me '^HELP' for commands."
+
+# Send welcome via public channel
+public_enabled = false
+public_template = "📻 New station detected! Welcome to the mesh. Send '^HELP' to learn about this BBS."
+
+# Minimum time between any welcomes (minutes) to prevent spam
+rate_limit_minutes = 5
+
+# Admin password hash (use: meshbbs --hash-password)
+# CRITICAL: Generate your own hash! Do not leave default!
+# Run: echo -n "your_secure_password" | meshbbs --hash-password
+[admin]
+password_hash = "REPLACE_WITH_YOUR_PASSWORD_HASH"
