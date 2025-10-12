@@ -93,7 +93,7 @@ TALK MAYOR    - Complete the tutorial!
 ```
 
 **Rewards:**
-- 100 copper pieces (or $10 depending on currency system)
+- 100 copper pieces (or $10.00 depending on currency system)
 - Town Map item (added to your inventory)
 - Full access to Old Towne Mesh
 
