@@ -30,6 +30,7 @@ pub use achievement::{
 pub use builder_commands::{
     handle_when_command, handle_script_command, handle_done_command,
     handle_cancel_command, handle_wizard_command, handle_wizard_step,
+    handle_show_command, handle_remove_command, handle_test_command,
     ScriptBuilder, WizardSession, WizardState,
 };
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};

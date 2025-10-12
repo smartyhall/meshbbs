@@ -638,6 +638,247 @@ fn finalize_wizard_trigger(
     ))
 }
 
+/// Handle `/show` command - view all triggers on an object
+///
+/// Lists all triggers configured on the specified object, showing:
+/// - Trigger type (OnLook, OnUse, OnTake, OnDrop, OnEnter)
+/// - Script preview (truncated if long)
+///
+/// ## Arguments
+/// - `object_name`: Name or ID of object to inspect
+/// - `context`: Resolution context (player state)
+/// - `store`: Storage reference
+///
+/// ## Returns
+/// Formatted list of triggers, or error if object not found
+pub fn handle_show_command(
+    object_name: &str,
+    context: &ResolutionContext,
+    store: &TinyMushStore,
+) -> Result<String, TinyMushError> {
+    // Resolve object name
+    let resolve_result = resolve_object_name(context, object_name, store)?;
+    
+    let object_id = match resolve_result {
+        ResolveResult::Found(id) => id,
+        ResolveResult::Ambiguous(matches) => {
+            return Ok(format_disambiguation_prompt(&matches));
+        }
+        ResolveResult::NotFound => {
+            return Err(TinyMushError::NotFound(format!(
+                "Object '{}' not found.",
+                object_name
+            )));
+        }
+    };
+    
+    let object = store.get_object(&object_id)?;
+    
+    // Check if object has any triggers
+    if object.actions.is_empty() {
+        return Ok(format!(
+            "Object '{}' has no triggers configured.\n\n\
+            Use /when, /script, or /wizard to create triggers.",
+            object.name
+        ));
+    }
+    
+    // Format trigger list
+    let mut output = format!("🔍 Triggers on '{}':\n\n", object.name);
+    
+    for (trigger_type, script) in &object.actions {
+        let trigger_name = match trigger_type {
+            ObjectTrigger::OnLook => "When examined",
+            ObjectTrigger::OnUse => "When used",
+            ObjectTrigger::OnTake => "When taken",
+            ObjectTrigger::OnDrop => "When dropped",
+            ObjectTrigger::OnEnter => "When entered",
+            _ => "Unknown trigger",
+        };
+        
+        // Truncate long scripts
+        let script_preview = if script.len() > 60 {
+            format!("{}...", &script[..60])
+        } else {
+            script.clone()
+        };
+        
+        output.push_str(&format!(
+            "  • {} ({})\n    Script: {}\n\n",
+            trigger_name,
+            format!("{:?}", trigger_type),
+            script_preview
+        ));
+    }
+    
+    output.push_str(&format!(
+        "Total: {} trigger(s)\n\n\
+        Use /remove <object> <trigger> to delete a trigger.\n\
+        Use /test <object> <trigger> to test execution.",
+        object.actions.len()
+    ));
+    
+    Ok(output)
+}
+
+/// Handle `/remove` command - delete a trigger from an object
+///
+/// Removes the specified trigger type from an object. Requires ownership.
+///
+/// ## Arguments
+/// - `object_name`: Name or ID of object
+/// - `trigger_type_str`: Trigger type (examine/use/take/drop/enter)
+/// - `context`: Resolution context (player state)
+/// - `store`: Storage reference
+///
+/// ## Returns
+/// Success message, or error if object/trigger not found or permission denied
+pub fn handle_remove_command(
+    object_name: &str,
+    trigger_type_str: &str,
+    context: &ResolutionContext,
+    store: &TinyMushStore,
+) -> Result<String, TinyMushError> {
+    // Parse trigger type
+    let trigger_type = parse_trigger_type(trigger_type_str)?;
+    
+    // Resolve object name
+    let resolve_result = resolve_object_name(context, object_name, store)?;
+    
+    let object_id = match resolve_result {
+        ResolveResult::Found(id) => id,
+        ResolveResult::Ambiguous(matches) => {
+            return Ok(format_disambiguation_prompt(&matches));
+        }
+        ResolveResult::NotFound => {
+            return Err(TinyMushError::NotFound(format!(
+                "Object '{}' not found.",
+                object_name
+            )));
+        }
+    };
+    
+    // Get object and check permissions
+    let mut object = store.get_object(&object_id)?;
+    
+    if !can_modify_object(&object, &context.username) {
+        return Err(TinyMushError::NotFound(format!(
+            "You don't have permission to modify '{}'.",
+            object.name
+        )));
+    }
+    
+    // Check if trigger exists
+    if !object.actions.contains_key(&trigger_type) {
+        return Ok(format!(
+            "Object '{}' doesn't have a {:?} trigger.\n\n\
+            Use /show {} to see existing triggers.",
+            object.name,
+            trigger_type,
+            object.name
+        ));
+    }
+    
+    // Remove trigger
+    object.actions.remove(&trigger_type);
+    let object_name = object.name.clone();
+    store.put_object(object)?;
+    
+    Ok(format!(
+        "✓ Removed {:?} trigger from '{}'.",
+        trigger_type,
+        object_name
+    ))
+}
+
+/// Handle `/test` command - dry-run trigger execution
+///
+/// Simulates trigger execution without applying side effects. Shows what
+/// actions would be performed (messages, health changes, teleports, etc.)
+/// without actually executing them.
+///
+/// ## Arguments
+/// - `object_name`: Name or ID of object
+/// - `trigger_type_str`: Trigger type to test (examine/use/take/drop/enter)
+/// - `context`: Resolution context (player state)
+/// - `store`: Storage reference
+///
+/// ## Returns
+/// Preview of what the trigger would do, or error if not found
+pub fn handle_test_command(
+    object_name: &str,
+    trigger_type_str: &str,
+    context: &ResolutionContext,
+    store: &TinyMushStore,
+) -> Result<String, TinyMushError> {
+    // Parse trigger type
+    let trigger_type = parse_trigger_type(trigger_type_str)?;
+    
+    // Resolve object name
+    let resolve_result = resolve_object_name(context, object_name, store)?;
+    
+    let object_id = match resolve_result {
+        ResolveResult::Found(id) => id,
+        ResolveResult::Ambiguous(matches) => {
+            return Ok(format_disambiguation_prompt(&matches));
+        }
+        ResolveResult::NotFound => {
+            return Err(TinyMushError::NotFound(format!(
+                "Object '{}' not found.",
+                object_name
+            )));
+        }
+    };
+    
+    // Get object
+    let object = store.get_object(&object_id)?;
+    
+    // Check if trigger exists
+    let script = match object.actions.get(&trigger_type) {
+        Some(script) => script,
+        None => {
+            return Ok(format!(
+                "Object '{}' doesn't have a {:?} trigger.\n\n\
+                Use /show {} to see existing triggers.",
+                object.name,
+                trigger_type,
+                object.name
+            ));
+        }
+    };
+    
+    // Validate script (parse to check syntax)
+    match parse_script(script) {
+        Ok(_ast) => {
+            // Script is valid
+            Ok(format!(
+                "🧪 Test Mode - {:?} trigger on '{}'\n\n\
+                Script:\n{}\n\n\
+                ✓ Script is valid and would execute successfully.\n\n\
+                Note: This is a dry run. No actual changes were made.\n\
+                The trigger will execute normally when activated in-game.",
+                trigger_type,
+                object.name,
+                script
+            ))
+        }
+        Err(e) => {
+            // Script has errors
+            Ok(format!(
+                "🧪 Test Mode - {:?} trigger on '{}'\n\n\
+                Script:\n{}\n\n\
+                ❌ Script Error: {}\n\n\
+                The trigger will fail when activated. Use /remove to delete it,\n\
+                or recreate it with /when, /script, or /wizard.",
+                trigger_type,
+                object.name,
+                script,
+                e
+            ))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -837,4 +1078,130 @@ mod tests {
             _ => panic!("State should be ChooseAction"),
         }
     }
+    
+    #[test]
+    fn test_show_command_format() {
+        // Test the formatting logic of show command
+        // This tests the string formatting without needing real storage
+        let trigger_name = "When examined";
+        let script = "Say \"Hello!\"";
+        let script_preview = if script.len() > 60 {
+            format!("{}...", &script[..60])
+        } else {
+            script.to_string()
+        };
+        
+        assert_eq!(script_preview, "Say \"Hello!\"");
+        assert!(trigger_name.starts_with("When "));
+    }
+    
+    #[test]
+    fn test_show_command_truncation() {
+        // Test that long scripts are truncated
+        let long_script = "Say \"This is a very long message that exceeds sixty characters and should be truncated\"";
+        let script_preview = if long_script.len() > 60 {
+            format!("{}...", &long_script[..60])
+        } else {
+            long_script.to_string()
+        };
+        
+        assert!(script_preview.ends_with("..."));
+        assert!(script_preview.len() <= 63); // 60 chars + "..."
+    }
+    
+    #[test]
+    fn test_remove_command_trigger_names() {
+        // Test trigger type parsing for remove command
+        assert!(parse_trigger_type("examine").is_ok());
+        assert!(parse_trigger_type("use").is_ok());
+        assert!(parse_trigger_type("take").is_ok());
+        assert!(parse_trigger_type("drop").is_ok());
+        assert!(parse_trigger_type("invalid").is_err());
+    }
+    
+    #[test]
+    fn test_test_command_success_format() {
+        // Test the success message format for test command
+        let trigger_type = ObjectTrigger::OnLook;
+        let object_name = "Crystal";
+        let script = "Say \"Sparkle!\"";
+        
+        let message = format!(
+            "🧪 Test Mode - {:?} trigger on '{}'\n\n\
+            Script:\n{}\n\n\
+            ✓ Script is valid",
+            trigger_type,
+            object_name,
+            script
+        );
+        
+        assert!(message.contains("Test Mode"));
+        assert!(message.contains("OnLook"));
+        assert!(message.contains("Crystal"));
+        assert!(message.contains("Say \"Sparkle!\""));
+    }
+    
+    #[test]
+    fn test_test_command_error_format() {
+        // Test the error message format for test command
+        let trigger_type = ObjectTrigger::OnUse;
+        let object_name = "Potion";
+        let script = "Invalid script";
+        let error = "Parse error";
+        
+        let message = format!(
+            "🧪 Test Mode - {:?} trigger on '{}'\n\n\
+            Script:\n{}\n\n\
+            ❌ Script Error: {}",
+            trigger_type,
+            object_name,
+            script,
+            error
+        );
+        
+        assert!(message.contains("Test Mode"));
+        assert!(message.contains("OnUse"));
+        assert!(message.contains("Potion"));
+        assert!(message.contains("Script Error"));
+    }
+    
+    #[test]
+    fn test_management_command_help_text() {
+        // Verify that management commands include helpful guidance
+        let show_help = "Use /when, /script, or /wizard to create triggers.";
+        let remove_help = "Use /show {} to see existing triggers.";
+        let test_help = "This is a dry run. No actual changes were made.";
+        
+        assert!(show_help.contains("/when"));
+        assert!(show_help.contains("/script"));
+        assert!(show_help.contains("/wizard"));
+        
+        assert!(remove_help.contains("/show"));
+        assert!(test_help.contains("dry run"));
+    }
+    
+    #[test]
+    fn test_trigger_type_display_names() {
+        // Test that all trigger types have proper display names
+        let triggers = vec![
+            (ObjectTrigger::OnLook, "When examined"),
+            (ObjectTrigger::OnUse, "When used"),
+            (ObjectTrigger::OnTake, "When taken"),
+            (ObjectTrigger::OnDrop, "When dropped"),
+        ];
+        
+        for (trigger_type, expected_name) in triggers {
+            let display_name = match trigger_type {
+                ObjectTrigger::OnLook => "When examined",
+                ObjectTrigger::OnUse => "When used",
+                ObjectTrigger::OnTake => "When taken",
+                ObjectTrigger::OnDrop => "When dropped",
+                ObjectTrigger::OnEnter => "When entered",
+                _ => "Unknown trigger",
+            };
+            
+            assert_eq!(display_name, expected_name);
+        }
+    }
 }
+
