@@ -46,18 +46,18 @@
   * Builder commands
   * **Note**: Only needed if/when TinyMUSH features are enabled
 
-- [ ] Task 5: Create Backup & Recovery Guide (docs/administration/backup-recovery.md)
+- [x] Task 5: Create Backup & Recovery Guide (docs/administration/backup-recovery.md) ✅
   * Manual backup commands (BACKUP command exists)
   * Automated backup configuration
   * Restoration procedures
   * Verification and management
-  * **Priority**: Document existing backup system
+  * **Completed**: Full guide with all 6 backup commands documented
 
-- [ ] Task 6: Update Admin Commands Reference (docs/administration/commands.md)
+- [x] Task 6: Update Admin Commands Reference (docs/administration/commands.md) ✅
   * Comprehensive admin command list
-  * Permission levels
+  * Permission levels (0-3: player, moderator, admin, sysop)
   * Examples and use cases
-  * **Note**: May consolidate with user-guide/commands.md
+  * **Completed**: All admin commands documented by category
 
 ### Documentation Structure (Priority 3)
 - [ ] Task 7: Update docs/index.md
