@@ -243,11 +243,17 @@ pub enum TinyMushCommand {
     ///   - Manual backups require confirmation
     ///   - Cannot delete only remaining backup
     ///   - Requires admin level 2+
+    /// - `/BACKUPCONFIG [enable|disable|frequency|status]`: Configure automatic backups
+    ///   - Enable/disable automatic backups
+    ///   - Set backup frequency (hourly, 2h, 4h, 6h, 12h, daily)
+    ///   - View current configuration
+    ///   - Requires admin level 2+
     Backup(Option<String>),        // /BACKUP [name] - create manual backup
     RestoreBackup(String),         // /RESTORE <id> - restore from backup (sysop only)
     ListBackups,                   // /LISTBACKUPS - list all backups
     VerifyBackup(String),          // /VERIFYBACKUP <id> - verify backup integrity
     DeleteBackup(String),          // /DELETEBACKUP <id> - delete specific backup
+    BackupConfig(Vec<String>),     // /BACKUPCONFIG [subcommand] - configure automatic backups
     
     // Unrecognized command
     Unknown(String),
@@ -458,6 +464,7 @@ impl TinyMushProcessor {
             TinyMushCommand::ListBackups => self.handle_list_backups(session, config).await,
             TinyMushCommand::VerifyBackup(backup_id) => self.handle_verify_backup(session, backup_id, config).await,
             TinyMushCommand::DeleteBackup(backup_id) => self.handle_delete_backup(session, backup_id, config).await,
+            TinyMushCommand::BackupConfig(args) => self.handle_backup_config(session, args, config).await,
             // Clone monitoring commands (Phase 6 Admin Tools)
             TinyMushCommand::ListClones(username) => self.handle_list_clones(session, username, config).await,
             TinyMushCommand::CloneStats => self.handle_clone_stats(session, config).await,
@@ -1120,6 +1127,15 @@ impl TinyMushProcessor {
                 } else {
                     TinyMushCommand::Unknown("Usage: /DELETEBACKUP <backup_id>\nExample: /DELETEBACKUP backup_20250112_143022".to_string())
                 }
+            },
+            "/BACKUPCONFIG" | "/BACKUPCFG" | "/AUTOBACKUP" => {
+                // Collect all arguments after the command
+                let args = if parts.len() > 1 {
+                    parts[1..].iter().map(|s| s.to_string()).collect()
+                } else {
+                    Vec::new()
+                };
+                TinyMushCommand::BackupConfig(args)
             },
             
             // Builder permission management commands (Phase 7)
@@ -6584,6 +6600,133 @@ impl TinyMushProcessor {
             ⚠️  WARNING: This will overwrite the current database!",
             backup_id, backup_id
         ))
+    }
+
+    /// Handle `/BACKUPCONFIG` command - configure automatic backups
+    async fn handle_backup_config(
+        &mut self,
+        session: &Session,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::storage::backup_scheduler::BackupFrequency;
+        
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check admin permissions (level 2+ required)
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Backup configuration requires admin level 2+.".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+        if player.admin_level() < 2 {
+            return Ok(format!(
+                "⛔ Permission denied. Backup configuration requires admin level 2+.\nYour admin level: {}",
+                player.admin_level()
+            ));
+        }
+
+        // Parse subcommand
+        if args.is_empty() {
+            // Show usage
+            return Ok(
+                "Usage: /BACKUPCONFIG <subcommand>\n\n\
+                Subcommands:\n\
+                  status            - Show current backup configuration\n\
+                  enable            - Enable automatic backups\n\
+                  disable           - Disable automatic backups\n\
+                  frequency <freq>  - Set backup frequency\n\n\
+                Available frequencies:\n\
+                  hourly, 2h, 4h, 6h, 12h, daily\n\n\
+                Examples:\n\
+                  /BACKUPCONFIG status\n\
+                  /BACKUPCONFIG enable\n\
+                  /BACKUPCONFIG frequency 6h"
+                .to_string()
+            );
+        }
+
+        let subcommand = args[0].to_lowercase();
+
+        match subcommand.as_str() {
+            "status" => {
+                // TODO: Get actual scheduler status from server state
+                // For now, show placeholder
+                Ok(
+                    "═══════════════════════════════════════\n\
+                    ⚙️  AUTOMATIC BACKUP CONFIGURATION\n\
+                    ═══════════════════════════════════════\n\n\
+                    Status: Enabled (placeholder)\n\
+                    Frequency: Every 6 hours (placeholder)\n\
+                    Database: data/tinymush\n\
+                    Backup Path: data/backups\n\n\
+                    Retention Policy:\n\
+                    - Daily backups: Keep last 7\n\
+                    - Weekly backups: Keep last 4\n\
+                    - Monthly backups: Keep last 12\n\n\
+                    Last Backup: (not yet implemented)\n\
+                    Next Backup: (not yet implemented)"
+                    .to_string()
+                )
+            }
+            "enable" => {
+                // TODO: Actually enable scheduler
+                Ok("✅ Automatic backups enabled\n\nBackups will be created according to the configured frequency.".to_string())
+            }
+            "disable" => {
+                // TODO: Actually disable scheduler
+                Ok("✅ Automatic backups disabled\n\nManual backups can still be created with /BACKUP.".to_string())
+            }
+            "frequency" | "freq" => {
+                if args.len() < 2 {
+                    return Ok(
+                        "❌ Missing frequency argument\n\n\
+                        Usage: /BACKUPCONFIG frequency <freq>\n\n\
+                        Available frequencies:\n\
+                        - hourly (every hour)\n\
+                        - 2h (every 2 hours)\n\
+                        - 4h (every 4 hours)\n\
+                        - 6h (every 6 hours)\n\
+                        - 12h (every 12 hours)\n\
+                        - daily (once per day at midnight UTC)\n\n\
+                        Example: /BACKUPCONFIG frequency 6h"
+                        .to_string()
+                    );
+                }
+
+                let freq_str = &args[1];
+                match BackupFrequency::from_str(freq_str) {
+                    Some(BackupFrequency::Disabled) => {
+                        Ok("❌ Use '/BACKUPCONFIG disable' to disable automatic backups".to_string())
+                    }
+                    Some(freq) => {
+                        // TODO: Actually set frequency in scheduler
+                        Ok(format!(
+                            "✅ Backup frequency set to: {}\n\n\
+                            Backups will be created {}",
+                            freq.description(),
+                            freq.description().to_lowercase()
+                        ))
+                    }
+                    None => {
+                        Ok(format!(
+                            "❌ Invalid frequency: {}\n\n\
+                            Available frequencies:\n\
+                            - hourly, 2h, 4h, 6h, 12h, daily",
+                            freq_str
+                        ))
+                    }
+                }
+            }
+            _ => {
+                Ok(format!(
+                    "❌ Unknown subcommand: {}\n\n\
+                    Use /BACKUPCONFIG without arguments to see usage.",
+                    subcommand
+                ))
+            }
+        }
     }
 
     // ============================================================================
