@@ -1379,66 +1379,301 @@ Max rooms per player: 5
 
 ### Trigger Builder Commands
 
+**Philosophy**: User-friendly scripting for non-programmers. Three modes: simple one-liners, natural language, or wizard-guided creation.
+
+#### Command Syntax
+
 ```
 === TRIGGER COMMANDS ===
 
-/SETTRIGGER <obj> <type> <script>
-  Set trigger on object
-  Example:
-  /SETTRIGGER key OnUse 
-    current_room=="door" ?
-    unlock_exit("north") :
-    message("No lock here")
+/when <trigger> <object> <action>
+  Simple one-liner
+  /when poke crystal say MEEP!
 
-/CLEARTRIGGER <obj> <type>
-  Remove trigger from object
+/script <object> <trigger>
+  Multi-line natural language
+  (ends with /done or /cancel)
 
-/LISTTRIGGERS <obj>
-  Show all triggers on object
-  Displays: type, script preview,
-  length, last execution time
+/wizard <object> <trigger>
+  Guided menu-driven creation
+  (step-by-step prompts)
 
-/TESTTRIGGER <obj> <type>
-  Dry-run test (no side effects)
-  Shows: actions, conditions,
-  variable values
+/show <object>
+  View all triggers on object
+
+/test <object> <trigger>
+  Dry-run (no side effects)
 
 Permission: Owner or Architect
-(~195 bytes for 2 messages)
+Name resolution: no IDs needed!
+(~180 bytes)
 ```
 
-**Trigger Command Examples:**
+#### Natural Language Scripting
+
+**Beginner-friendly syntax** - no programming knowledge required:
 
 ```
-→ /SETTRIGGER potion OnUse
-  consume() && heal(50) &&
-  message("Refreshing!")
+ACTIONS (things that happen):
+  Say <text>
+  Say to room <text>
+  Give player <item>
+  Give player <number> health
+  Take from player <item>
+  Remove this object
+  Teleport player to <room>
+  Unlock <direction>
+  Lock <direction>
 
-✅ Trigger set on 'Health Potion'
-Type: OnUse
-Script: 48 chars
-Validated: ✓
+CONDITIONS (checking things):
+  If player has <item>:
+  If player has quest <name>:
+  If room flag <flag>:
+  If object flag <flag>:
+  If <number> in <number> chance:
 
-→ /LISTTRIGGERS potion
+LOGIC (combining):
+  and / or
+  Otherwise:
 
-HEALTH POTION - Triggers:
-• OnUse: consume() && heal(50)...
-  [48 chars] Last: 5 min ago
-• OnLook: message("Red liquid")
-  [24 chars] Last: never
+(~195 bytes)
+```
 
-→ /TESTTRIGGER potion OnUse
+#### Example: Simple One-Liner
 
-🧪 TEST MODE (no changes)
-Actions that would execute:
-  1. consume() → would delete item
-  2. heal(50) → would heal player
-  3. message("Refreshing!")
-     → would show message
+```
+→ /when poke mushroom say MEEP!
 
-Conditions: (none)
-Variables: $player=alice
-(~195 bytes per message)
+✅ Script saved!
+Try: /poke mushroom
+
+→ /poke mushroom
+You poke the mushroom.
+MEEP!
+(~85 bytes)
+```
+
+#### Example: Natural Language Script
+
+```
+→ /script potion use
+Enter script. End with /done
+
+→ Give player 50 health
+[38 chars]
+
+→ Say "Ahh, refreshing!"
+[59 chars]
+
+→ Remove this object
+[78 chars]
+
+→ /done
+
+✅ Script saved (78 chars)!
+---
+When used:
+  Give player 50 health
+  Say "Ahh, refreshing!"
+  Remove this object
+---
+Try: /use potion
+(~170 bytes total)
+```
+
+#### Example: Conditional Script
+
+```
+→ /script door use
+Enter script. End with /done
+
+→ If player has key:
+[20 chars]
+
+→   Unlock north
+[35 chars]
+
+→   Say "Click! Door unlocks."
+[61 chars]
+
+→ Otherwise:
+[72 chars]
+
+→   Say "It's locked."
+[91 chars]
+
+→ /done
+
+✅ Script saved (91 chars)!
+---
+When used:
+  If player has key:
+    Unlock north
+    Say "Click! Door unlocks."
+  Otherwise:
+    Say "It's locked."
+---
+(~185 bytes)
+```
+
+#### Example: Wizard Mode (Guided)
+
+```
+→ /wizard crystal poke
+
+What happens when poked?
+1. Say something
+2. Give item
+3. Check condition first
+4. Random chance
+Type number:
+
+→ 1
+
+What to say?
+
+→ MEEP!
+
+✅ Script saved!
+---
+When poked:
+  Say "MEEP!"
+---
+Try: /poke crystal
+(~145 bytes total, 4 messages)
+```
+
+#### Name-Based Object References
+
+**No more object IDs!** Multiple ways to reference objects:
+
+```
+BY NAME:       /script crystal poke
+BY "THIS":     /script this poke
+               (last object examined)
+BY "HERE":     /script here enter
+               (current room)
+BY INVENTORY:  /script @potion use
+               (@prefix = in inventory)
+BY ID:         /script #1234 poke
+               (advanced users only)
+
+If ambiguous:
+BBS: Multiple 'crystal' found:
+     1. red crystal (here)
+     2. blue crystal (here)
+     Type number or /cancel
+(~195 bytes)
+```
+
+#### Object IDs (Visible But Optional)
+
+```
+→ /look crystal
+
+Red Crystal [#1234]
+A glowing red gemstone.
+Scripts: poke, look
+
+Owner: alice
+Created: 2 days ago
+
+→ /inv
+
+You are carrying:
+• healing potion [#1235]
+• rusty key [#1236]
+• old map [#1237]
+
+IDs shown but never required!
+(~140 bytes)
+```
+
+#### Script Cloning & Vending Machines
+
+**Scripts copy automatically** when objects are cloned/sold:
+
+```
+TEMPLATE potion [#1234]:
+  When used:
+    Give player 50 health
+    Say "Refreshing!"
+    Remove this object
+
+→ /buy potion
+Purchased! [Clone #5678 created]
+
+→ /use potion
+[Clone executes same script]
+You drink the potion.
+Refreshing!
+Health: 100/100 [+50]
+[Clone #5678 removed safely]
+
+Runtime variables:
+$player → current player
+$object → this object's name
+$object_id → this object's ID
+$room → current room name
+$room_id → current room ID
+
+Clones work perfectly!
+(~195 bytes)
+```
+
+#### Testing Scripts
+
+```
+→ /test door use
+
+Test 'use' on door [#1299]:
+Player: alice (has key: yes)
+---
+✓ Unlock north
+✓ Say "Click! Door unlocks."
+---
+[No actual changes made]
+
+→ /test door use
+(without key)
+
+Test 'use' on door [#1299]:
+Player: alice (has key: no)
+---
+✓ Say "It's locked."
+---
+[No actual changes made]
+(~175 bytes per test)
+```
+
+#### Viewing Scripts
+
+```
+→ /show potion
+
+Scripts on healing potion:
+---
+When used:
+  Give player 50 health
+  Say "Ahh, refreshing!"
+  Remove this object
+(78 chars)
+---
+Edit: /script potion use
+
+→ /show crystal
+
+Scripts on red crystal:
+---
+When poked:
+  Say "MEEP!"
+(12 chars)
+
+When looked at:
+  Say "It glows softly."
+(23 chars)
+---
+(~150 bytes)
 ```
 
 ### Housing Customization Commands
