@@ -17,7 +17,7 @@ use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDire
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
 use crate::tmush::inventory::format_inventory_compact;
-use crate::tmush::trigger::{execute_on_look, execute_room_on_enter};
+use crate::tmush::trigger::{execute_on_look, execute_on_use, execute_on_poke, execute_room_on_enter};
 
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +33,7 @@ pub enum TinyMushCommand {
     Take(String),           // T item - pick up item
     Drop(String),           // D item - drop item
     Use(String),            // U item - use/activate item
+    Poke(String),           // POKE item - poke/prod an interactive object
     Examine(String),        // X item - detailed examination
 
     // Economy and shops (Phase 5)
@@ -353,6 +354,8 @@ impl TinyMushProcessor {
             TinyMushCommand::Inventory => self.handle_inventory(session, config).await,
             TinyMushCommand::Take(item) => self.handle_take(session, item, config).await,
             TinyMushCommand::Drop(item) => self.handle_drop(session, item, config).await,
+            TinyMushCommand::Use(item) => self.handle_use(session, item, config).await,
+            TinyMushCommand::Poke(target) => self.handle_poke(session, target, config).await,
             TinyMushCommand::Examine(target) => self.handle_examine(session, target, config).await,
             TinyMushCommand::Buy(item, quantity) => self.handle_buy(session, item, quantity, config).await,
             TinyMushCommand::Sell(item, quantity) => self.handle_sell(session, item, quantity, config).await,
@@ -551,6 +554,13 @@ impl TinyMushProcessor {
             "USE" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Use(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown(input)
+                }
+            },
+            "POKE" | "PROD" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Poke(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Unknown(input)
                 }
@@ -1643,6 +1653,98 @@ impl TinyMushProcessor {
              This command will display detailed information about objects in your inventory or the current room.",
             target
         ))
+    }
+
+    /// Handle USE command - use/activate an object with trigger execution
+    async fn handle_use(&mut self, session: &Session, item_name: String, _config: &Config) -> Result<String> {
+        let item_name = item_name.to_uppercase();
+        
+        // Get player
+        let player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Search for object in inventory by name
+        let object = match self.find_object_by_name(&item_name, &player.inventory) {
+            Some(obj) => obj,
+            None => {
+                return Ok(format!("You don't have '{}' in your inventory.", item_name));
+            }
+        };
+
+        // Check if object is usable
+        if !object.usable {
+            return Ok(format!("{} cannot be used.", object.name));
+        }
+
+        // Execute OnUse trigger if present
+        let trigger_messages = execute_on_use(
+            &object,
+            &session.display_name(),
+            &player.current_room,
+            self.store()
+        );
+
+        // Build response
+        let mut response = format!("You use {}.", object.name);
+        
+        // Add trigger messages
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+
+        Ok(response)
+    }
+
+    /// Handle POKE command - poke/prod an interactive object with trigger execution
+    async fn handle_poke(&mut self, session: &Session, target_name: String, _config: &Config) -> Result<String> {
+        let target_name = target_name.to_uppercase();
+        
+        // Get player and current room
+        let player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let room = match self.store().get_room(&player.current_room) {
+            Ok(r) => r,
+            Err(e) => return Ok(format!("Error loading room: {}", e)),
+        };
+
+        // Search for object in room by name
+        let object = match self.find_object_by_name(&target_name, &room.items) {
+            Some(obj) => obj,
+            None => {
+                // Also check inventory
+                match self.find_object_by_name(&target_name, &player.inventory) {
+                    Some(obj) => obj,
+                    None => {
+                        return Ok(format!("You don't see '{}' here.", target_name));
+                    }
+                }
+            }
+        };
+
+        // Execute OnPoke trigger if present
+        let trigger_messages = execute_on_poke(
+            &object,
+            &session.display_name(),
+            &player.current_room,
+            self.store()
+        );
+
+        // Build response
+        let mut response = format!("You poke {}.", object.name);
+        
+        // Add trigger messages
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+
+        Ok(response)
     }
 
     /// Handle BUY command - purchase items from shops in current room
@@ -7172,6 +7274,24 @@ impl TinyMushProcessor {
             },
             Err(e) => Err(e),
         }
+    }
+
+    /// Helper: Find object by name in a list of object IDs
+    /// 
+    /// Searches through object IDs, loads each object, and returns the first match
+    /// where the object name matches (case-insensitive).
+    fn find_object_by_name(&self, name: &str, object_ids: &[String]) -> Option<ObjectRecord> {
+        let name_upper = name.to_uppercase();
+        
+        for object_id in object_ids {
+            if let Ok(object) = self.store().get_object(object_id) {
+                if object.name.to_uppercase() == name_upper {
+                    return Some(object);
+                }
+            }
+        }
+        
+        None
     }
 
     /// Helper: Record ownership transfer in item's history (Phase 5)
