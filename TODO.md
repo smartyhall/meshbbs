@@ -846,7 +846,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [ ] Graceful failures (log error, don't crash)
   - [ ] User-friendly error messages
 
-**Trigger Engine Status**: 🚧 **43% COMPLETE** (Phases 1-7 done, Phase 8 in progress: 226 tests passing)
+**Trigger Engine Status**: 🚧 **57% COMPLETE** (Phases 1-8 done: 226 tests passing)
 - ✅ Phase 1: Foundation (TriggerContext, security, execute_trigger stub)
 - ✅ Phase 2: DSL Parser (tokenizer, AST, 8 tests)
 - ✅ Phase 3: Evaluator (execution engine, 5 tests → 10 tests)
@@ -854,14 +854,14 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - ✅ Phase 5: Builder commands with name resolution (23 tests)
 - ✅ Phase 6: Object cloning with genealogy & security (12 integration tests, 3 commits)
 - ✅ Phase 7: Actions & conditions connected to game state (5 new tests, commit 7bbe19b)
-- 🚧 Phase 8: Integration with game commands (IN PROGRESS)
+- ✅ Phase 8: Integration with game commands (2 commits)
   - ✅ Integration module created (integration.rs, 6 helper functions, 2 tests)
-  - ⏳ Hook into LOOK command (NEXT)
-  - ⏳ Hook into TAKE/DROP commands
-  - ⏳ Create USE command
-  - ⏳ Create POKE command
-  - ⏳ Hook into room movement (OnEnter)
-- 🚧 Phase 9: Example content & testing (LATER)
+  - ✅ LOOK command enhanced to examine objects with OnLook triggers
+  - ✅ USE command implemented with OnUse trigger execution
+  - ✅ POKE command created with OnPoke trigger execution
+  - ✅ Room movement hooks OnEnter triggers for all room objects
+  - ⏳ TAKE/DROP commands (waiting for room object scanning implementation)
+- 🚧 Phase 9: Example content & testing (NEXT)
 - 🚧 Phase 10: Rate limiting & admin tools (LATER)
 
 
