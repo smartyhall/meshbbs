@@ -468,6 +468,10 @@ mod tests {
             takeable: true,
             usable: false,
             actions: HashMap::new(),
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: "world".to_string(),
             flags: Vec::new(),
             locked: false, // Shop items unlocked by default
             ownership_history: vec![], // New items have no history

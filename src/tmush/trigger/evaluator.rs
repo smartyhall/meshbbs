@@ -428,6 +428,10 @@ mod tests {
             actions: Default::default(),
             flags: vec![],
             locked: false,
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: "world".to_string(),
             ownership_history: vec![],
             schema_version: 1,
         };

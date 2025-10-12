@@ -67,6 +67,14 @@ pub enum ObjectFlag {
     Container,
     Magical,
     Companion,
+    /// Object can be cloned (opt-in for security)
+    Clonable,
+    /// Unique object - cannot be cloned (quest items, artifacts)
+    Unique,
+    /// Strip currency value to 0 on clone
+    NoValue,
+    /// Refuse to clone if object has contents
+    NoCloneChildren,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -128,6 +136,8 @@ pub enum OwnershipReason {
     AdminTransfer,
     /// Item spawned by quest/system
     SystemGrant,
+    /// Item cloned from another object
+    Clone,
 }
 
 /// Tutorial progression state for new player onboarding
@@ -199,6 +209,18 @@ pub struct ObjectRecord {
     /// Indelible ownership history for forensic tracking
     #[serde(default)]
     pub ownership_history: Vec<OwnershipTransfer>,
+    /// Clone genealogy depth (0 = original, 1+ = clone generations)
+    #[serde(default)]
+    pub clone_depth: u8,
+    /// Source object ID if this is a clone
+    #[serde(default)]
+    pub clone_source_id: Option<String>,
+    /// How many times THIS specific object has been cloned
+    #[serde(default)]
+    pub clone_count: u32,
+    /// Username of player who created/cloned this object
+    #[serde(default)]
+    pub created_by: String,
     pub schema_version: u8,
 }
 
@@ -219,6 +241,10 @@ impl ObjectRecord {
             flags: Vec::new(),
             locked: false,
             ownership_history: Vec::new(),
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: String::from("world"),
             schema_version: OBJECT_SCHEMA_VERSION,
         }
     }
@@ -248,6 +274,10 @@ impl ObjectRecord {
             flags: Vec::new(),
             locked: false,
             ownership_history: Vec::new(),
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: owner_username.to_string(),
             schema_version: OBJECT_SCHEMA_VERSION,
         };
 
@@ -1476,7 +1506,21 @@ pub struct PlayerRecord {
     /// Builders can create rooms, objects, and modify world structure
     #[serde(default)]
     pub builder_level: Option<u8>,
+    /// Clone quota remaining this hour (resets hourly)
+    #[serde(default = "default_clone_quota")]
+    pub clone_quota: u32,
+    /// Unix timestamp of last clone operation (cooldown enforcement)
+    #[serde(default)]
+    pub last_clone_time: u64,
+    /// Total objects owned by this player (quota enforcement)
+    #[serde(default)]
+    pub total_objects_owned: u32,
     pub schema_version: u8,
+}
+
+/// Default clone quota per hour
+fn default_clone_quota() -> u32 {
+    20
 }
 
 impl PlayerRecord {
@@ -1507,6 +1551,9 @@ impl PlayerRecord {
             is_admin: false,
             admin_level: None,
             builder_level: None,
+            clone_quota: 20,
+            last_clone_time: 0,
+            total_objects_owned: 0,
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }

@@ -258,6 +258,10 @@ mod tests {
             takeable,
             usable: false,
             actions: std::collections::HashMap::new(),
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: "world".to_string(),
             flags: Vec::new(),
             locked: false, // Test items unlocked
             ownership_history: vec![], // Test items have no history

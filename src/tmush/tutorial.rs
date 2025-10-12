@@ -198,6 +198,10 @@ pub fn distribute_tutorial_rewards(
         locked: false, // Quest items unlocked by default
         ownership_history: vec![], // No prior ownership
         created_at: Utc::now(),
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
         schema_version: 1,
     };
     

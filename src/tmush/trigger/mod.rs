@@ -277,6 +277,10 @@ mod tests {
             locked: false,
             ownership_history: vec![],
             schema_version: 1,
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: "world".to_string(),
         };
         
         let room = RoomRecord {

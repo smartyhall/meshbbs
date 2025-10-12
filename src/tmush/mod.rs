@@ -5,6 +5,7 @@
 
 pub mod achievement;
 pub mod builder_commands;
+pub mod clone;
 pub mod commands;
 pub mod companion;
 pub mod currency;
@@ -32,6 +33,11 @@ pub use builder_commands::{
     handle_cancel_command, handle_wizard_command, handle_wizard_step,
     handle_show_command, handle_remove_command, handle_test_command,
     ScriptBuilder, WizardSession, WizardState,
+};
+pub use clone::{
+    clone_object, handle_clone_command,
+    MAX_CLONE_DEPTH, MAX_OBJECTS_PER_PLAYER, CLONE_COOLDOWN,
+    CLONES_PER_HOUR, MAX_CLONABLE_VALUE,
 };
 pub use commands::{handle_tinymush_command, should_route_to_tinymush, TinyMushCommand};
 pub use companion::{
