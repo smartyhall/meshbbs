@@ -187,6 +187,56 @@ impl fmt::Display for BinaryOperator {
     }
 }
 
+/// Script syntax types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyntaxType {
+    /// Natural language syntax (beginner-friendly)
+    Natural,
+    /// Advanced DSL syntax (function-based)
+    Advanced,
+}
+
+/// Detect which syntax type a script is using
+///
+/// Checks for natural language keywords (Say, Give, If) or DSL syntax
+/// (function calls with parentheses). Defaults to Advanced if ambiguous.
+pub fn detect_syntax_type(script: &str) -> SyntaxType {
+    let lowercase = script.to_lowercase();
+    
+    // Natural language keywords (case-insensitive)
+    let natural_keywords = [
+        "say to room",
+        "give player",
+        "take from player",
+        "remove this object",
+        "teleport player to",
+        "unlock ",
+        "lock ",
+        "if player has",
+        "if room flag",
+        "if object flag",
+        "otherwise:",
+        "say \"",
+        "give ",
+        "take ",
+    ];
+    
+    // Check for natural language indicators
+    for keyword in &natural_keywords {
+        if lowercase.contains(keyword) {
+            return SyntaxType::Natural;
+        }
+    }
+    
+    // Advanced DSL indicators: function calls with parentheses
+    if script.contains("(") && script.contains(")") {
+        return SyntaxType::Advanced;
+    }
+    
+    // Default to Advanced for backward compatibility
+    SyntaxType::Advanced
+}
+
 /// Tokenizer for DSL scripts
 pub struct Tokenizer {
     input: Vec<char>,
@@ -1355,11 +1405,29 @@ impl Parser {
 }
 
 /// Parse a trigger script into an AST
+///
+/// Automatically detects whether the script uses natural language syntax
+/// or advanced DSL syntax, then routes to the appropriate parser.
+///
+/// # Examples
+///
+/// ```
+/// // Natural language (beginner-friendly)
+/// let ast = parse_script("Say \"Hello!\"\nGive player 50 health").unwrap();
+///
+/// // Advanced DSL (power users)
+/// let ast = parse_script("message(\"Hello!\") && heal(50)").unwrap();
+/// ```
 pub fn parse_script(script: &str) -> Result<AstNode, String> {
-    let mut tokenizer = Tokenizer::new(script);
-    let tokens = tokenizer.tokenize()?;
-    let mut parser = Parser::new(tokens);
-    parser.parse()
+    match detect_syntax_type(script) {
+        SyntaxType::Natural => compile_natural_language(script),
+        SyntaxType::Advanced => {
+            let mut tokenizer = Tokenizer::new(script);
+            let tokens = tokenizer.tokenize()?;
+            let mut parser = Parser::new(tokens);
+            parser.parse()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1675,6 +1743,133 @@ mod tests {
                 }
             }
             _ => panic!("Expected Sequence node"),
+        }
+    }
+
+    // ==================== Auto-Detection Tests ====================
+    
+    #[test]
+    fn test_detect_natural_language() {
+        // Test natural language keyword detection
+        assert_eq!(detect_syntax_type("Say \"Hello!\""), SyntaxType::Natural);
+        assert_eq!(detect_syntax_type("If player has quest ancient_ruins: Say \"Found\""), SyntaxType::Natural);
+        assert_eq!(detect_syntax_type("Give player 50 health"), SyntaxType::Natural);
+        assert_eq!(detect_syntax_type("Say to room \"Everyone hears this\""), SyntaxType::Natural);
+        assert_eq!(detect_syntax_type("Unlock north"), SyntaxType::Natural);
+        assert_eq!(detect_syntax_type("Otherwise:\n  Say \"No\""), SyntaxType::Natural);
+    }
+    
+    #[test]
+    fn test_detect_advanced_dsl() {
+        // Test DSL function call detection
+        assert_eq!(detect_syntax_type("message(\"Hello!\")"), SyntaxType::Advanced);
+        assert_eq!(detect_syntax_type("has_item(\"key\") ? message(\"Yes\") : message(\"No\")"), SyntaxType::Advanced);
+        assert_eq!(detect_syntax_type("heal(50) && message(\"Healed!\")"), SyntaxType::Advanced);
+        
+        // Empty or ambiguous defaults to Advanced
+        assert_eq!(detect_syntax_type(""), SyntaxType::Advanced);
+        assert_eq!(detect_syntax_type("random text"), SyntaxType::Advanced);
+    }
+    
+    #[test]
+    fn test_parse_script_routes_natural() {
+        // Verify parse_script correctly routes natural language
+        let script = "Say \"Hello from natural language!\"";
+        let ast = parse_script(script).unwrap();
+        
+        match ast {
+            AstNode::Action { name, args } => {
+                assert_eq!(name, "message");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    AstNode::StringLiteral(s) => assert_eq!(s, "Hello from natural language!"),
+                    _ => panic!("Expected StringLiteral"),
+                }
+            }
+            _ => panic!("Expected Action node"),
+        }
+    }
+    
+    #[test]
+    fn test_parse_script_routes_advanced() {
+        // Verify parse_script correctly routes DSL
+        let script = "message(\"Hello from DSL!\")";
+        let ast = parse_script(script).unwrap();
+        
+        match ast {
+            AstNode::Action { name, args } => {
+                assert_eq!(name, "message");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    AstNode::StringLiteral(s) => assert_eq!(s, "Hello from DSL!"),
+                    _ => panic!("Expected StringLiteral"),
+                }
+            }
+            _ => panic!("Expected Action node"),
+        }
+    }
+    
+    #[test]
+    fn test_parse_script_backward_compatible() {
+        // Verify existing DSL scripts still parse correctly
+        let script = "has_item(\"key\") ? teleport(\"treasure_room\") : message(\"Need key\")";
+        let ast = parse_script(script).unwrap();
+        
+        // Should parse as ternary
+        match ast {
+            AstNode::Ternary { condition, then_branch, else_branch } => {
+                // Condition should be has_item
+                match *condition {
+                    AstNode::Action { name, .. } => assert_eq!(name, "has_item"),
+                    _ => panic!("Expected Action in condition"),
+                }
+                
+                // Then should be teleport
+                match *then_branch {
+                    AstNode::Action { name, .. } => assert_eq!(name, "teleport"),
+                    _ => panic!("Expected Action in then branch"),
+                }
+                
+                // Else should be message
+                match *else_branch {
+                    AstNode::Action { name, .. } => assert_eq!(name, "message"),
+                    _ => panic!("Expected Action in else branch"),
+                }
+            }
+            _ => panic!("Expected Ternary node"),
+        }
+    }
+    
+    #[test]
+    fn test_parse_script_natural_with_if() {
+        // Test natural language if/otherwise through parse_script
+        let script = "If player has quest ancient_ruins:\n  Say \"Quest complete!\"\nOtherwise:\n  Say \"Quest not found\"";
+        let ast = parse_script(script).unwrap();
+        
+        match ast {
+            AstNode::Ternary { condition, then_branch, else_branch } => {
+                // Condition should be has_quest
+                match *condition {
+                    AstNode::Action { name, args } => {
+                        assert_eq!(name, "has_quest");
+                        assert_eq!(args.len(), 1);
+                    }
+                    _ => panic!("Expected Action in condition"),
+                }
+                
+                // Then should be message
+                match *then_branch {
+                    AstNode::Action { name, .. } => assert_eq!(name, "message"),
+                    _ => panic!("Expected Action in then branch"),
+                }
+                
+                // Else should be message
+                match *else_branch {
+                    AstNode::Action { name, .. } => assert_eq!(name, "message"),
+                    _ => panic!("Expected Action in else branch"),
+                }
+            }
+            _ => panic!("Expected Ternary node"),
         }
     }
 }
