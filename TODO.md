@@ -849,7 +849,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [x] Integration with trigger execution (all helpers check rate limits)
   - [x] 6 rate limiter unit tests passing
 
-**Trigger Engine Status**: 🚧 **86% COMPLETE** (Phases 1-10 done: 233 tests passing)
+**Trigger Engine Status**: 🚧 **95% COMPLETE** (Phases 1-10 done: 240 tests passing)
 - ✅ Phase 1: Foundation (TriggerContext, security, execute_trigger stub)
 - ✅ Phase 2: DSL Parser (tokenizer, AST, 8 tests)
 - ✅ Phase 3: Evaluator (execution engine, 5 tests → 10 tests)
@@ -857,13 +857,14 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - ✅ Phase 5: Builder commands with name resolution (23 tests)
 - ✅ Phase 6: Object cloning with genealogy & security (12 integration tests, 3 commits)
 - ✅ Phase 7: Actions & conditions connected to game state (5 new tests, commit 7bbe19b)
-- ✅ Phase 8: Integration with game commands (3 commits)
+- ✅ Phase 8: Integration with game commands ✅ **100% COMPLETE** (4 commits)
   - ✅ Integration module created (integration.rs, 6 helper functions, 2 tests)
   - ✅ LOOK command enhanced to examine objects with OnLook triggers
   - ✅ USE command implemented with OnUse trigger execution
   - ✅ POKE command created with OnPoke trigger execution
   - ✅ Room movement hooks OnEnter triggers for all room objects
-  - ⏳ TAKE/DROP commands (waiting for room object scanning implementation)
+  - ✅ TAKE/DROP commands with OnTake/OnDrop triggers (commit 73016be)
+  - **ALL 6 trigger types fully integrated into gameplay!**
 - ✅ Phase 9: Example content & testing (3 commits)
   - ✅ Created 6 example trigger objects (healing potion, ancient key, mystery box, quest clue, teleport stone, singing mushroom)
   - ✅ Implemented auto-seeding system (objects placed in mesh_museum)
@@ -877,7 +878,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - ✅ Integration: All trigger helpers check rate limits before execution
   - ✅ 6 rate limiter unit tests + doc test fixes
   - **Features**: 100 exec/min per object, 1 sec player cooldown, global shutoff
-- 🚧 Phase 11: Final polish & documentation (NEXT)
+- 🚧 Phase 11: Documentation & final polish (NEXT)
 
 
 
