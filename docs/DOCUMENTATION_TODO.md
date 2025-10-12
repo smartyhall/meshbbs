@@ -1,10 +1,12 @@
 # Documentation Cleanup and Creation Tasks
 
 ## ✅ Completed
-- [x] Archive development/design docs to docs/archive/
+- [x] Archive development/design docs to docs/archive/ (38 files archived)
 - [x] Create archive README
 - [x] Create Housing System Guide (docs/user-guide/housing.md)
 - [x] Create Economy & Trading Guide (docs/user-guide/economy.md)
+- [x] Move daemon docs to administration directory
+- [x] Review and organize all remaining docs (30 active docs)
 
 ## 📝 Remaining Tasks
 
@@ -49,10 +51,11 @@
   * Add links to housing, economy, companions, quests
   * Update navigation
 
-- [ ] Task 8: Clean up redundant docs
-  * Review remaining files
-  * Archive or remove obsolete content
-  * Ensure no broken links
+- [x] Task 8: Clean up redundant docs ✅
+  * Reviewed all 30 remaining files
+  * Moved daemon docs to proper location
+  * Kept all relevant QA and development docs
+  * No broken links found
 
 ## Notes
 - Focus on TinyMUSH game features
