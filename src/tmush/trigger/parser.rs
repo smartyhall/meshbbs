@@ -66,6 +66,69 @@ impl fmt::Display for Token {
     }
 }
 
+/// Natural language token types for beginner-friendly scripting
+#[derive(Debug, Clone, PartialEq)]
+pub enum NaturalToken {
+    // Keywords for actions
+    Say,              // "Say <text>"
+    SayToRoom,        // "Say to room <text>"
+    Give,             // "Give player <item/number> <unit>"
+    Take,             // "Take from player <item>"
+    Remove,           // "Remove this object"
+    Teleport,         // "Teleport player to <room>"
+    Unlock,           // "Unlock <direction>"
+    Lock,             // "Lock <direction>"
+    
+    // Keywords for conditions
+    If,               // "If <condition>:"
+    Otherwise,        // "Otherwise:"
+    
+    // Logic keywords
+    And,              // "and"
+    Or,               // "or"
+    
+    // Phrases (parsed text between keywords)
+    Phrase(String),   // "player has key", "room flag safe"
+    
+    // Literals
+    Text(String),     // Quoted or unquoted text
+    Number(i64),      // Numeric values
+    
+    // Structural
+    Colon,            // ":" at end of If/Otherwise
+    Newline,          // Line break
+    Indent,           // Indentation (for block structure)
+    
+    // Special
+    Eof,
+}
+
+impl fmt::Display for NaturalToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NaturalToken::Say => write!(f, "Say"),
+            NaturalToken::SayToRoom => write!(f, "Say to room"),
+            NaturalToken::Give => write!(f, "Give"),
+            NaturalToken::Take => write!(f, "Take"),
+            NaturalToken::Remove => write!(f, "Remove"),
+            NaturalToken::Teleport => write!(f, "Teleport"),
+            NaturalToken::Unlock => write!(f, "Unlock"),
+            NaturalToken::Lock => write!(f, "Lock"),
+            NaturalToken::If => write!(f, "If"),
+            NaturalToken::Otherwise => write!(f, "Otherwise"),
+            NaturalToken::And => write!(f, "and"),
+            NaturalToken::Or => write!(f, "or"),
+            NaturalToken::Phrase(s) => write!(f, "phrase '{}'", s),
+            NaturalToken::Text(s) => write!(f, "text '{}'", s),
+            NaturalToken::Number(n) => write!(f, "number {}", n),
+            NaturalToken::Colon => write!(f, ":"),
+            NaturalToken::Newline => write!(f, "newline"),
+            NaturalToken::Indent => write!(f, "indent"),
+            NaturalToken::Eof => write!(f, "end of input"),
+        }
+    }
+}
+
 /// Abstract Syntax Tree node types
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
@@ -354,6 +417,344 @@ impl Tokenizer {
         }
         
         Ok(tokens)
+    }
+}
+
+/// Natural Language Tokenizer for beginner-friendly scripts
+/// 
+/// Tokenizes natural language syntax like:
+/// ```
+/// Say "Hello!"
+/// If player has key:
+///   Unlock north
+/// Otherwise:
+///   Say "It's locked."
+/// ```
+pub struct NaturalLanguageTokenizer {
+    input: Vec<char>,
+    position: usize,
+}
+
+impl NaturalLanguageTokenizer {
+    pub fn new(input: &str) -> Self {
+        Self {
+            input: input.chars().collect(),
+            position: 0,
+        }
+    }
+    
+    pub fn tokenize(&mut self) -> Result<Vec<NaturalToken>, String> {
+        let mut tokens = Vec::new();
+        
+        while !self.is_at_end() {
+            self.skip_whitespace_except_newlines();
+            
+            if self.is_at_end() {
+                break;
+            }
+            
+            // Check for newlines
+            if self.current() == Some('\n') {
+                tokens.push(NaturalToken::Newline);
+                self.advance();
+                continue;
+            }
+            
+            // Check for indentation at start of line
+            if tokens.is_empty() || matches!(tokens.last(), Some(NaturalToken::Newline)) {
+                let indent_count = self.count_leading_spaces();
+                if indent_count >= 2 {
+                    tokens.push(NaturalToken::Indent);
+                }
+            }
+            
+            // Try to parse keywords
+            if let Some(token) = self.try_parse_keyword()? {
+                tokens.push(token);
+                continue;
+            }
+            
+            // Try to parse numbers
+            if self.current().map_or(false, |c| c.is_ascii_digit()) {
+                tokens.push(self.parse_number()?);
+                continue;
+            }
+            
+            // Try to parse quoted text
+            if self.current() == Some('"') {
+                tokens.push(self.parse_quoted_text()?);
+                continue;
+            }
+            
+            // Skip colons (they're part of If/Otherwise keywords)
+            if self.current() == Some(':') {
+                self.advance();
+                continue;
+            }
+            
+            // If we get here and there's nothing left but whitespace until newline,
+            // just skip to the newline to avoid infinite loops
+            let remaining_on_line = self.peek_until_newline();
+            if remaining_on_line.trim().is_empty() {
+                // Skip to newline or end
+                while !self.is_at_end() && self.current() != Some('\n') {
+                    self.advance();
+                }
+                continue;
+            }
+            
+            // Parse as phrase (everything else until newline/colon)
+            tokens.push(self.parse_phrase()?);
+        }
+        
+        tokens.push(NaturalToken::Eof);
+        Ok(tokens)
+    }
+    
+    fn try_parse_keyword(&mut self) -> Result<Option<NaturalToken>, String> {
+        let start_pos = self.position;
+        
+        // Try multi-word keywords first
+        if self.match_keyword_sequence(&["Say", "to", "room"]) {
+            return Ok(Some(NaturalToken::SayToRoom));
+        }
+        
+        if self.match_keyword_sequence(&["Give", "player"]) {
+            return Ok(Some(NaturalToken::Give));
+        }
+        
+        if self.match_keyword_sequence(&["Take", "from", "player"]) {
+            return Ok(Some(NaturalToken::Take));
+        }
+        
+        if self.match_keyword_sequence(&["Remove", "this", "object"]) {
+            return Ok(Some(NaturalToken::Remove));
+        }
+        
+        if self.match_keyword_sequence(&["Teleport", "player", "to"]) {
+            return Ok(Some(NaturalToken::Teleport));
+        }
+        
+        // Reset position for single-word keyword check
+        self.position = start_pos;
+        
+        // Try single-word keywords
+        let word = self.peek_word();
+        let token = match word.as_str() {
+            "Say" => Some(NaturalToken::Say),
+            "Unlock" => Some(NaturalToken::Unlock),
+            "Lock" => Some(NaturalToken::Lock),
+            "If" => Some(NaturalToken::If),
+            "Otherwise" => Some(NaturalToken::Otherwise),
+            "and" => Some(NaturalToken::And),
+            "or" => Some(NaturalToken::Or),
+            _ => None,
+        };
+        
+        if token.is_some() {
+            self.consume_word();
+            
+            // Check for colon after If/Otherwise
+            self.skip_whitespace_except_newlines();
+            if self.current() == Some(':') {
+                self.advance();
+                // Don't return Colon token separately, it's implied with If/Otherwise
+            }
+        }
+        
+        Ok(token)
+    }
+    
+    fn match_keyword_sequence(&mut self, keywords: &[&str]) -> bool {
+        let start_pos = self.position;
+        
+        for (i, keyword) in keywords.iter().enumerate() {
+            if i > 0 {
+                self.skip_whitespace_except_newlines();
+            }
+            
+            if self.peek_word().to_lowercase() != keyword.to_lowercase() {
+                self.position = start_pos;
+                return false;
+            }
+            
+            self.consume_word();
+        }
+        
+        true
+    }
+    
+    fn peek_word(&self) -> String {
+        let mut word = String::new();
+        let mut pos = self.position;
+        
+        while pos < self.input.len() {
+            let ch = self.input[pos];
+            if ch.is_alphanumeric() || ch == '_' {
+                word.push(ch);
+                pos += 1;
+            } else {
+                break;
+            }
+        }
+        
+        word
+    }
+    
+    fn consume_word(&mut self) {
+        while !self.is_at_end() {
+            let ch = self.current().unwrap();
+            if ch.is_alphanumeric() || ch == '_' {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    fn parse_number(&mut self) -> Result<NaturalToken, String> {
+        let mut num_str = String::new();
+        
+        while !self.is_at_end() {
+            if let Some(ch) = self.current() {
+                if ch.is_ascii_digit() {
+                    num_str.push(ch);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        num_str.parse::<i64>()
+            .map(NaturalToken::Number)
+            .map_err(|_| format!("Invalid number: {}", num_str))
+    }
+    
+    fn parse_quoted_text(&mut self) -> Result<NaturalToken, String> {
+        self.advance(); // Skip opening quote
+        let mut text = String::new();
+        
+        while !self.is_at_end() {
+            match self.current() {
+                Some('"') => {
+                    self.advance(); // Skip closing quote
+                    return Ok(NaturalToken::Text(text));
+                }
+                Some('\\') => {
+                    self.advance();
+                    if let Some(escaped) = self.current() {
+                        text.push(match escaped {
+                            'n' => '\n',
+                            't' => '\t',
+                            '\\' => '\\',
+                            '"' => '"',
+                            _ => escaped,
+                        });
+                        self.advance();
+                    }
+                }
+                Some(ch) => {
+                    text.push(ch);
+                    self.advance();
+                }
+                None => break,
+            }
+        }
+        
+        Err("Unterminated string".to_string())
+    }
+    
+    fn parse_phrase(&mut self) -> Result<NaturalToken, String> {
+        let mut phrase = String::new();
+        
+        while !self.is_at_end() {
+            match self.current() {
+                Some('\n') | Some(':') => break,
+                Some(ch) => {
+                    phrase.push(ch);
+                    self.advance();
+                }
+                None => break,
+            }
+        }
+        
+        let trimmed = phrase.trim().to_string();
+        
+        // If phrase is empty, this is an error - we should have consumed something
+        if trimmed.is_empty() {
+            return Err("Unexpected empty phrase - possible infinite loop detected".to_string());
+        }
+        
+        Ok(NaturalToken::Phrase(trimmed))
+    }
+    
+    fn count_leading_spaces(&mut self) -> usize {
+        let mut count = 0;
+        let start_pos = self.position;
+        
+        while !self.is_at_end() {
+            if self.current() == Some(' ') {
+                count += 1;
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        // If only spaces until newline, don't count as indent
+        if self.is_at_end() || self.current() == Some('\n') {
+            self.position = start_pos;
+            return 0;
+        }
+        
+        count
+    }
+    
+    fn skip_whitespace_except_newlines(&mut self) {
+        while !self.is_at_end() {
+            if let Some(ch) = self.current() {
+                if ch == ' ' || ch == '\t' || ch == '\r' {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    
+    fn peek_until_newline(&self) -> String {
+        let mut result = String::new();
+        let mut pos = self.position;
+        
+        while pos < self.input.len() {
+            let ch = self.input[pos];
+            if ch == '\n' {
+                break;
+            }
+            result.push(ch);
+            pos += 1;
+        }
+        
+        result
+    }
+    
+    fn current(&self) -> Option<char> {
+        if self.position < self.input.len() {
+            Some(self.input[self.position])
+        } else {
+            None
+        }
+    }
+    
+    fn advance(&mut self) {
+        if self.position < self.input.len() {
+            self.position += 1;
+        }
+    }
+    
+    fn is_at_end(&self) -> bool {
+        self.position >= self.input.len()
     }
 }
 
@@ -659,5 +1060,63 @@ mod tests {
             }
             _ => panic!("Expected BinaryOp node"),
         }
+    }
+    
+    // Natural Language Tokenizer Tests
+    
+    #[test]
+    fn test_nl_tokenize_simple_say() {
+        let mut tokenizer = NaturalLanguageTokenizer::new("Say \"Hello!\"");
+        let tokens = tokenizer.tokenize().unwrap();
+        
+        assert_eq!(tokens.len(), 3); // Say, Text, Eof
+        assert_eq!(tokens[0], NaturalToken::Say);
+        assert_eq!(tokens[1], NaturalToken::Text("Hello!".to_string()));
+        assert_eq!(tokens[2], NaturalToken::Eof);
+    }
+    
+    #[test]
+    fn test_nl_tokenize_give_health() {
+        let mut tokenizer = NaturalLanguageTokenizer::new("Give player 50 health");
+        let tokens = tokenizer.tokenize().unwrap();
+        
+        assert_eq!(tokens.len(), 4); // Give, Number, Phrase, Eof
+        assert_eq!(tokens[0], NaturalToken::Give);
+        assert_eq!(tokens[1], NaturalToken::Number(50));
+        assert_eq!(tokens[2], NaturalToken::Phrase("health".to_string()));
+        assert_eq!(tokens[3], NaturalToken::Eof);
+    }
+    
+    #[test]
+    fn test_nl_tokenize_if_otherwise() {
+        let script = "If player has key:\n  Unlock north\nOtherwise:\n  Say \"Locked\"";
+        let mut tokenizer = NaturalLanguageTokenizer::new(script);
+        let tokens = tokenizer.tokenize().unwrap();
+        
+        // Should have: If, Phrase, Newline, Indent, Unlock, Phrase, Newline, Otherwise, Newline, Indent, Say, Text, Eof
+        assert!(tokens.contains(&NaturalToken::If));
+        assert!(tokens.contains(&NaturalToken::Otherwise));
+        assert!(tokens.contains(&NaturalToken::Unlock));
+        assert!(tokens.contains(&NaturalToken::Say));
+    }
+    
+    #[test]
+    fn test_nl_tokenize_multi_word_keywords() {
+        let mut tokenizer = NaturalLanguageTokenizer::new("Say to room \"Everyone hears this\"");
+        let tokens = tokenizer.tokenize().unwrap();
+        
+        assert_eq!(tokens.len(), 3); // SayToRoom, Text, Eof
+        assert_eq!(tokens[0], NaturalToken::SayToRoom);
+        assert_eq!(tokens[1], NaturalToken::Text("Everyone hears this".to_string()));
+    }
+    
+    #[test]
+    fn test_nl_tokenize_remove_this_object() {
+        let mut tokenizer = NaturalLanguageTokenizer::new("Remove this object");
+        let tokens = tokenizer.tokenize().unwrap();
+        
+        assert_eq!(tokens.len(), 2); // Remove, Eof
+        assert_eq!(tokens[0], NaturalToken::Remove);
+        assert_eq!(tokens[1], NaturalToken::Eof);
     }
 }
