@@ -45,14 +45,43 @@ cargo build --release
 # The binary will be at: target/release/meshbbs
 ```
 
-### 3. Configuration
+### 3. Install MeshBBS
+
+**Option A: Automated Installation (Recommended)**
 
 ```bash
-# Copy example configuration
-cp config.example.toml config.toml
+# Install to default location (/opt/meshbbs)
+sudo ./install.sh
 
-# Edit configuration for your setup
-nano config.toml
+# Or specify custom location
+sudo ./install.sh /usr/local/meshbbs
+```
+
+The install script will:
+- Create service user and directories
+- Install binary and configuration
+- Set up systemd service
+- Configure permissions
+
+**Option B: Manual Installation**
+
+```bash
+# Create installation directory
+sudo mkdir -p /opt/meshbbs/data
+sudo cp target/release/meshbbs /opt/meshbbs/
+sudo cp config.example.toml /opt/meshbbs/config.toml
+
+# Create service user
+sudo useradd -r -s /bin/false -d /opt/meshbbs bbs
+sudo usermod -a -G dialout bbs
+sudo chown -R bbs:bbs /opt/meshbbs
+```
+
+### 4. Configuration
+
+```bash
+# Edit configuration
+sudo nano /opt/meshbbs/config.toml
 ```
 
 Key settings for Raspberry Pi:
@@ -60,13 +89,18 @@ Key settings for Raspberry Pi:
 - Adjust `data_dir` if you want to store data on external storage
 - Set `sysop_password` for admin access
 
-### 4. Run MeshBBS
+### 5. Start MeshBBS
 
 ```bash
-# Test run
-./target/release/meshbbs
+# Enable and start service (if using install.sh)
+sudo systemctl enable meshbbs
+sudo systemctl start meshbbs
 
-# Run in background with systemd (see SYSTEMD_SETUP.md)
+# Check status
+sudo systemctl status meshbbs
+
+# View logs
+sudo journalctl -u meshbbs -f
 ```
 
 ---
