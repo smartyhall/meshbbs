@@ -1,0 +1,10 @@
+{
+  "username": "perfuser_14",
+  "access_level": 1,
+  "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$sArnSXFXf79ZEhd3X15JEw$6y2J2omOwALGtRxZGude7sw46C1z6xg5SlonxQoSc4Q",
+  "first_login": "2025-10-12T18:59:22.864046Z",
+  "last_login": "2025-10-12T18:59:22.864046Z",
+  "total_messages": 0,
+  "welcome_shown_on_registration": false,
+  "welcome_shown_on_first_login": false
+}
