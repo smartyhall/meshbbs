@@ -264,7 +264,7 @@ impl TinyMushStore {
         };
         
         // Use migration system to load and auto-migrate if needed
-        use crate::tmush::migration::{load_and_migrate, Migratable};
+        use crate::tmush::migration::load_and_migrate;
         let (record, was_migrated): (PlayerRecord, bool) = load_and_migrate(&bytes, username)
             .map_err(|e| TinyMushError::Bincode(bincode::Error::from(
                 bincode::ErrorKind::Custom(format!("Failed to load player: {}", e))
@@ -649,7 +649,7 @@ impl TinyMushStore {
             .ok_or_else(|| TinyMushError::NotFound(format!("NPC not found: {}", npc_id)))?;
         
         // Use migration system to load and auto-migrate if needed
-        use crate::tmush::migration::{load_and_migrate, Migratable};
+        use crate::tmush::migration::load_and_migrate;
         let (npc, was_migrated): (NpcRecord, bool) = load_and_migrate(&data, npc_id)
             .map_err(|e| TinyMushError::Bincode(bincode::Error::from(
                 bincode::ErrorKind::Custom(format!("Failed to load NPC: {}", e))
@@ -691,7 +691,7 @@ impl TinyMushStore {
                 .unwrap_or("unknown");
             
             // Use migration system to load and auto-migrate if needed
-            use crate::tmush::migration::{load_and_migrate, Migratable};
+            use crate::tmush::migration::load_and_migrate;
             let (npc, was_migrated): (NpcRecord, bool) = load_and_migrate(&value, npc_id)
                 .map_err(|e| TinyMushError::Bincode(bincode::Error::from(
                     bincode::ErrorKind::Custom(format!("Failed to load NPC {}: {}", npc_id, e))

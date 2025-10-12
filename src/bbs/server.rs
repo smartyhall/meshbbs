@@ -1719,6 +1719,7 @@ impl BbsServer {
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn process_help_text(
         &mut self,
         session: &mut crate::bbs::session::Session,
@@ -3789,7 +3790,7 @@ impl BbsServer {
                             // Handle TinyMUSH entry like production code does
                             session.state = super::session::SessionState::TinyMush;
                             session.current_game_slug = Some(door.slug.to_string());
-                            let username = session.display_name();
+                            let _username = session.display_name();
                             
                             // Initialize TinyMUSH and send welcome using shared store from game registry
                             if let Some(store) = self.game_registry.get_tinymush_store() {
@@ -3855,7 +3856,7 @@ impl BbsServer {
         let sessions = self.sessions.clone();
         let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
             // Check if user is online
-            if let Some(session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
+            if let Some(_session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
                 // User is online - notification would be sent here
                 // For now, just log it since we don't have direct access to send_message
                 info!("Housing notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
@@ -3904,7 +3905,7 @@ impl BbsServer {
         let sessions = self.sessions.clone();
         let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
             // Check if user is online
-            if let Some(session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
+            if let Some(_session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
                 // User is online - notification would be sent here
                 // For now, just log it since we don't have direct access to send_message
                 info!("Housing payment notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));

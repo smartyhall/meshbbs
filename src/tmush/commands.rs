@@ -238,6 +238,7 @@ pub struct TinyMushProcessor {
     room_manager: Option<RoomManager>,
 }
 
+#[allow(unused_variables)]  // Many config parameters reserved for future use
 impl TinyMushProcessor {
     /// Create a new processor with a shared store instance.
     /// 

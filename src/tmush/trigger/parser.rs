@@ -255,6 +255,7 @@ impl Tokenizer {
         self.input.get(self.position).copied()
     }
     
+    #[allow(dead_code)]
     fn peek(&self, offset: usize) -> Option<char> {
         self.input.get(self.position + offset).copied()
     }
@@ -1232,7 +1233,7 @@ impl Parser {
     }
     
     fn advance(&mut self) -> &Token {
-        let token = self.current();
+        let _token = self.current();
         self.position += 1;
         self.tokens.get(self.position - 1).unwrap_or(&Token::Eof)
     }

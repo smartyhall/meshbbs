@@ -251,20 +251,10 @@ pub async fn check_and_cleanup_housing(
     Ok(())
 }
 
-/// Process recurring housing payments for all active housing instances
+/// Process recurring payments for all rented housing instances.
 ///
-/// This function checks all housing instances to see if monthly payments are due.
-/// It attempts to deduct from the player's wallet first, then bank if needed.
-/// If payment fails, the housing is marked inactive and items moved to reclaim box.
-///
-/// ## Parameters
-/// * `tmush_store` - TinyMUSH storage handle
-/// * `storage` - Main BBS storage (for player data)
-/// * `world_config` - World configuration for notification messages
-/// * `notification_fn` - Optional callback for sending payment notifications
-///
-/// ## Returns
-/// * `Ok((payments_processed, payments_failed))` - Count of successful and failed payments
+/// Returns (successful_payments, failed_payments)
+#[allow(unused_variables)]  // storage parameter reserved for future audit logging
 pub async fn process_recurring_payments(
     tmush_store: &TinyMushStore,
     storage: &Storage,

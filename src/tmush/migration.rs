@@ -22,9 +22,8 @@
 
 use crate::tmush::types::*;
 use anyhow::{anyhow, Result};
-use log::{info, warn};
+use log::info;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Current schema versions for each data structure
 pub const CURRENT_PLAYER_SCHEMA_VERSION: u8 = 2;
