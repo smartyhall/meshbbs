@@ -1560,7 +1560,9 @@ impl TinyMushProcessor {
 
     /// Handle TAKE/GET command - pick up items from room
     async fn handle_take(&mut self, session: &Session, item_name: String, _config: &Config) -> Result<String> {
-        let _player_node_id = &session.node_id;
+        use crate::tmush::trigger::integration::execute_on_take;
+        
+        let player_node_id = &session.node_id;
         
         // Parse item name - support "get 5 coins" or "get coins"
         let (quantity, item_name) = if let Some(first_space) = item_name.find(' ') {
@@ -1574,29 +1576,99 @@ impl TinyMushProcessor {
             (1, item_name.to_uppercase())
         };
 
-        // Find object by name in the current room (future: scan room contents)
-        // For now, we'll return a helpful message
-        // TODO: Implement room.contents and object lookup by name
-        // TODO: Phase 4 - Check item.locked field and prevent taking locked items
-        //       owned by other players. Message: "That item is locked by its owner."
-        // TODO: Phase 5 - Record ownership transfer when taking items:
-        //       TinyMushProcessor::record_ownership_transfer(
-        //           &mut item,
-        //           item.owner (as Option<String>),
-        //           player.username,
-        //           OwnershipReason::PickedUp
-        //       );
+        // Get player
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
         
-        Ok(format!(
-            "You try to pick up '{}' (qty: {}) but room object scanning isn't implemented yet.\n\
-             This command will search the current room's contents and transfer items to your inventory.",
-            item_name, quantity
-        ))
+        let room_id = player.current_room.clone();
+        
+        // Get current room to access items list
+        let mut room = match self.store().get_room(&room_id) {
+            Ok(r) => r,
+            Err(_) => return Ok("Error: Cannot access current room.".to_string()),
+        };
+        
+        // Find object in room by name
+        let object = match self.find_object_by_name(&item_name, &room.items) {
+            Some(obj) => obj,
+            None => return Ok(format!("There is no '{}' here to take.", item_name)),
+        };
+        
+        // Check if object is takeable
+        if !object.takeable {
+            return Ok(format!("You cannot take the {}.", object.name));
+        }
+        
+        // Check if locked by another player
+        if object.locked {
+            if let crate::tmush::types::ObjectOwner::Player { username: ref owner } = object.owner {
+                if owner != &player.username {
+                    return Ok(format!("The {} is locked by its owner.", object.name));
+                }
+            }
+        }
+        
+        // Check inventory capacity
+        if player.inventory.len() >= 100 {
+            return Ok("Your inventory is full! (Max 100 items)".to_string());
+        }
+        
+        // Fire OnTake trigger before taking
+        let trigger_messages = execute_on_take(&object, &player.username, &room_id, self.store());
+        
+        // Remove from room
+        room.items.retain(|id| id != &object.id);
+        if let Err(e) = self.store().put_room(room) {
+            return Ok(format!("Error updating room: {}", e));
+        }
+        
+        // Add to player inventory
+        player.inventory.push(object.id.clone());
+        
+        // Record ownership transfer
+        let mut updated_object = object.clone();
+        Self::record_ownership_transfer(
+            &mut updated_object,
+            Some(format!("{:?}", object.owner)),
+            player.username.clone(),
+            crate::tmush::types::OwnershipReason::PickedUp,
+        );
+        updated_object.owner = crate::tmush::types::ObjectOwner::Player { 
+            username: player.username.clone() 
+        };
+        
+        // Save updated object
+        if let Err(e) = self.store().put_object(updated_object) {
+            return Ok(format!("Error saving object: {}", e));
+        }
+        
+        // Save updated player
+        if let Err(e) = self.store().put_player(player) {
+            return Ok(format!("Error saving player: {}", e));
+        }
+        
+        // Build response with trigger messages
+        let mut response = format!("You take the {}.", object.name);
+        if quantity > 1 {
+            response = format!("You take {} {}.", quantity, object.name);
+        }
+        
+        // Append trigger messages
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+        
+        Ok(response)
     }
 
     /// Handle DROP command - drop items into current room
     async fn handle_drop(&mut self, session: &Session, item_name: String, _config: &Config) -> Result<String> {
-        let _player_node_id = &session.node_id;
+        use crate::tmush::trigger::integration::execute_on_drop;
+        
+        let player_node_id = &session.node_id;
         
         // Parse item name - support "drop 5 coins" or "drop coins"
         let (quantity, item_name) = if let Some(first_space) = item_name.find(' ') {
@@ -1610,29 +1682,71 @@ impl TinyMushProcessor {
             (1, item_name.to_uppercase())
         };
 
-        // Get player's inventory
-        let _player = match self.get_or_create_player(session).await {
+        // Get player
+        let mut player = match self.get_or_create_player(session).await {
             Ok(p) => p,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
-
-        // Find matching item in inventory (by object name lookup)
-        // For now, return helpful message
-        // TODO: Implement object name -> ID lookup and room transfer
-        // TODO: Phase 5 - Record ownership transfer when dropping items:
-        //       TinyMushProcessor::record_ownership_transfer(
-        //           &mut item,
-        //           Some(player.username),
-        //           "WORLD".to_string(),
-        //           OwnershipReason::Dropped
-        //       );
-        //       item.owner = ObjectOwner::World;
         
-        Ok(format!(
-            "You try to drop '{}' (qty: {}) but inventory -> room transfer isn't implemented yet.\n\
-             This command will search your inventory by item name and move items to the current room.",
-            item_name, quantity
-        ))
+        let room_id = player.current_room.clone();
+
+        // Find object in player's inventory by name
+        let object = match self.find_object_by_name(&item_name, &player.inventory) {
+            Some(obj) => obj,
+            None => return Ok(format!("You don't have a '{}' to drop.", item_name)),
+        };
+        
+        // Get current room
+        let mut room = match self.store().get_room(&room_id) {
+            Ok(r) => r,
+            Err(_) => return Ok("Error: Cannot access current room.".to_string()),
+        };
+        
+        // Fire OnDrop trigger before dropping
+        let trigger_messages = execute_on_drop(&object, &player.username, &room_id, self.store());
+        
+        // Remove from player inventory
+        player.inventory.retain(|id| id != &object.id);
+        
+        // Add to room
+        room.items.push(object.id.clone());
+        if let Err(e) = self.store().put_room(room) {
+            return Ok(format!("Error updating room: {}", e));
+        }
+        
+        // Record ownership transfer
+        let mut updated_object = object.clone();
+        Self::record_ownership_transfer(
+            &mut updated_object,
+            Some(player.username.clone()),
+            "WORLD".to_string(),
+            crate::tmush::types::OwnershipReason::Dropped,
+        );
+        updated_object.owner = crate::tmush::types::ObjectOwner::World;
+        
+        // Save updated object
+        if let Err(e) = self.store().put_object(updated_object) {
+            return Ok(format!("Error saving object: {}", e));
+        }
+        
+        // Save updated player
+        if let Err(e) = self.store().put_player(player) {
+            return Ok(format!("Error saving player: {}", e));
+        }
+        
+        // Build response with trigger messages
+        let mut response = format!("You drop the {}.", object.name);
+        if quantity > 1 {
+            response = format!("You drop {} {}.", quantity, object.name);
+        }
+        
+        // Append trigger messages
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+        
+        Ok(response)
     }
 
     /// Handle EXAMINE command - show detailed item information

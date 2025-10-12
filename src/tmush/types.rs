@@ -130,6 +130,8 @@ pub enum OwnershipReason {
     PickedUp,
     /// Item taken from unlocked container
     Taken,
+    /// Item dropped by player into room
+    Dropped,
     /// Item reclaimed from reclaim box
     Reclaimed,
     /// Item transferred by admin
