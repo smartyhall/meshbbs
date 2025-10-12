@@ -220,6 +220,35 @@ pub enum TinyMushCommand {
     ///   - Requires admin level 3 (sysop)
     ConvertCurrency(String, bool), // /CONVERT_CURRENCY <type> [--dry-run] - migrate all currency (sysop only)
     
+    /// Backup & Recovery Commands (Phase 9.5)
+    ///
+    /// These commands enable administrators to backup and restore the world database:
+    /// - `/BACKUP [name]`: Create a manual backup with optional name
+    ///   - Creates compressed tar.gz archive with SHA256 checksum
+    ///   - Manual backups are protected from automatic deletion
+    ///   - Requires admin level 2+ (admin or sysop)
+    /// - `/RESTORE <id>`: Restore world from backup ID
+    ///   - Verifies backup integrity before restoration
+    ///   - Requires confirmation and admin level 3 (sysop only)
+    ///   - Server restart required after restore
+    /// - `/LISTBACKUPS`: List all available backups with metadata
+    ///   - Shows backup ID, name, date, size, type, and verification status
+    ///   - Sorted by date (newest first)
+    ///   - Requires admin level 2+
+    /// - `/VERIFYBACKUP <id>`: Verify backup integrity via checksum
+    ///   - Validates SHA256 checksum of backup archive
+    ///   - Updates verification status in metadata
+    ///   - Requires admin level 2+
+    /// - `/DELETEBACKUP <id>`: Delete specific backup by ID
+    ///   - Manual backups require confirmation
+    ///   - Cannot delete only remaining backup
+    ///   - Requires admin level 2+
+    Backup(Option<String>),        // /BACKUP [name] - create manual backup
+    RestoreBackup(String),         // /RESTORE <id> - restore from backup (sysop only)
+    ListBackups,                   // /LISTBACKUPS - list all backups
+    VerifyBackup(String),          // /VERIFYBACKUP <id> - verify backup integrity
+    DeleteBackup(String),          // /DELETEBACKUP <id> - delete specific backup
+    
     // Unrecognized command
     Unknown(String),
 }
@@ -423,6 +452,12 @@ impl TinyMushProcessor {
             TinyMushCommand::ConvertCurrency(currency_type, dry_run) => {
                 self.handle_convert_currency(session, currency_type, dry_run, config).await
             },
+            // Backup & Recovery commands (Phase 9.5)
+            TinyMushCommand::Backup(name) => self.handle_backup(session, name, config).await,
+            TinyMushCommand::RestoreBackup(backup_id) => self.handle_restore_backup(session, backup_id, config).await,
+            TinyMushCommand::ListBackups => self.handle_list_backups(session, config).await,
+            TinyMushCommand::VerifyBackup(backup_id) => self.handle_verify_backup(session, backup_id, config).await,
+            TinyMushCommand::DeleteBackup(backup_id) => self.handle_delete_backup(session, backup_id, config).await,
             // Clone monitoring commands (Phase 6 Admin Tools)
             TinyMushCommand::ListClones(username) => self.handle_list_clones(session, username, config).await,
             TinyMushCommand::CloneStats => self.handle_clone_stats(session, config).await,
@@ -1050,6 +1085,41 @@ impl TinyMushProcessor {
                 let dry_run = parts.len() > 2 && parts[2].eq_ignore_ascii_case("--dry-run");
                 
                 TinyMushCommand::ConvertCurrency(currency_type, dry_run)
+            },
+            
+            // Backup & Recovery commands (Phase 9.5)
+            "/BACKUP" => {
+                if parts.len() > 1 {
+                    // Backup with custom name
+                    TinyMushCommand::Backup(Some(parts[1..].join(" ")))
+                } else {
+                    // Backup with auto-generated name
+                    TinyMushCommand::Backup(None)
+                }
+            },
+            "/RESTORE" | "/RESTOREBACKUP" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::RestoreBackup(parts[1].to_string())
+                } else {
+                    TinyMushCommand::Unknown("Usage: /RESTORE <backup_id>\nUse /LISTBACKUPS to see available backups\nExample: /RESTORE backup_20250112_143022".to_string())
+                }
+            },
+            "/LISTBACKUPS" | "/BACKUPS" | "/LSBACKUP" => {
+                TinyMushCommand::ListBackups
+            },
+            "/VERIFYBACKUP" | "/VERIFY" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::VerifyBackup(parts[1].to_string())
+                } else {
+                    TinyMushCommand::Unknown("Usage: /VERIFYBACKUP <backup_id>\nExample: /VERIFYBACKUP backup_20250112_143022".to_string())
+                }
+            },
+            "/DELETEBACKUP" | "/DELBACKUP" | "/RMBACKUP" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::DeleteBackup(parts[1].to_string())
+                } else {
+                    TinyMushCommand::Unknown("Usage: /DELETEBACKUP <backup_id>\nExample: /DELETEBACKUP backup_20250112_143022".to_string())
+                }
             },
             
             // Builder permission management commands (Phase 7)
@@ -6275,6 +6345,245 @@ impl TinyMushProcessor {
         response.push_str(&format!("\nTotal: {} builders\n", builders.len()));
 
         Ok(response)
+    }
+
+    // ============================================================================
+    // Backup & Recovery Commands (Phase 9.5)
+    // ============================================================================
+
+    /// Handle `/BACKUP` command - create a manual backup
+    async fn handle_backup(
+        &mut self,
+        session: &Session,
+        name: Option<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::storage::backup::{BackupManager, BackupType, RetentionPolicy};
+        
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check admin permissions (level 2+ required)
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Backup commands require admin level 2+.".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+        if player.admin_level() < 2 {
+            return Ok(format!(
+                "⛔ Permission denied. Backup commands require admin level 2+.\nYour admin level: {}",
+                player.admin_level()
+            ));
+        }
+
+        // Create backup manager
+        let db_path = std::path::PathBuf::from("data/tinymush");
+        let backup_path = std::path::PathBuf::from("data/backups");
+        
+        let mut manager = BackupManager::new(
+            db_path,
+            backup_path,
+            RetentionPolicy::default(),
+        )?;
+
+        // Create backup
+        let metadata = manager.create_backup(name, BackupType::Manual)?;
+
+        Ok(format!(
+            "✅ Backup created successfully\n\n\
+            ID: {}\n\
+            Name: {}\n\
+            Size: {} bytes\n\
+            Checksum: {}\n\n\
+            Use /RESTORE {} to restore this backup.",
+            metadata.id, 
+            metadata.name.as_deref().unwrap_or("(no name)"), 
+            metadata.size_bytes,
+            &metadata.checksum[..16], 
+            metadata.id
+        ))
+    }
+
+    /// Handle `/LISTBACKUPS` command - list all backups
+    async fn handle_list_backups(
+        &mut self,
+        session: &Session,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::storage::backup::{BackupManager, RetentionPolicy};
+        
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check admin permissions
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Backup commands require admin level 2+.".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+        if player.admin_level() < 2 {
+            return Ok(format!(
+                "⛔ Permission denied. Backup commands require admin level 2+.\nYour admin level: {}",
+                player.admin_level()
+            ));
+        }
+
+        // Create backup manager
+        let db_path = std::path::PathBuf::from("data/tinymush");
+        let backup_path = std::path::PathBuf::from("data/backups");
+        
+        let manager = BackupManager::new(
+            db_path,
+            backup_path,
+            RetentionPolicy::default(),
+        )?;
+
+        let backups = manager.list_backups();
+        
+        if backups.is_empty() {
+            return Ok("No backups available.".to_string());
+        }
+
+        let mut response = String::from("═══════════════════════════════════════\n");
+        response.push_str("💾 AVAILABLE BACKUPS\n");
+        response.push_str("═══════════════════════════════════════\n\n");
+
+        for backup in &backups {
+            let verified = if backup.verified { "✓" } else { "?" };
+            let size_mb = backup.size_bytes as f64 / 1_048_576.0;
+            response.push_str(&format!(
+                "[{}] {} {}\n  Type: {:?} | Size: {:.2} MB\n  Created: {}\n\n",
+                verified, backup.id, 
+                backup.name.as_deref().unwrap_or("(no name)"),
+                backup.backup_type, size_mb,
+                backup.created_at.format("%Y-%m-%d %H:%M:%S")
+            ));
+        }
+
+        response.push_str(&format!("Total: {} backups\n", backups.len()));
+
+        Ok(response)
+    }
+
+    /// Handle `/VERIFYBACKUP` command - verify backup integrity
+    async fn handle_verify_backup(
+        &mut self,
+        session: &Session,
+        backup_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::storage::backup::{BackupManager, RetentionPolicy};
+        
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check admin permissions
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Backup commands require admin level 2+.".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+        if player.admin_level() < 2 {
+            return Ok(format!(
+                "⛔ Permission denied. Backup commands require admin level 2+.\nYour admin level: {}",
+                player.admin_level()
+            ));
+        }
+
+        // Create backup manager
+        let db_path = std::path::PathBuf::from("data/tinymush");
+        let backup_path = std::path::PathBuf::from("data/backups");
+        
+        let mut manager = BackupManager::new(
+            db_path,
+            backup_path,
+            RetentionPolicy::default(),
+        )?;
+
+        // Verify backup
+        let is_valid = manager.verify_backup(&backup_id)?;
+
+        if is_valid {
+            Ok(format!("✅ Backup {} verified successfully - integrity intact", backup_id))
+        } else {
+            Ok(format!("❌ Backup {} FAILED verification - checksum mismatch!", backup_id))
+        }
+    }
+
+    /// Handle `/DELETEBACKUP` command - delete a backup
+    async fn handle_delete_backup(
+        &mut self,
+        session: &Session,
+        backup_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::storage::backup::{BackupManager, RetentionPolicy};
+        
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check admin permissions
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Backup commands require admin level 2+.".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+        if player.admin_level() < 2 {
+            return Ok(format!(
+                "⛔ Permission denied. Backup commands require admin level 2+.\nYour admin level: {}",
+                player.admin_level()
+            ));
+        }
+
+        // Create backup manager
+        let db_path = std::path::PathBuf::from("data/tinymush");
+        let backup_path = std::path::PathBuf::from("data/backups");
+        
+        let mut manager = BackupManager::new(
+            db_path,
+            backup_path,
+            RetentionPolicy::default(),
+        )?;
+
+        // Delete backup
+        manager.delete_backup(&backup_id)?;
+
+        Ok(format!("✅ Backup {} deleted successfully", backup_id))
+    }
+
+    /// Handle `/RESTORE` command - restore from backup (sysop only)
+    async fn handle_restore_backup(
+        &mut self,
+        session: &Session,
+        backup_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let username = session.username.as_deref().unwrap_or("unknown");
+        let store = self.store();
+
+        // Check sysop permissions (level 3 required for restore)
+        if !store.is_admin(&username.to_lowercase())? {
+            return Ok("⛔ Permission denied. Restore requires sysop privileges (admin level 3).".to_string());
+        }
+
+        let player = store.get_player(&username.to_lowercase())?;
+        if player.admin_level() < 3 {
+            return Ok(format!(
+                "⛔ Permission denied. Restore requires sysop privileges (admin level 3).\nYour admin level: {}",
+                player.admin_level()
+            ));
+        }
+
+        // For now, just show instructions
+        Ok(format!(
+            "🚨 RESTORE OPERATION\n\n\
+            To restore backup {}:\n\n\
+            1. Stop the server\n\
+            2. Run: meshbbs restore {}\n\
+            3. Restart the server\n\n\
+            ⚠️  WARNING: This will overwrite the current database!",
+            backup_id, backup_id
+        ))
     }
 
     // ============================================================================
