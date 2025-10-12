@@ -846,7 +846,7 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
   - [ ] Graceful failures (log error, don't crash)
   - [ ] User-friendly error messages
 
-**Trigger Engine Status**: 🚧 **57% COMPLETE** (Phases 1-8 done: 226 tests passing)
+**Trigger Engine Status**: 🚧 **71% COMPLETE** (Phases 1-9 done: 241 tests passing)
 - ✅ Phase 1: Foundation (TriggerContext, security, execute_trigger stub)
 - ✅ Phase 2: DSL Parser (tokenizer, AST, 8 tests)
 - ✅ Phase 3: Evaluator (execution engine, 5 tests → 10 tests)
@@ -854,15 +854,22 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 - ✅ Phase 5: Builder commands with name resolution (23 tests)
 - ✅ Phase 6: Object cloning with genealogy & security (12 integration tests, 3 commits)
 - ✅ Phase 7: Actions & conditions connected to game state (5 new tests, commit 7bbe19b)
-- ✅ Phase 8: Integration with game commands (2 commits)
+- ✅ Phase 8: Integration with game commands (3 commits)
   - ✅ Integration module created (integration.rs, 6 helper functions, 2 tests)
   - ✅ LOOK command enhanced to examine objects with OnLook triggers
   - ✅ USE command implemented with OnUse trigger execution
   - ✅ POKE command created with OnPoke trigger execution
   - ✅ Room movement hooks OnEnter triggers for all room objects
   - ⏳ TAKE/DROP commands (waiting for room object scanning implementation)
-- 🚧 Phase 9: Example content & testing (NEXT)
-- 🚧 Phase 10: Rate limiting & admin tools (LATER)
+- ✅ Phase 9: Example content & testing (3 commits)
+  - ✅ Created 6 example trigger objects (healing potion, ancient key, mystery box, quest clue, teleport stone, singing mushroom)
+  - ✅ Implemented auto-seeding system (objects placed in mesh_museum)
+  - ✅ Integration tests: 7 tests for end-to-end trigger behaviors
+  - ✅ Security tests: 8 tests for error handling, performance, edge cases
+  - ✅ All 15 new tests passing (demonstrates all trigger types work correctly)
+  - **Performance**: 50 objects with triggers process in < 1 second
+- 🚧 Phase 10: Rate limiting & admin tools (NEXT)
+
 
 
 ---
