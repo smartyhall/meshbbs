@@ -17,6 +17,7 @@ use crate::tmush::types::{BulletinBoard, BulletinMessage, Direction as TmushDire
 use crate::tmush::state::canonical_world_seed;
 use crate::tmush::room_manager::RoomManager;
 use crate::tmush::inventory::format_inventory_compact;
+use crate::tmush::trigger::{execute_on_look, execute_room_on_enter};
 
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1158,10 +1159,68 @@ impl TinyMushProcessor {
             return self.describe_current_room(&player).await;
         }
 
-        // Look at specific target (not implemented in Phase 3)
+        // Look at specific target (object in room or inventory)
+        let target_name = target.unwrap().to_uppercase();
+        let room_id = player.current_room.clone();
+        
+        // First, try to find object in player's inventory
+        for object_id in &player.inventory {
+            if let Ok(object) = self.store().get_object(object_id) {
+                if object.name.to_uppercase() == target_name {
+                    // Found object in inventory - display description
+                    let mut response = format!("📦 {}\n{}", object.name, object.description);
+                    
+                    // Execute OnLook trigger if present
+                    let trigger_messages = execute_on_look(
+                        &object,
+                        &player.username,
+                        &room_id,
+                        self.store()
+                    );
+                    
+                    // Append trigger messages
+                    for msg in trigger_messages {
+                        response.push_str("\n");
+                        response.push_str(&msg);
+                    }
+                    
+                    return Ok(response);
+                }
+            }
+        }
+        
+        // Next, try to find object in current room
+        if let Ok(room) = self.store().get_room(&room_id) {
+            for object_id in &room.items {
+                if let Ok(object) = self.store().get_object(object_id) {
+                    if object.name.to_uppercase() == target_name {
+                        // Found object in room - display description
+                        let mut response = format!("👁️  {}\n{}", object.name, object.description);
+                        
+                        // Execute OnLook trigger if present
+                        let trigger_messages = execute_on_look(
+                            &object,
+                            &player.username,
+                            &room_id,
+                            self.store()
+                        );
+                        
+                        // Append trigger messages
+                        for msg in trigger_messages {
+                            response.push_str("\n");
+                            response.push_str(&msg);
+                        }
+                        
+                        return Ok(response);
+                    }
+                }
+            }
+        }
+        
+        // Object not found
         Ok(format!(
-            "You don't see '{}' here.\nType LOOK to see the room.",
-            target.unwrap()
+            "You don't see '{}' here.\nType LOOK to see the room, or INVENTORY to check what you're carrying.",
+            target_name
         ))
     }
 
@@ -1234,6 +1293,13 @@ impl TinyMushProcessor {
             return Ok(format!("Movement failed to save: {}", e));
         }
 
+        // Execute OnEnter triggers for all objects in the new room
+        let enter_messages = execute_room_on_enter(
+            &player.username,
+            destination_id,
+            self.store()
+        );
+
         // Check for tutorial progression after movement
         use crate::tmush::tutorial::{
             advance_tutorial_step, can_advance_from_location, get_tutorial_hint
@@ -1282,6 +1348,15 @@ impl TinyMushProcessor {
         match self.describe_current_room(&player).await {
             Ok(desc) => response.push_str(&desc),
             Err(_) => response.push_str("The room description is unavailable."),
+        }
+        
+        // Add OnEnter trigger messages if any
+        if !enter_messages.is_empty() {
+            response.push_str("\n");
+            for msg in enter_messages {
+                response.push_str(&msg);
+                response.push_str("\n");
+            }
         }
         
         // Add tutorial hint if in progress
