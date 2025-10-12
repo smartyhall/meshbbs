@@ -473,7 +473,7 @@ impl Tokenizer {
 /// Natural Language Tokenizer for beginner-friendly scripts
 /// 
 /// Tokenizes natural language syntax like:
-/// ```
+/// ```text
 /// Say "Hello!"
 /// If player has key:
 ///   Unlock north
@@ -811,7 +811,7 @@ impl NaturalLanguageTokenizer {
 /// Natural Language Compiler - converts natural language tokens to AST
 /// 
 /// Transforms beginner-friendly syntax like:
-/// ```
+/// ```text
 /// Say "Hello!"
 /// If player has key:
 ///   Unlock north
@@ -1411,7 +1411,7 @@ impl Parser {
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// // Natural language (beginner-friendly)
 /// let ast = parse_script("Say \"Hello!\"\nGive player 50 health").unwrap();
 ///
