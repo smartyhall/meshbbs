@@ -19,6 +19,7 @@
 
 pub mod parser;
 pub mod evaluator;
+pub mod integration;
 
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
@@ -27,6 +28,10 @@ use std::time::{Duration, Instant};
 
 pub use parser::{parse_script, AstNode, BinaryOperator};
 pub use evaluator::{Evaluator, Value};
+pub use integration::{
+    execute_on_look, execute_on_take, execute_on_drop, execute_on_use, 
+    execute_on_poke, execute_room_on_enter
+};
 
 /// Maximum script length in characters
 pub const MAX_SCRIPT_LENGTH: usize = 512;
