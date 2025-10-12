@@ -24,6 +24,10 @@ fn test_item(id: &str, name: &str, weight: u8, takeable: bool) -> ObjectRecord {
         locked: false,
         ownership_history: Vec::new(),
         schema_version: 1,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: String::new(),
     }
 }
 

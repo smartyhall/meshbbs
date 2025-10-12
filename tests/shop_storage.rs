@@ -171,6 +171,10 @@ fn test_shop_update_and_persistence() {
         locked: false,
         ownership_history: Vec::new(),
         schema_version: 1,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: String::new(),
     };
     
     let (price, qty) = retrieved.process_buy("sword", 2, &object).unwrap();
