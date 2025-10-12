@@ -758,6 +758,411 @@ impl NaturalLanguageTokenizer {
     }
 }
 
+/// Natural Language Compiler - converts natural language tokens to AST
+/// 
+/// Transforms beginner-friendly syntax like:
+/// ```
+/// Say "Hello!"
+/// If player has key:
+///   Unlock north
+/// Otherwise:
+///   Say "Locked"
+/// ```
+/// 
+/// Into AST nodes that the evaluator can execute.
+pub struct NaturalLanguageCompiler {
+    tokens: Vec<NaturalToken>,
+    position: usize,
+}
+
+impl NaturalLanguageCompiler {
+    pub fn new(tokens: Vec<NaturalToken>) -> Self {
+        Self {
+            tokens,
+            position: 0,
+        }
+    }
+    
+    pub fn compile(&mut self) -> Result<AstNode, String> {
+        let mut statements = Vec::new();
+        
+        while !self.is_at_end() {
+            // Skip newlines at statement level
+            if matches!(self.current(), NaturalToken::Newline) {
+                self.advance();
+                continue;
+            }
+            
+            // Skip indentation at top level
+            if matches!(self.current(), NaturalToken::Indent) {
+                self.advance();
+                continue;
+            }
+            
+            if self.is_at_end() {
+                break;
+            }
+            
+            let statement = self.compile_statement()?;
+            statements.push(statement);
+        }
+        
+        // If only one statement, return it directly
+        // Otherwise, wrap in Sequence
+        match statements.len() {
+            0 => Err("Empty script".to_string()),
+            1 => Ok(statements.into_iter().next().unwrap()),
+            _ => Ok(AstNode::Sequence(statements)),
+        }
+    }
+    
+    fn compile_statement(&mut self) -> Result<AstNode, String> {
+        match self.current() {
+            NaturalToken::If => self.compile_if_statement(),
+            NaturalToken::Say => self.compile_say(),
+            NaturalToken::SayToRoom => self.compile_say_to_room(),
+            NaturalToken::Give => self.compile_give(),
+            NaturalToken::Take => self.compile_take(),
+            NaturalToken::Remove => self.compile_remove(),
+            NaturalToken::Teleport => self.compile_teleport(),
+            NaturalToken::Unlock => self.compile_unlock(),
+            NaturalToken::Lock => self.compile_lock(),
+            NaturalToken::Eof => Err("Unexpected end of script".to_string()),
+            token => Err(format!("Unexpected token at statement level: {}", token)),
+        }
+    }
+    
+    fn compile_if_statement(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'If'
+        
+        // Parse condition phrase
+        let condition = self.compile_condition()?;
+        
+        // Skip newline after condition
+        self.skip_newlines();
+        
+        // Parse then branch (may be indented)
+        let then_statements = self.compile_block()?;
+        
+        // Check for Otherwise
+        let else_statements = if matches!(self.current(), NaturalToken::Otherwise) {
+            self.advance(); // consume 'Otherwise'
+            self.skip_newlines();
+            self.compile_block()?
+        } else {
+            // No else branch - create empty action
+            AstNode::Action {
+                name: "noop".to_string(),
+                args: vec![],
+            }
+        };
+        
+        Ok(AstNode::Ternary {
+            condition: Box::new(condition),
+            then_branch: Box::new(then_statements),
+            else_branch: Box::new(else_statements),
+        })
+    }
+    
+    fn compile_block(&mut self) -> Result<AstNode, String> {
+        let mut statements = Vec::new();
+        
+        // Check if block is indented
+        let is_indented = matches!(self.current(), NaturalToken::Indent);
+        if is_indented {
+            self.advance(); // consume indent
+        }
+        
+        loop {
+            // Stop at end of file
+            if self.is_at_end() {
+                break;
+            }
+            
+            // Stop at Otherwise (for if/else)
+            if matches!(self.current(), NaturalToken::Otherwise) {
+                break;
+            }
+            
+            // Stop at unindented content (end of block)
+            if is_indented && !matches!(self.current(), NaturalToken::Indent | NaturalToken::Newline) {
+                break;
+            }
+            
+            // Skip newlines
+            if matches!(self.current(), NaturalToken::Newline) {
+                self.advance();
+                continue;
+            }
+            
+            // Skip indentation markers
+            if matches!(self.current(), NaturalToken::Indent) {
+                self.advance();
+            }
+            
+            // Parse statement
+            if !self.is_at_end() && !matches!(self.current(), NaturalToken::Otherwise | NaturalToken::Newline) {
+                let stmt = self.compile_statement()?;
+                statements.push(stmt);
+            }
+            
+            // Skip trailing newline
+            if matches!(self.current(), NaturalToken::Newline) {
+                self.advance();
+            }
+        }
+        
+        match statements.len() {
+            0 => Ok(AstNode::Action { name: "noop".to_string(), args: vec![] }),
+            1 => Ok(statements.into_iter().next().unwrap()),
+            _ => Ok(AstNode::Sequence(statements)),
+        }
+    }
+    
+    fn compile_condition(&mut self) -> Result<AstNode, String> {
+        // Parse condition phrase like "player has key" or "room flag safe"
+        let phrase = match self.current() {
+            NaturalToken::Phrase(ref p) => p.clone(),
+            token => return Err(format!("Expected condition phrase, found {}", token)),
+        };
+        self.advance();
+        
+        // Parse the phrase to determine condition type
+        let words: Vec<&str> = phrase.split_whitespace().collect();
+        
+        // Check more specific patterns first!
+        if words.len() >= 4 && words[0] == "player" && words[1] == "has" && words[2] == "quest" {
+            // "player has quest <name>" → has_quest("name")
+            let quest_name = words[3..].join(" ");
+            Ok(AstNode::Action {
+                name: "has_quest".to_string(),
+                args: vec![AstNode::StringLiteral(quest_name)],
+            })
+        } else if words.len() >= 3 && words[0] == "player" && words[1] == "has" {
+            // "player has <item>" → has_item("item")
+            let item_name = words[2..].join(" ");
+            Ok(AstNode::Action {
+                name: "has_item".to_string(),
+                args: vec![AstNode::StringLiteral(item_name)],
+            })
+        } else if words.len() >= 3 && words[0] == "room" && words[1] == "flag" {
+            // "room flag <flag>" → room_flag("flag")
+            let flag_name = words[2..].join(" ");
+            Ok(AstNode::Action {
+                name: "room_flag".to_string(),
+                args: vec![AstNode::StringLiteral(flag_name)],
+            })
+        } else if words.len() >= 3 && words[0] == "object" && words[1] == "flag" {
+            // "object flag <flag>" → flag_set("flag")
+            let flag_name = words[2..].join(" ");
+            Ok(AstNode::Action {
+                name: "flag_set".to_string(),
+                args: vec![AstNode::StringLiteral(flag_name)],
+            })
+        } else if words.len() >= 5 && words[1] == "in" && words[3] == "chance" {
+            // "<num> in <total> chance" → random_chance(percentage)
+            let numerator = words[0].parse::<i64>()
+                .map_err(|_| format!("Invalid number in chance: {}", words[0]))?;
+            let denominator = words[2].parse::<i64>()
+                .map_err(|_| format!("Invalid number in chance: {}", words[2]))?;
+            
+            let percentage = if denominator > 0 {
+                (numerator * 100) / denominator
+            } else {
+                return Err("Denominator cannot be zero in chance".to_string());
+            };
+            
+            Ok(AstNode::Action {
+                name: "random_chance".to_string(),
+                args: vec![AstNode::NumberLiteral(percentage)],
+            })
+        } else {
+            Err(format!("Unknown condition format: {}", phrase))
+        }
+    }
+    
+    fn compile_say(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Say'
+        
+        let text = match self.current() {
+            NaturalToken::Text(ref t) => t.clone(),
+            NaturalToken::Phrase(ref p) => p.clone(),
+            token => return Err(format!("Expected text after Say, found {}", token)),
+        };
+        self.advance();
+        
+        Ok(AstNode::Action {
+            name: "message".to_string(),
+            args: vec![AstNode::StringLiteral(text)],
+        })
+    }
+    
+    fn compile_say_to_room(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Say to room'
+        
+        let text = match self.current() {
+            NaturalToken::Text(ref t) => t.clone(),
+            NaturalToken::Phrase(ref p) => p.clone(),
+            token => return Err(format!("Expected text after 'Say to room', found {}", token)),
+        };
+        self.advance();
+        
+        Ok(AstNode::Action {
+            name: "message_room".to_string(),
+            args: vec![AstNode::StringLiteral(text)],
+        })
+    }
+    
+    fn compile_give(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Give player'
+        
+        // Next should be either a number or item name
+        match self.current() {
+            NaturalToken::Number(n) => {
+                let amount = *n;
+                self.advance();
+                
+                // Get the unit (health, gold, item name)
+                let unit = match self.current() {
+                    NaturalToken::Phrase(ref p) => p.clone(),
+                    NaturalToken::Text(ref t) => t.clone(),
+                    token => return Err(format!("Expected unit after number, found {}", token)),
+                };
+                self.advance();
+                
+                if unit == "health" {
+                    Ok(AstNode::Action {
+                        name: "heal".to_string(),
+                        args: vec![AstNode::NumberLiteral(amount)],
+                    })
+                } else {
+                    // For now, treat other units as item grants
+                    Ok(AstNode::Action {
+                        name: "grant_item".to_string(),
+                        args: vec![AstNode::StringLiteral(unit), AstNode::NumberLiteral(amount)],
+                    })
+                }
+            }
+            NaturalToken::Phrase(ref item) | NaturalToken::Text(ref item) => {
+                let item_name = item.clone();
+                self.advance();
+                
+                Ok(AstNode::Action {
+                    name: "grant_item".to_string(),
+                    args: vec![AstNode::StringLiteral(item_name)],
+                })
+            }
+            token => Err(format!("Expected item name or number after 'Give player', found {}", token)),
+        }
+    }
+    
+    fn compile_take(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Take from player'
+        
+        let item = match self.current() {
+            NaturalToken::Phrase(ref p) => p.clone(),
+            NaturalToken::Text(ref t) => t.clone(),
+            token => return Err(format!("Expected item name after 'Take from player', found {}", token)),
+        };
+        self.advance();
+        
+        Ok(AstNode::Action {
+            name: "take_item".to_string(),
+            args: vec![AstNode::StringLiteral(item)],
+        })
+    }
+    
+    fn compile_remove(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Remove this object'
+        
+        Ok(AstNode::Action {
+            name: "consume".to_string(),
+            args: vec![],
+        })
+    }
+    
+    fn compile_teleport(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Teleport player to'
+        
+        let room = match self.current() {
+            NaturalToken::Phrase(ref p) => p.clone(),
+            NaturalToken::Text(ref t) => t.clone(),
+            token => return Err(format!("Expected room name after 'Teleport player to', found {}", token)),
+        };
+        self.advance();
+        
+        Ok(AstNode::Action {
+            name: "teleport".to_string(),
+            args: vec![AstNode::StringLiteral(room)],
+        })
+    }
+    
+    fn compile_unlock(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Unlock'
+        
+        let direction = match self.current() {
+            NaturalToken::Phrase(ref p) => p.clone(),
+            NaturalToken::Text(ref t) => t.clone(),
+            token => return Err(format!("Expected direction after 'Unlock', found {}", token)),
+        };
+        self.advance();
+        
+        Ok(AstNode::Action {
+            name: "unlock_exit".to_string(),
+            args: vec![AstNode::StringLiteral(direction)],
+        })
+    }
+    
+    fn compile_lock(&mut self) -> Result<AstNode, String> {
+        self.advance(); // consume 'Lock'
+        
+        let direction = match self.current() {
+            NaturalToken::Phrase(ref p) => p.clone(),
+            NaturalToken::Text(ref t) => t.clone(),
+            token => return Err(format!("Expected direction after 'Lock', found {}", token)),
+        };
+        self.advance();
+        
+        Ok(AstNode::Action {
+            name: "lock_exit".to_string(),
+            args: vec![AstNode::StringLiteral(direction)],
+        })
+    }
+    
+    fn skip_newlines(&mut self) {
+        while matches!(self.current(), NaturalToken::Newline) {
+            self.advance();
+        }
+    }
+    
+    fn current(&self) -> &NaturalToken {
+        if self.position < self.tokens.len() {
+            &self.tokens[self.position]
+        } else {
+            &NaturalToken::Eof
+        }
+    }
+    
+    fn advance(&mut self) {
+        if self.position < self.tokens.len() {
+            self.position += 1;
+        }
+    }
+    
+    fn is_at_end(&self) -> bool {
+        matches!(self.current(), NaturalToken::Eof) || self.position >= self.tokens.len()
+    }
+}
+
+/// Compile natural language script to AST
+pub fn compile_natural_language(script: &str) -> Result<AstNode, String> {
+    let mut tokenizer = NaturalLanguageTokenizer::new(script);
+    let tokens = tokenizer.tokenize()?;
+    
+    let mut compiler = NaturalLanguageCompiler::new(tokens);
+    compiler.compile()
+}
+
 /// Parser for DSL scripts
 pub struct Parser {
     tokens: Vec<Token>,
@@ -1118,5 +1523,158 @@ mod tests {
         assert_eq!(tokens.len(), 2); // Remove, Eof
         assert_eq!(tokens[0], NaturalToken::Remove);
         assert_eq!(tokens[1], NaturalToken::Eof);
+    }
+    
+    // Natural Language Compiler Tests
+    
+    #[test]
+    fn test_nl_compile_simple_say() {
+        let ast = compile_natural_language("Say \"Hello!\"").unwrap();
+        
+        match ast {
+            AstNode::Action { name, args } => {
+                assert_eq!(name, "message");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    AstNode::StringLiteral(s) => assert_eq!(s, "Hello!"),
+                    _ => panic!("Expected string literal"),
+                }
+            }
+            _ => panic!("Expected Action node, got {:?}", ast),
+        }
+    }
+    
+    #[test]
+    fn test_nl_compile_give_health() {
+        let ast = compile_natural_language("Give player 50 health").unwrap();
+        
+        match ast {
+            AstNode::Action { name, args } => {
+                assert_eq!(name, "heal");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    AstNode::NumberLiteral(n) => assert_eq!(*n, 50),
+                    _ => panic!("Expected number literal"),
+                }
+            }
+            _ => panic!("Expected Action node"),
+        }
+    }
+    
+    #[test]
+    fn test_nl_compile_unlock() {
+        let ast = compile_natural_language("Unlock north").unwrap();
+        
+        match ast {
+            AstNode::Action { name, args } => {
+                assert_eq!(name, "unlock_exit");
+                assert_eq!(args.len(), 1);
+                match &args[0] {
+                    AstNode::StringLiteral(s) => assert_eq!(s, "north"),
+                    _ => panic!("Expected string literal"),
+                }
+            }
+            _ => panic!("Expected Action node"),
+        }
+    }
+    
+    #[test]
+    fn test_nl_compile_remove() {
+        let ast = compile_natural_language("Remove this object").unwrap();
+        
+        match ast {
+            AstNode::Action { name, .. } => {
+                assert_eq!(name, "consume");
+            }
+            _ => panic!("Expected Action node"),
+        }
+    }
+    
+    #[test]
+    fn test_nl_compile_if_otherwise() {
+        let script = "If player has key:\n  Unlock north\nOtherwise:\n  Say \"Locked\"";
+        let ast = compile_natural_language(script).unwrap();
+        
+        match ast {
+            AstNode::Ternary { condition, then_branch, else_branch } => {
+                // Check condition
+                match *condition {
+                    AstNode::Action { ref name, .. } => {
+                        assert_eq!(name, "has_item");
+                    }
+                    _ => panic!("Expected Action in condition"),
+                }
+                
+                // Check then branch
+                match *then_branch {
+                    AstNode::Action { ref name, .. } => {
+                        assert_eq!(name, "unlock_exit");
+                    }
+                    _ => panic!("Expected Action in then branch"),
+                }
+                
+                // Check else branch
+                match *else_branch {
+                    AstNode::Action { ref name, .. } => {
+                        assert_eq!(name, "message");
+                    }
+                    _ => panic!("Expected Action in else branch"),
+                }
+            }
+            _ => panic!("Expected Ternary node"),
+        }
+    }
+    
+    #[test]
+    fn test_nl_compile_condition_player_has_quest() {
+        let script = "If player has quest ancient_ruins:\n  Say \"Quest active!\"";
+        let ast = compile_natural_language(script).unwrap();
+        
+        match ast {
+            AstNode::Ternary { condition, .. } => {
+                match *condition {
+                    AstNode::Action { ref name, ref args } => {
+                        assert_eq!(name, "has_quest");
+                        match &args[0] {
+                            AstNode::StringLiteral(s) => assert_eq!(s, "ancient_ruins"),
+                            _ => panic!("Expected string literal"),
+                        }
+                    }
+                    _ => panic!("Expected Action in condition"),
+                }
+            }
+            _ => panic!("Expected Ternary node"),
+        }
+    }
+    
+    #[test]
+    fn test_nl_compile_multiple_statements() {
+        let script = "Say \"First\"\nGive player 25 health\nRemove this object";
+        let ast = compile_natural_language(script).unwrap();
+        
+        match ast {
+            AstNode::Sequence(statements) => {
+                assert_eq!(statements.len(), 3);
+                
+                // Check first statement
+                match &statements[0] {
+                    AstNode::Action { name, .. } => assert_eq!(name, "message"),
+                    _ => panic!("Expected Action"),
+                }
+                
+                // Check second statement
+                match &statements[1] {
+                    AstNode::Action { name, .. } => assert_eq!(name, "heal"),
+                    _ => panic!("Expected Action"),
+                }
+                
+                // Check third statement
+                match &statements[2] {
+                    AstNode::Action { name, .. } => assert_eq!(name, "consume"),
+                    _ => panic!("Expected Action"),
+                }
+            }
+            _ => panic!("Expected Sequence node"),
+        }
     }
 }
