@@ -115,14 +115,24 @@ data_dir = "./data/tinymush"
 # IMPORTANT: You must replace this with your actual API key!
 api_key = "REPLACE_WITH_YOUR_API_KEY"
 
-# Default location for weather queries (ZIP code or city name)
-default_location = "90210"
+# Enable weather functionality (requires valid API key)
+enabled = false
 
-# Temperature units: "metric" (Celsius) or "imperial" (Fahrenheit)
-units = "imperial"
+# Default location for weather queries
+default_location = "Los Angeles"
 
-# Cache duration in seconds (3600 = 1 hour)
-cache_duration_seconds = 3600
+# Location type: "city", "zipcode", or "city_id"
+location_type = "city"
+
+# Country code for zipcode lookups (e.g., "US", "GB")
+# Required when using zipcode location_type
+country_code = "US"
+
+# Cache duration in minutes
+cache_ttl_minutes = 10
+
+# Request timeout in seconds
+timeout_seconds = 5
 
 [welcome]
 # Automatic welcome message system

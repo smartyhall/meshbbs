@@ -159,18 +159,31 @@ sysop = "sysop"
 # Sysop password hash (generated during installation)
 sysop_password_hash = "$SYSOP_HASH"
 
-# Allow public login without registration
-public_login = false
+# Maximum concurrent users
+max_users = 100
 
 # Session timeout in minutes
-session_timeout_minutes = 30
+session_timeout = 30
+
+# Welcome message shown at login
+welcome_message = "Welcome to this Mesh BBS"
+
+# Public command prefix (single character: ^ ! + $ / >)
+public_command_prefix = "^"
+
+# Allow public channel LOGIN command (security consideration)
+# When false, users must initiate login via direct message only
+allow_public_login = false
 
 [meshtastic]
 # Serial port for Meshtastic device
-serial_port = "$SERIAL_PORT"
+port = "$SERIAL_PORT"
 
 # Baud rate (usually 115200)
 baud_rate = 115200
+
+# Channel to monitor (0 = primary channel)
+channel = 0
 
 [ident_beacon]
 # Send identification beacon periodically
@@ -193,6 +206,13 @@ retention_days = 30
 # Backup interval in hours
 interval_hours = 24
 
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Optional: Log to file (recommended for production)
+file = "$INSTALL_PATH/meshbbs.log"
+
 [games]
 # Enable TinyHack roguelike game
 tinyhack_enabled = true
@@ -209,11 +229,23 @@ data_dir = "$INSTALL_PATH/data/tinymush"
 # IMPORTANT: Replace this with your actual API key!
 api_key = "REPLACE_WITH_YOUR_API_KEY"
 
-# Default location for weather (ZIP code or city name)
-default_location = "90210"
+# Enable weather functionality (requires valid API key)
+enabled = false
 
-# Temperature units: "metric" (Celsius) or "imperial" (Fahrenheit)
-units = "imperial"
+# Default location for weather queries
+default_location = "Los Angeles"
+
+# Location type: "city", "zipcode", or "city_id"
+location_type = "city"
+
+# Country code for zipcode lookups (e.g., "US", "GB")
+country_code = "US"
+
+# Cache duration in minutes
+cache_ttl_minutes = 10
+
+# Request timeout in seconds
+timeout_seconds = 5
 
 [welcome]
 # Welcome message system (greets new nodes on the mesh)
