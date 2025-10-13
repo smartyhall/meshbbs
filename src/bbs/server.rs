@@ -2098,6 +2098,7 @@ impl BbsServer {
             }
             let mut post_action = PostAction::None;
             let mut deferred_reply: Option<String> = None;
+            let mut deferred_chunks: Option<Vec<String>> = None; // For multi-part messages like HELP+
 
             // Track if this message was fully handled by registration logic to avoid re-processing.
             let mut handled_registration = false;
@@ -2179,18 +2180,10 @@ impl BbsServer {
                 }
                 if upper == "HELP+" || upper == "HELP V" || upper == "HELP  V" || upper == "HELP  +"
                 {
-                    // tolerate minor spacing variants
+                    // tolerate minor spacing variants - store chunks to send after borrow ends
                     let chunks =
                         chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char());
-                    let total = chunks.len();
-                    // Drop the mutable borrow before calling send_session_message
-                    drop(session);
-                    for (i, chunk) in chunks.into_iter().enumerate() {
-                        let last = i + 1 == total;
-                        // For multi-part help, suppress prompt until final
-                        self.send_session_message(&node_key, &chunk, last).await?;
-                    }
-                    return Ok(());
+                    deferred_chunks = Some(chunks);
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
@@ -2200,10 +2193,8 @@ impl BbsServer {
                         session.help_seen = true;
                         help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
                     }
-                    // Drop the mutable borrow before calling send_session_message
-                    drop(session);
-                    self.send_session_message(&node_key, &help_text, true).await?;
-                    return Ok(());
+                    // Store response to send after borrow ends
+                    deferred_reply = Some(help_text);
                 } else if upper.starts_with("LOGIN ") {
                     // Enforce max_users only if this session is not yet logged in
                     if !session.is_logged_in()
@@ -3104,6 +3095,16 @@ impl BbsServer {
                     }
                 }
             } // End of session mutable borrow scope
+            
+            // Send deferred chunks (for HELP+) after releasing session borrow
+            if let Some(chunks) = deferred_chunks {
+                let total = chunks.len();
+                for (i, chunk) in chunks.into_iter().enumerate() {
+                    let last = i + 1 == total;
+                    // For multi-part help, suppress prompt until final
+                    self.send_session_message(&node_key, &chunk, last).await?;
+                }
+            }
             
             // Send deferred reply after releasing session borrow to allow send_session_message to access session
             if let Some(msg) = deferred_reply {
