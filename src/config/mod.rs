@@ -382,7 +382,7 @@ impl Default for Config {
             },
             storage: StorageConfig {
                 data_dir: "./data".to_string(),
-                max_message_size: 230,
+                max_message_size: 200, // Reduced from 230 to account for ~30 bytes Meshtastic protocol overhead
             },
             message_topics,
             logging: LoggingConfig {

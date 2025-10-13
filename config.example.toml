@@ -1,13 +1,7 @@
 # MeshBBS Configuration File
-# Copy this to config.toml and customize for your # Maximum size for a single message (bytes)
-# Maximum payload allowed by Meshtastic is 230 bytes
-# Values above 230 will be clamped internally
-max_message_size = 230
+# Copy this to config.toml and customize for your setup
 
-# Note: Automatic backups are configured via in-game admin commands
-# and stored in data/backup_scheduler.json (not in this config file)
-
-# Logging configurationbbs]
+[bbs]
 # Display name for your BBS (shown to users)
 name = "Your MeshBBS Name"
 
@@ -84,9 +78,9 @@ frequency = "1hour"
 data_dir = "./data"
 
 # Maximum size for a single message (bytes)
-# Maximum payload allowed by Meshtastic is 230 bytes
-# Values above 230 will be clamped internally
-max_message_size = 230
+# Meshtastic has ~30 bytes protocol overhead, so we limit text content to 200 bytes
+# to ensure the final packet stays under the 230 byte Meshtastic limit
+max_message_size = 200
 
 # Automatic backup configuration
 [storage.backup]

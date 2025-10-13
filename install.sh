@@ -195,8 +195,8 @@ frequency = "1hour"
 # Data directory (absolute path)
 data_dir = "$INSTALL_PATH/data"
 
-# Maximum message size in bytes
-max_message_size = 230
+# Maximum message size in bytes (accounting for ~30 bytes Meshtastic protocol overhead)
+max_message_size = 200
 
 # Note: Automatic backups are configured via in-game admin commands
 # and stored in data/backup_scheduler.json (not in this config file)
