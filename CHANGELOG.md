@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.105-beta] - 2025-10-13
+
+### Changed
+- **Installer layout refresh**: `install.sh` now installs the `meshbbs` binary to `/opt/meshbbs/bin/` and helper scripts to `/opt/meshbbs/scripts/` for clearer separation and systemd compatibility. The generated service definition and summary output were updated to match the new structure.
+- **TinyMUSH engine overhaul**: Refactored storage, builder, trigger, companion, and quest modules alongside extensive test updates to improve reliability, schema migrations, and future extensibility.
+
+### Fixed
+- **Admin seeding resilience**: TinyMUSH seeding now guarantees both the configured sysop account and the legacy `admin` handle receive proper privileges, preventing monitoring and prompt tests from regressing when historical data exists.
+- **Game door prompts**: TinyHack and TinyMUSH sessions intentionally suppress BBS prompts while players are inside the games; prompts return immediately after exiting back to the main menu.
+
+### Documentation
+- Updated README release highlights and version badge to match 1.0.105-beta.
+
 ## [1.0.102-beta] - 2025-10-13
 
 ### Fixed
