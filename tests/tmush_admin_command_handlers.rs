@@ -1,9 +1,9 @@
+use meshbbs::bbs::session::{Session, SessionState};
+use meshbbs::config::{BbsConfig, Config, LoggingConfig, MeshtasticConfig, StorageConfig};
+use meshbbs::tmush::commands::TinyMushProcessor;
 /// Integration tests for TinyMUSH admin command handlers
 /// Tests: @ADMIN, @SETADMIN, @REMOVEADMIN, @ADMINS commands
-use meshbbs::tmush::{TinyMushStoreBuilder, PlayerRecord};
-use meshbbs::tmush::commands::TinyMushProcessor;
-use meshbbs::bbs::session::{Session, SessionState};
-use meshbbs::config::{Config, BbsConfig, MeshtasticConfig, StorageConfig, LoggingConfig};
+use meshbbs::tmush::{PlayerRecord, TinyMushStoreBuilder};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -64,7 +64,10 @@ fn test_config(data_dir: String) -> Config {
 }
 
 async fn test_session(username: &str) -> Session {
-    let mut session = Session::new(format!("{}_session", username), format!("{}_node", username));
+    let mut session = Session::new(
+        format!("{}_session", username),
+        format!("{}_node", username),
+    );
     session.login(username.to_string(), 1).await.unwrap();
     session.state = SessionState::TinyMush;
     session
@@ -74,22 +77,33 @@ async fn test_session(username: &str) -> Session {
 async fn test_admin_command_shows_status() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
+
     // Store will auto-create admin account
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Verify admin exists
     let admin = store.get_player("admin").expect("admin exists");
     assert!(admin.is_admin());
-    
+
     // Test @ADMIN command
     let mut session = test_session("admin").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@ADMIN", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@ADMIN",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
-    
+
     assert!(output.contains("ADMIN STATUS"));
     assert!(output.contains("Admin Status: ACTIVE"));
     assert!(output.contains("Admin Level: 3"));
@@ -100,18 +114,29 @@ async fn test_admin_command_shows_status() {
 async fn test_admin_command_non_admin() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Create regular user
     let user = PlayerRecord::new("alice", "Alice", "town_square");
     store.put_player(user).expect("save user");
-    
+
     // Test
     let mut session = test_session("alice").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@ADMIN", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@ADMIN",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("NOT ADMIN"));
@@ -122,27 +147,38 @@ async fn test_admin_command_non_admin() {
 async fn test_setadmin_grants_privileges() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Create regular user
     let user = PlayerRecord::new("bob", "Bob", "town_square");
     store.put_player(user).expect("save user");
-    
+
     // Verify bob is not admin
     assert!(!store.is_admin("bob").unwrap());
-    
+
     // Admin grants privileges to bob
     let mut session = test_session("admin").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@SETADMIN bob 2", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@SETADMIN bob 2",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("SUCCESS"));
     assert!(output.contains("bob"));
     assert!(output.contains("Admin"));
-    
+
     // Verify bob is now admin (reuse existing store)
     assert!(store.is_admin("bob").unwrap());
     let bob = store.get_player("bob").unwrap();
@@ -153,24 +189,35 @@ async fn test_setadmin_grants_privileges() {
 async fn test_setadmin_requires_admin() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Create two regular users
     let alice = PlayerRecord::new("alice", "Alice", "town_square");
     let bob = PlayerRecord::new("bob", "Bob", "town_square");
     store.put_player(alice).expect("save alice");
     store.put_player(bob).expect("save bob");
-    
+
     // Alice (non-admin) tries to grant admin to bob
     let mut session = test_session("alice").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@SETADMIN bob 1", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@SETADMIN bob 1",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("Permission denied"));
-    
+
     // Verify bob is still not admin (reuse existing store)
     assert!(!store.is_admin("bob").unwrap());
 }
@@ -179,28 +226,39 @@ async fn test_setadmin_requires_admin() {
 async fn test_removeadmin_revokes_privileges() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Create admin user
     let mut charlie = PlayerRecord::new("charlie", "Charlie", "town_square");
     charlie.grant_admin(2);
     store.put_player(charlie).expect("save charlie");
-    
+
     // Verify charlie is admin
     assert!(store.is_admin("charlie").unwrap());
-    
+
     // Sysop revokes charlie's admin
     let mut session = test_session("admin").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@REMOVEADMIN charlie", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@REMOVEADMIN charlie",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("SUCCESS"));
     assert!(output.contains("Revoked admin privileges"));
     assert!(output.contains("charlie"));
-    
+
     // Verify charlie is no longer admin (reuse existing store)
     assert!(!store.is_admin("charlie").unwrap());
 }
@@ -209,14 +267,25 @@ async fn test_removeadmin_revokes_privileges() {
 async fn test_removeadmin_cannot_revoke_self() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Admin tries to revoke own privileges
     let mut session = test_session("admin").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@REMOVEADMIN admin", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@REMOVEADMIN admin",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("Cannot revoke your own"));
@@ -226,23 +295,34 @@ async fn test_removeadmin_cannot_revoke_self() {
 async fn test_admins_lists_all_administrators() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Create additional admins
     let mut mod1 = PlayerRecord::new("moderator", "Moderator", "town_square");
     mod1.grant_admin(1);
     store.put_player(mod1).expect("save mod");
-    
+
     let mut admin2 = PlayerRecord::new("admin2", "Admin2", "town_square");
     admin2.grant_admin(2);
     store.put_player(admin2).expect("save admin2");
-    
+
     // List admins
     let mut session = test_session("admin").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@ADMINS", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@ADMINS",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("SYSTEM ADMINISTRATORS"));
@@ -259,18 +339,29 @@ async fn test_admins_lists_all_administrators() {
 async fn test_admins_command_anyone_can_view() {
     let dir = TempDir::new().expect("tempdir");
     let config = test_config(dir.path().to_str().unwrap().to_string());
-    
-    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap())).open().expect("store");
-    
+
+    let store = TinyMushStoreBuilder::new(&tinymush_path(dir.path().to_str().unwrap()))
+        .open()
+        .expect("store");
+
     // Create regular user
     let user = PlayerRecord::new("viewer", "Viewer", "town_square");
     store.put_player(user).expect("save user");
-    
+
     // Regular user can view admin list
     let mut session = test_session("viewer").await;
     let mut processor = TinyMushProcessor::new(store.clone());
-    let result = processor.process_command(&mut session, "@ADMINS", &mut meshbbs::storage::Storage::new(&config.storage.data_dir).await.unwrap(), &config).await;
-    
+    let result = processor
+        .process_command(
+            &mut session,
+            "@ADMINS",
+            &mut meshbbs::storage::Storage::new(&config.storage.data_dir)
+                .await
+                .unwrap(),
+            &config,
+        )
+        .await;
+
     assert!(result.is_ok());
     let output = result.unwrap();
     assert!(output.contains("SYSTEM ADMINISTRATORS"));

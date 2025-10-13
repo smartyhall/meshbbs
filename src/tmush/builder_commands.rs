@@ -14,7 +14,9 @@
 
 use crate::tmush::{
     errors::TinyMushError,
-    resolver::{resolve_object_name, ResolutionContext, ResolveResult, format_disambiguation_prompt},
+    resolver::{
+        format_disambiguation_prompt, resolve_object_name, ResolutionContext, ResolveResult,
+    },
     storage::TinyMushStore,
     trigger::parser::parse_script,
     types::{ObjectRecord, ObjectTrigger},
@@ -47,7 +49,7 @@ pub fn handle_when_command(
 ) -> Result<String, TinyMushError> {
     // Parse trigger type
     let trigger_type = parse_trigger_type(trigger)?;
-    
+
     // Resolve object name
     let object_id = match resolve_object_name(context, object_name, store)? {
         ResolveResult::Found(id) => id,
@@ -64,10 +66,10 @@ pub fn handle_when_command(
             )));
         }
     };
-    
+
     // Get object to verify ownership
     let mut object = store.get_object(&object_id)?;
-    
+
     // Check permissions (must be owner or admin)
     if !can_modify_object(&object, &context.username) {
         return Err(TinyMushError::NotFound(format!(
@@ -75,29 +77,24 @@ pub fn handle_when_command(
             object.name
         )));
     }
-    
+
     // Parse action script (auto-detects natural language vs DSL)
-    let _ast = parse_script(action).map_err(|e| {
-        TinyMushError::NotFound(format!("Script parse error: {}", e))
-    })?;
-    
+    let _ast = parse_script(action)
+        .map_err(|e| TinyMushError::NotFound(format!("Script parse error: {}", e)))?;
+
     // Store the original script text for now
     // Phase 6 will add proper trigger storage with compiled AST
-    object.actions.insert(
-        trigger_type.clone(),
-        action.to_string(),
-    );
-    
+    object
+        .actions
+        .insert(trigger_type.clone(), action.to_string());
+
     // Save updated object
     store.put_object(object.clone())?;
-    
+
     // Format success message
     Ok(format!(
         "✓ Added {:?} trigger to '{}'\n\nScript: {}\n\nTry it: /use {}",
-        trigger_type,
-        object.name,
-        action,
-        object.name
+        trigger_type, object.name, action, object.name
     ))
 }
 
@@ -110,7 +107,7 @@ pub fn handle_when_command(
 /// - "drop", "put" → ObjectTrigger::OnDrop
 fn parse_trigger_type(trigger: &str) -> Result<ObjectTrigger, TinyMushError> {
     let trigger_lower = trigger.to_lowercase();
-    
+
     match trigger_lower.as_str() {
         "examine" | "look" | "inspect" => Ok(ObjectTrigger::OnLook),
         "use" | "activate" => Ok(ObjectTrigger::OnUse),
@@ -132,9 +129,9 @@ fn parse_trigger_type(trigger: &str) -> Result<ObjectTrigger, TinyMushError> {
 fn can_modify_object(object: &ObjectRecord, username: &str) -> bool {
     // Check if user is owner
     match &object.owner {
-        crate::tmush::types::ObjectOwner::Player { username: owner_name } => {
-            owner_name == username
-        }
+        crate::tmush::types::ObjectOwner::Player {
+            username: owner_name,
+        } => owner_name == username,
         crate::tmush::types::ObjectOwner::World => {
             // World objects can only be modified by admins (future enhancement)
             false
@@ -168,17 +165,17 @@ impl ScriptBuilder {
             lines: Vec::new(),
         }
     }
-    
+
     /// Add a line to the script
     pub fn add_line(&mut self, line: String) {
         self.lines.push(line);
     }
-    
+
     /// Get the complete script as a single string
     pub fn get_script(&self) -> String {
         self.lines.join("\n")
     }
-    
+
     /// Get line count
     pub fn line_count(&self) -> usize {
         self.lines.len()
@@ -223,7 +220,7 @@ pub fn handle_script_command(
 ) -> Result<ScriptBuilder, TinyMushError> {
     // Parse trigger type
     let trigger_type = parse_trigger_type(trigger)?;
-    
+
     // Resolve object name
     let object_id = match resolve_object_name(context, object_name, store)? {
         ResolveResult::Found(id) => id,
@@ -240,10 +237,10 @@ pub fn handle_script_command(
             )));
         }
     };
-    
+
     // Get object to verify ownership and get name
     let object = store.get_object(&object_id)?;
-    
+
     // Check permissions
     if !can_modify_object(&object, &context.username) {
         return Err(TinyMushError::NotFound(format!(
@@ -251,7 +248,7 @@ pub fn handle_script_command(
             object.name
         )));
     }
-    
+
     // Create script builder
     Ok(ScriptBuilder::new(
         object_id,
@@ -276,13 +273,13 @@ pub fn handle_done_command(
 ) -> Result<String, TinyMushError> {
     // Get the complete script
     let script = builder.get_script();
-    
+
     if script.trim().is_empty() {
         return Err(TinyMushError::NotFound(
-            "Script is empty. Add at least one line before /done.".to_string()
+            "Script is empty. Add at least one line before /done.".to_string(),
         ));
     }
-    
+
     // Parse and validate script
     let _ast = parse_script(&script).map_err(|e| {
         TinyMushError::NotFound(format!(
@@ -291,19 +288,18 @@ pub fn handle_done_command(
             e
         ))
     })?;
-    
+
     // Get object
     let mut object = store.get_object(&builder.object_id)?;
-    
+
     // Update trigger
-    object.actions.insert(
-        builder.trigger_type.clone(),
-        script.clone(),
-    );
-    
+    object
+        .actions
+        .insert(builder.trigger_type.clone(), script.clone());
+
     // Save
     store.put_object(object)?;
-    
+
     // Success message
     Ok(format!(
         "✓ Added {:?} trigger to '{}' ({} lines)\n\nScript:\n{}\n",
@@ -329,13 +325,20 @@ pub enum WizardState {
     /// Step 1: Choose object
     ChooseObject,
     /// Step 2: Choose trigger type
-    ChooseTrigger { object_id: String, object_name: String },
+    ChooseTrigger {
+        object_id: String,
+        object_name: String,
+    },
     /// Step 3: Choose action template
-    ChooseAction { object_id: String, object_name: String, trigger_type: ObjectTrigger },
+    ChooseAction {
+        object_id: String,
+        object_name: String,
+        trigger_type: ObjectTrigger,
+    },
     /// Step 4: Customize action (if needed)
-    CustomizeAction { 
-        object_id: String, 
-        object_name: String, 
+    CustomizeAction {
+        object_id: String,
+        object_name: String,
         trigger_type: ObjectTrigger,
         action_template: String,
     },
@@ -378,13 +381,13 @@ pub fn handle_wizard_command(
 ) -> Result<(WizardSession, String), TinyMushError> {
     // Get player's inventory
     let player = store.get_player(&context.username)?;
-    
+
     // Get current room items
     let room = store.get_room(&context.current_room)?;
-    
+
     // Build list of available objects
     let mut available_objects = Vec::new();
-    
+
     // Add inventory items
     for obj_id in &player.inventory {
         if let Ok(obj) = store.get_object(obj_id) {
@@ -394,7 +397,7 @@ pub fn handle_wizard_command(
             }
         }
     }
-    
+
     // Add room items (that player owns)
     for obj_id in &room.items {
         if let Ok(obj) = store.get_object(obj_id) {
@@ -403,26 +406,26 @@ pub fn handle_wizard_command(
             }
         }
     }
-    
+
     if available_objects.is_empty() {
         return Err(TinyMushError::NotFound(
-            "No objects available to modify. Create an object first with /create.".to_string()
+            "No objects available to modify. Create an object first with /create.".to_string(),
         ));
     }
-    
+
     // Create wizard session
     let session = WizardSession::new(available_objects.clone());
-    
+
     // Format object selection menu
     let mut prompt = String::from("🧙 Trigger Wizard - Step 1: Choose Object\n\n");
     prompt.push_str("Select an object to add a trigger to:\n\n");
-    
+
     for (idx, (_id, name)) in available_objects.iter().enumerate() {
         prompt.push_str(&format!("  {}. {}\n", idx + 1, name));
     }
-    
+
     prompt.push_str("\nReply with the number, or /cancel to abort.");
-    
+
     Ok((session, prompt))
 }
 
@@ -443,29 +446,32 @@ pub fn handle_wizard_step(
     store: &TinyMushStore,
 ) -> Result<String, TinyMushError> {
     let input = input.trim();
-    
+
     // Clone the current state to avoid borrow checker issues
     let current_state = session.state.clone();
-    
+
     match current_state {
         WizardState::ChooseObject => {
             // Parse object selection
             let selection: usize = input.parse().map_err(|_| {
                 TinyMushError::NotFound("Please enter a number from the list.".to_string())
             })?;
-            
+
             if selection < 1 || selection > session.available_objects.len() {
                 return Err(TinyMushError::NotFound(format!(
                     "Invalid selection. Choose 1-{}.",
                     session.available_objects.len()
                 )));
             }
-            
+
             let (object_id, object_name) = session.available_objects[selection - 1].clone();
-            
+
             // Move to trigger selection
-            session.state = WizardState::ChooseTrigger { object_id, object_name: object_name.clone() };
-            
+            session.state = WizardState::ChooseTrigger {
+                object_id,
+                object_name: object_name.clone(),
+            };
+
             Ok(format!(
                 "🧙 Trigger Wizard - Step 2: Choose Trigger Type\n\n\
                 Object: {}\n\n\
@@ -478,17 +484,24 @@ pub fn handle_wizard_step(
                 object_name
             ))
         }
-        
-        WizardState::ChooseTrigger { object_id, object_name } => {
+
+        WizardState::ChooseTrigger {
+            object_id,
+            object_name,
+        } => {
             // Parse trigger type selection
             let trigger_type = match input {
                 "1" => ObjectTrigger::OnLook,
                 "2" => ObjectTrigger::OnUse,
                 "3" => ObjectTrigger::OnTake,
                 "4" => ObjectTrigger::OnDrop,
-                _ => return Err(TinyMushError::NotFound("Please enter 1, 2, 3, or 4.".to_string())),
+                _ => {
+                    return Err(TinyMushError::NotFound(
+                        "Please enter 1, 2, 3, or 4.".to_string(),
+                    ))
+                }
             };
-            
+
             let trigger_name = match trigger_type {
                 ObjectTrigger::OnLook => "examined",
                 ObjectTrigger::OnUse => "used",
@@ -496,14 +509,14 @@ pub fn handle_wizard_step(
                 ObjectTrigger::OnDrop => "dropped",
                 _ => "activated",
             };
-            
+
             // Move to action selection
             session.state = WizardState::ChooseAction {
                 object_id: object_id.clone(),
                 object_name: object_name.clone(),
                 trigger_type,
             };
-            
+
             Ok(format!(
                 "🧙 Trigger Wizard - Step 3: Choose Action\n\n\
                 Object: {}\n\
@@ -518,8 +531,12 @@ pub fn handle_wizard_step(
                 object_name, trigger_name
             ))
         }
-        
-        WizardState::ChooseAction { object_id, object_name, trigger_type } => {
+
+        WizardState::ChooseAction {
+            object_id,
+            object_name,
+            trigger_type,
+        } => {
             // Parse action selection and generate script
             let script = match input {
                 "1" => {
@@ -530,12 +547,11 @@ pub fn handle_wizard_step(
                         trigger_type: trigger_type.clone(),
                         action_template: "message".to_string(),
                     };
-                    
-                    return Ok(
-                        "🧙 Trigger Wizard - Step 4: Customize Message\n\n\
+
+                    return Ok("🧙 Trigger Wizard - Step 4: Customize Message\n\n\
                         What message should be displayed?\n\n\
-                        Reply with your message text:".to_string()
-                    );
+                        Reply with your message text:"
+                        .to_string());
                 }
                 "2" => "Give player 25 health".to_string(),
                 "3" => {
@@ -546,12 +562,11 @@ pub fn handle_wizard_step(
                         trigger_type: trigger_type.clone(),
                         action_template: "item".to_string(),
                     };
-                    
-                    return Ok(
-                        "🧙 Trigger Wizard - Step 4: Customize Item\n\n\
+
+                    return Ok("🧙 Trigger Wizard - Step 4: Customize Item\n\n\
                         What item should be given?\n\n\
-                        Reply with the item name:".to_string()
-                    );
+                        Reply with the item name:"
+                        .to_string());
                 }
                 "4" => {
                     // Teleport action - move to customize step
@@ -561,12 +576,11 @@ pub fn handle_wizard_step(
                         trigger_type: trigger_type.clone(),
                         action_template: "teleport".to_string(),
                     };
-                    
-                    return Ok(
-                        "🧙 Trigger Wizard - Step 4: Customize Teleport\n\n\
+
+                    return Ok("🧙 Trigger Wizard - Step 4: Customize Teleport\n\n\
                         What room ID should player be teleported to?\n\n\
-                        Reply with the room ID:".to_string()
-                    );
+                        Reply with the room ID:"
+                        .to_string());
                 }
                 "5" => {
                     // Custom script - move to customize step
@@ -576,21 +590,29 @@ pub fn handle_wizard_step(
                         trigger_type: trigger_type.clone(),
                         action_template: "custom".to_string(),
                     };
-                    
-                    return Ok(
-                        "🧙 Trigger Wizard - Step 4: Custom Script\n\n\
+
+                    return Ok("🧙 Trigger Wizard - Step 4: Custom Script\n\n\
                         Enter your custom script (natural language or DSL):\n\n\
-                        Reply with your script:".to_string()
-                    );
+                        Reply with your script:"
+                        .to_string());
                 }
-                _ => return Err(TinyMushError::NotFound("Please enter 1, 2, 3, 4, or 5.".to_string())),
+                _ => {
+                    return Err(TinyMushError::NotFound(
+                        "Please enter 1, 2, 3, 4, or 5.".to_string(),
+                    ))
+                }
             };
-            
+
             // For non-customizable actions, save immediately
             finalize_wizard_trigger(&object_id, &object_name, trigger_type, &script, store)
         }
-        
-        WizardState::CustomizeAction { object_id, object_name, trigger_type, action_template } => {
+
+        WizardState::CustomizeAction {
+            object_id,
+            object_name,
+            trigger_type,
+            action_template,
+        } => {
             // Generate final script based on template and user input
             let script = match action_template.as_str() {
                 "message" => format!("Say \"{}\"", input),
@@ -599,7 +621,7 @@ pub fn handle_wizard_step(
                 "custom" => input.to_string(),
                 _ => input.to_string(),
             };
-            
+
             // Save the trigger
             finalize_wizard_trigger(&object_id, &object_name, trigger_type, &script, store)
         }
@@ -615,16 +637,15 @@ fn finalize_wizard_trigger(
     store: &TinyMushStore,
 ) -> Result<String, TinyMushError> {
     // Validate script
-    let _ast = parse_script(script).map_err(|e| {
-        TinyMushError::NotFound(format!("Script error: {}", e))
-    })?;
-    
+    let _ast = parse_script(script)
+        .map_err(|e| TinyMushError::NotFound(format!("Script error: {}", e)))?;
+
     // Get and update object
     let mut object = store.get_object(object_id)?;
     let trigger_type_display = format!("{:?}", trigger_type);
     object.actions.insert(trigger_type, script.to_string());
     store.put_object(object)?;
-    
+
     // Success message
     Ok(format!(
         "✨ Trigger Created!\n\n\
@@ -632,9 +653,7 @@ fn finalize_wizard_trigger(
         Trigger: {}\n\
         Script: {}\n\n\
         Your trigger is now active!",
-        object_name,
-        trigger_type_display,
-        script
+        object_name, trigger_type_display, script
     ))
 }
 
@@ -658,7 +677,7 @@ pub fn handle_show_command(
 ) -> Result<String, TinyMushError> {
     // Resolve object name
     let resolve_result = resolve_object_name(context, object_name, store)?;
-    
+
     let object_id = match resolve_result {
         ResolveResult::Found(id) => id,
         ResolveResult::Ambiguous(matches) => {
@@ -671,9 +690,9 @@ pub fn handle_show_command(
             )));
         }
     };
-    
+
     let object = store.get_object(&object_id)?;
-    
+
     // Check if object has any triggers
     if object.actions.is_empty() {
         return Ok(format!(
@@ -682,10 +701,10 @@ pub fn handle_show_command(
             object.name
         ));
     }
-    
+
     // Format trigger list
     let mut output = format!("🔍 Triggers on '{}':\n\n", object.name);
-    
+
     for (trigger_type, script) in &object.actions {
         let trigger_name = match trigger_type {
             ObjectTrigger::OnLook => "When examined",
@@ -695,14 +714,14 @@ pub fn handle_show_command(
             ObjectTrigger::OnEnter => "When entered",
             _ => "Unknown trigger",
         };
-        
+
         // Truncate long scripts
         let script_preview = if script.len() > 60 {
             format!("{}...", &script[..60])
         } else {
             script.clone()
         };
-        
+
         output.push_str(&format!(
             "  • {} ({})\n    Script: {}\n\n",
             trigger_name,
@@ -710,14 +729,14 @@ pub fn handle_show_command(
             script_preview
         ));
     }
-    
+
     output.push_str(&format!(
         "Total: {} trigger(s)\n\n\
         Use /remove <object> <trigger> to delete a trigger.\n\
         Use /test <object> <trigger> to test execution.",
         object.actions.len()
     ));
-    
+
     Ok(output)
 }
 
@@ -741,10 +760,10 @@ pub fn handle_remove_command(
 ) -> Result<String, TinyMushError> {
     // Parse trigger type
     let trigger_type = parse_trigger_type(trigger_type_str)?;
-    
+
     // Resolve object name
     let resolve_result = resolve_object_name(context, object_name, store)?;
-    
+
     let object_id = match resolve_result {
         ResolveResult::Found(id) => id,
         ResolveResult::Ambiguous(matches) => {
@@ -757,37 +776,34 @@ pub fn handle_remove_command(
             )));
         }
     };
-    
+
     // Get object and check permissions
     let mut object = store.get_object(&object_id)?;
-    
+
     if !can_modify_object(&object, &context.username) {
         return Err(TinyMushError::NotFound(format!(
             "You don't have permission to modify '{}'.",
             object.name
         )));
     }
-    
+
     // Check if trigger exists
     if !object.actions.contains_key(&trigger_type) {
         return Ok(format!(
             "Object '{}' doesn't have a {:?} trigger.\n\n\
             Use /show {} to see existing triggers.",
-            object.name,
-            trigger_type,
-            object.name
+            object.name, trigger_type, object.name
         ));
     }
-    
+
     // Remove trigger
     object.actions.remove(&trigger_type);
     let object_name = object.name.clone();
     store.put_object(object)?;
-    
+
     Ok(format!(
         "✓ Removed {:?} trigger from '{}'.",
-        trigger_type,
-        object_name
+        trigger_type, object_name
     ))
 }
 
@@ -813,10 +829,10 @@ pub fn handle_test_command(
 ) -> Result<String, TinyMushError> {
     // Parse trigger type
     let trigger_type = parse_trigger_type(trigger_type_str)?;
-    
+
     // Resolve object name
     let resolve_result = resolve_object_name(context, object_name, store)?;
-    
+
     let object_id = match resolve_result {
         ResolveResult::Found(id) => id,
         ResolveResult::Ambiguous(matches) => {
@@ -829,10 +845,10 @@ pub fn handle_test_command(
             )));
         }
     };
-    
+
     // Get object
     let object = store.get_object(&object_id)?;
-    
+
     // Check if trigger exists
     let script = match object.actions.get(&trigger_type) {
         Some(script) => script,
@@ -840,13 +856,11 @@ pub fn handle_test_command(
             return Ok(format!(
                 "Object '{}' doesn't have a {:?} trigger.\n\n\
                 Use /show {} to see existing triggers.",
-                object.name,
-                trigger_type,
-                object.name
+                object.name, trigger_type, object.name
             ));
         }
     };
-    
+
     // Validate script (parse to check syntax)
     match parse_script(script) {
         Ok(_ast) => {
@@ -857,9 +871,7 @@ pub fn handle_test_command(
                 ✓ Script is valid and would execute successfully.\n\n\
                 Note: This is a dry run. No actual changes were made.\n\
                 The trigger will execute normally when activated in-game.",
-                trigger_type,
-                object.name,
-                script
+                trigger_type, object.name, script
             ))
         }
         Err(e) => {
@@ -870,10 +882,7 @@ pub fn handle_test_command(
                 ❌ Script Error: {}\n\n\
                 The trigger will fail when activated. Use /remove to delete it,\n\
                 or recreate it with /when, /script, or /wizard.",
-                trigger_type,
-                object.name,
-                script,
-                e
+                trigger_type, object.name, script, e
             ))
         }
     }
@@ -882,47 +891,59 @@ pub fn handle_test_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_trigger_type_examine() {
-        assert_eq!(parse_trigger_type("examine").unwrap(), ObjectTrigger::OnLook);
+        assert_eq!(
+            parse_trigger_type("examine").unwrap(),
+            ObjectTrigger::OnLook
+        );
         assert_eq!(parse_trigger_type("look").unwrap(), ObjectTrigger::OnLook);
-        assert_eq!(parse_trigger_type("inspect").unwrap(), ObjectTrigger::OnLook);
-        assert_eq!(parse_trigger_type("EXAMINE").unwrap(), ObjectTrigger::OnLook);
+        assert_eq!(
+            parse_trigger_type("inspect").unwrap(),
+            ObjectTrigger::OnLook
+        );
+        assert_eq!(
+            parse_trigger_type("EXAMINE").unwrap(),
+            ObjectTrigger::OnLook
+        );
     }
-    
+
     #[test]
     fn test_parse_trigger_type_use() {
         assert_eq!(parse_trigger_type("use").unwrap(), ObjectTrigger::OnUse);
-        assert_eq!(parse_trigger_type("activate").unwrap(), ObjectTrigger::OnUse);
+        assert_eq!(
+            parse_trigger_type("activate").unwrap(),
+            ObjectTrigger::OnUse
+        );
     }
-    
+
     #[test]
     fn test_parse_trigger_type_take() {
         assert_eq!(parse_trigger_type("take").unwrap(), ObjectTrigger::OnTake);
         assert_eq!(parse_trigger_type("get").unwrap(), ObjectTrigger::OnTake);
         assert_eq!(parse_trigger_type("pickup").unwrap(), ObjectTrigger::OnTake);
     }
-    
+
     #[test]
     fn test_parse_trigger_type_drop() {
         assert_eq!(parse_trigger_type("drop").unwrap(), ObjectTrigger::OnDrop);
         assert_eq!(parse_trigger_type("put").unwrap(), ObjectTrigger::OnDrop);
     }
-    
+
     #[test]
     fn test_parse_trigger_type_invalid() {
         assert!(parse_trigger_type("invalid").is_err());
         assert!(parse_trigger_type("").is_err());
     }
-    
+
     #[test]
     fn test_can_modify_object_owner() {
         let object = ObjectRecord::new_world("test_id", "Test Object", "A test");
         // World objects can't be modified by regular users
         assert!(!can_modify_object(&object, "alice"));
     }
-    
+
     #[test]
     fn test_script_builder_new() {
         let builder = ScriptBuilder::new(
@@ -930,13 +951,13 @@ mod tests {
             "Test Object".to_string(),
             ObjectTrigger::OnUse,
         );
-        
+
         assert_eq!(builder.object_id, "test_id");
         assert_eq!(builder.object_name, "Test Object");
         assert_eq!(builder.trigger_type, ObjectTrigger::OnUse);
         assert_eq!(builder.line_count(), 0);
     }
-    
+
     #[test]
     fn test_script_builder_add_lines() {
         let mut builder = ScriptBuilder::new(
@@ -944,14 +965,17 @@ mod tests {
             "Test Object".to_string(),
             ObjectTrigger::OnUse,
         );
-        
+
         builder.add_line("Say \"Hello!\"".to_string());
         builder.add_line("Give player 50 health".to_string());
-        
+
         assert_eq!(builder.line_count(), 2);
-        assert_eq!(builder.get_script(), "Say \"Hello!\"\nGive player 50 health");
+        assert_eq!(
+            builder.get_script(),
+            "Say \"Hello!\"\nGive player 50 health"
+        );
     }
-    
+
     #[test]
     fn test_script_builder_empty_script() {
         let builder = ScriptBuilder::new(
@@ -959,17 +983,17 @@ mod tests {
             "Test Object".to_string(),
             ObjectTrigger::OnUse,
         );
-        
+
         assert_eq!(builder.get_script(), "");
         assert_eq!(builder.line_count(), 0);
     }
-    
+
     #[test]
     fn test_handle_cancel_command() {
         let result = handle_cancel_command();
         assert!(result.contains("cancelled"));
     }
-    
+
     #[test]
     fn test_wizard_session_new() {
         let objects = vec![
@@ -977,29 +1001,32 @@ mod tests {
             ("obj2".to_string(), "Wand".to_string()),
         ];
         let session = WizardSession::new(objects.clone());
-        
+
         assert_eq!(session.state, WizardState::ChooseObject);
         assert_eq!(session.available_objects.len(), 2);
         assert_eq!(session.available_objects[0].0, "obj1");
         assert_eq!(session.available_objects[1].1, "Wand");
     }
-    
+
     #[test]
     fn test_wizard_state_choose_trigger() {
         let state = WizardState::ChooseTrigger {
             object_id: "obj1".to_string(),
             object_name: "Magic Orb".to_string(),
         };
-        
+
         match state {
-            WizardState::ChooseTrigger { object_id, object_name } => {
+            WizardState::ChooseTrigger {
+                object_id,
+                object_name,
+            } => {
                 assert_eq!(object_id, "obj1");
                 assert_eq!(object_name, "Magic Orb");
             }
             _ => panic!("Expected ChooseTrigger state"),
         }
     }
-    
+
     #[test]
     fn test_wizard_state_choose_action() {
         let state = WizardState::ChooseAction {
@@ -1007,9 +1034,13 @@ mod tests {
             object_name: "Potion".to_string(),
             trigger_type: ObjectTrigger::OnUse,
         };
-        
+
         match state {
-            WizardState::ChooseAction { object_id, object_name, trigger_type } => {
+            WizardState::ChooseAction {
+                object_id,
+                object_name,
+                trigger_type,
+            } => {
                 assert_eq!(object_id, "obj1");
                 assert_eq!(object_name, "Potion");
                 assert_eq!(trigger_type, ObjectTrigger::OnUse);
@@ -1017,7 +1048,7 @@ mod tests {
             _ => panic!("Expected ChooseAction state"),
         }
     }
-    
+
     #[test]
     fn test_wizard_state_customize_action() {
         let state = WizardState::CustomizeAction {
@@ -1026,9 +1057,14 @@ mod tests {
             trigger_type: ObjectTrigger::OnLook,
             action_template: "message".to_string(),
         };
-        
+
         match state {
-            WizardState::CustomizeAction { object_id, object_name, trigger_type, action_template } => {
+            WizardState::CustomizeAction {
+                object_id,
+                object_name,
+                trigger_type,
+                action_template,
+            } => {
                 assert_eq!(object_id, "obj1");
                 assert_eq!(object_name, "Sign");
                 assert_eq!(trigger_type, ObjectTrigger::OnLook);
@@ -1037,25 +1073,25 @@ mod tests {
             _ => panic!("Expected CustomizeAction state"),
         }
     }
-    
+
     #[test]
     fn test_wizard_state_transitions_object_to_trigger() {
         // Simulates state transition from ChooseObject to ChooseTrigger
         let initial = WizardState::ChooseObject;
         assert_eq!(initial, WizardState::ChooseObject);
-        
+
         // After user selects object, state becomes:
         let next = WizardState::ChooseTrigger {
             object_id: "obj1".to_string(),
             object_name: "Crystal".to_string(),
         };
-        
+
         match next {
             WizardState::ChooseTrigger { .. } => (), // Success
             _ => panic!("State should be ChooseTrigger"),
         }
     }
-    
+
     #[test]
     fn test_wizard_state_transitions_trigger_to_action() {
         // Simulates state transition from ChooseTrigger to ChooseAction
@@ -1063,14 +1099,14 @@ mod tests {
             object_id: "obj1".to_string(),
             object_name: "Crystal".to_string(),
         };
-        
+
         // After user selects trigger type, state becomes:
         let next = WizardState::ChooseAction {
             object_id: "obj1".to_string(),
             object_name: "Crystal".to_string(),
             trigger_type: ObjectTrigger::OnLook,
         };
-        
+
         match next {
             WizardState::ChooseAction { trigger_type, .. } => {
                 assert_eq!(trigger_type, ObjectTrigger::OnLook);
@@ -1078,7 +1114,7 @@ mod tests {
             _ => panic!("State should be ChooseAction"),
         }
     }
-    
+
     #[test]
     fn test_show_command_format() {
         // Test the formatting logic of show command
@@ -1090,11 +1126,11 @@ mod tests {
         } else {
             script.to_string()
         };
-        
+
         assert_eq!(script_preview, "Say \"Hello!\"");
         assert!(trigger_name.starts_with("When "));
     }
-    
+
     #[test]
     fn test_show_command_truncation() {
         // Test that long scripts are truncated
@@ -1104,11 +1140,11 @@ mod tests {
         } else {
             long_script.to_string()
         };
-        
+
         assert!(script_preview.ends_with("..."));
         assert!(script_preview.len() <= 63); // 60 chars + "..."
     }
-    
+
     #[test]
     fn test_remove_command_trigger_names() {
         // Test trigger type parsing for remove command
@@ -1118,29 +1154,27 @@ mod tests {
         assert!(parse_trigger_type("drop").is_ok());
         assert!(parse_trigger_type("invalid").is_err());
     }
-    
+
     #[test]
     fn test_test_command_success_format() {
         // Test the success message format for test command
         let trigger_type = ObjectTrigger::OnLook;
         let object_name = "Crystal";
         let script = "Say \"Sparkle!\"";
-        
+
         let message = format!(
             "🧪 Test Mode - {:?} trigger on '{}'\n\n\
             Script:\n{}\n\n\
             ✓ Script is valid",
-            trigger_type,
-            object_name,
-            script
+            trigger_type, object_name, script
         );
-        
+
         assert!(message.contains("Test Mode"));
         assert!(message.contains("OnLook"));
         assert!(message.contains("Crystal"));
         assert!(message.contains("Say \"Sparkle!\""));
     }
-    
+
     #[test]
     fn test_test_command_error_format() {
         // Test the error message format for test command
@@ -1148,38 +1182,35 @@ mod tests {
         let object_name = "Potion";
         let script = "Invalid script";
         let error = "Parse error";
-        
+
         let message = format!(
             "🧪 Test Mode - {:?} trigger on '{}'\n\n\
             Script:\n{}\n\n\
             ❌ Script Error: {}",
-            trigger_type,
-            object_name,
-            script,
-            error
+            trigger_type, object_name, script, error
         );
-        
+
         assert!(message.contains("Test Mode"));
         assert!(message.contains("OnUse"));
         assert!(message.contains("Potion"));
         assert!(message.contains("Script Error"));
     }
-    
+
     #[test]
     fn test_management_command_help_text() {
         // Verify that management commands include helpful guidance
         let show_help = "Use /when, /script, or /wizard to create triggers.";
         let remove_help = "Use /show {} to see existing triggers.";
         let test_help = "This is a dry run. No actual changes were made.";
-        
+
         assert!(show_help.contains("/when"));
         assert!(show_help.contains("/script"));
         assert!(show_help.contains("/wizard"));
-        
+
         assert!(remove_help.contains("/show"));
         assert!(test_help.contains("dry run"));
     }
-    
+
     #[test]
     fn test_trigger_type_display_names() {
         // Test that all trigger types have proper display names
@@ -1189,7 +1220,7 @@ mod tests {
             (ObjectTrigger::OnTake, "When taken"),
             (ObjectTrigger::OnDrop, "When dropped"),
         ];
-        
+
         for (trigger_type, expected_name) in triggers {
             let display_name = match trigger_type {
                 ObjectTrigger::OnLook => "When examined",
@@ -1199,9 +1230,8 @@ mod tests {
                 ObjectTrigger::OnEnter => "When entered",
                 _ => "Unknown trigger",
             };
-            
+
             assert_eq!(display_name, expected_name);
         }
     }
 }
-

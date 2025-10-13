@@ -5,12 +5,12 @@ use std::collections::HashMap;
 // Schema versions are now managed in migration.rs
 // These constants remain for backward compatibility but should reference migration constants
 pub use crate::tmush::migration::{
-    CURRENT_PLAYER_SCHEMA_VERSION as PLAYER_SCHEMA_VERSION,
-    CURRENT_ROOM_SCHEMA_VERSION as ROOM_SCHEMA_VERSION,
-    CURRENT_OBJECT_SCHEMA_VERSION as OBJECT_SCHEMA_VERSION,
-    CURRENT_NPC_SCHEMA_VERSION as NPC_SCHEMA_VERSION,
-    CURRENT_QUEST_SCHEMA_VERSION as QUEST_SCHEMA_VERSION,
     CURRENT_ACHIEVEMENT_SCHEMA_VERSION as ACHIEVEMENT_SCHEMA_VERSION,
+    CURRENT_NPC_SCHEMA_VERSION as NPC_SCHEMA_VERSION,
+    CURRENT_OBJECT_SCHEMA_VERSION as OBJECT_SCHEMA_VERSION,
+    CURRENT_PLAYER_SCHEMA_VERSION as PLAYER_SCHEMA_VERSION,
+    CURRENT_QUEST_SCHEMA_VERSION as QUEST_SCHEMA_VERSION,
+    CURRENT_ROOM_SCHEMA_VERSION as ROOM_SCHEMA_VERSION,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -56,8 +56,8 @@ pub enum RoomFlag {
     Moderated,
     Instanced,
     Crowded,
-    HousingOffice,  // Room provides housing rental/purchase services
-    NoTeleportOut,  // Players cannot teleport out of this room (PvP arenas, quest dungeons, etc.)
+    HousingOffice, // Room provides housing rental/purchase services
+    NoTeleportOut, // Players cannot teleport out of this room (PvP arenas, quest dungeons, etc.)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -529,7 +529,12 @@ pub struct DialogSession {
 }
 
 impl DialogSession {
-    pub fn new(player_id: &str, npc_id: &str, start_node: &str, tree: HashMap<String, DialogNode>) -> Self {
+    pub fn new(
+        player_id: &str,
+        npc_id: &str,
+        start_node: &str,
+        tree: HashMap<String, DialogNode>,
+    ) -> Self {
         Self {
             player_id: player_id.to_string(),
             npc_id: npc_id.to_string(),
@@ -544,7 +549,7 @@ impl DialogSession {
         if self.dialog_tree.contains_key(node_id) {
             self.node_history.push(node_id.to_string());
             self.current_node = node_id.to_string();
-            
+
             // Prevent infinite loops - max 10 depth
             if self.node_history.len() > 10 {
                 return false;
@@ -604,7 +609,10 @@ pub enum CompanionBehavior {
     /// Assist in combat
     CombatAssist { damage_bonus: u32 },
     /// Provide healing over time
-    Healing { heal_amount: u32, cooldown_seconds: u64 },
+    Healing {
+        heal_amount: u32,
+        cooldown_seconds: u64,
+    },
     /// Carry extra items (saddlebags, backpacks)
     ExtraStorage { capacity: u32 },
     /// Boost specific skill
@@ -666,9 +674,13 @@ impl CompanionRecord {
             CompanionType::Horse => "A sturdy horse with a gentle temperament.".to_string(),
             CompanionType::Dog => "A loyal dog with bright, intelligent eyes.".to_string(),
             CompanionType::Cat => "An independent cat with soft fur.".to_string(),
-            CompanionType::Familiar => "A magical familiar crackling with arcane energy.".to_string(),
+            CompanionType::Familiar => {
+                "A magical familiar crackling with arcane energy.".to_string()
+            }
             CompanionType::Mercenary => "A skilled warrior ready for combat.".to_string(),
-            CompanionType::Construct => "A mechanical construct powered by ancient magic.".to_string(),
+            CompanionType::Construct => {
+                "A mechanical construct powered by ancient magic.".to_string()
+            }
         }
     }
 
@@ -685,11 +697,12 @@ impl CompanionRecord {
                     messages: vec!["*wags tail*".to_string(), "*barks happily*".to_string()],
                 },
             ],
-            CompanionType::Cat => vec![
-                CompanionBehavior::IdleChatter {
-                    messages: vec!["*purrs contentedly*".to_string(), "*meows softly*".to_string()],
-                },
-            ],
+            CompanionType::Cat => vec![CompanionBehavior::IdleChatter {
+                messages: vec![
+                    "*purrs contentedly*".to_string(),
+                    "*meows softly*".to_string(),
+                ],
+            }],
             CompanionType::Familiar => vec![
                 CompanionBehavior::AutoFollow,
                 CompanionBehavior::SkillBoost {
@@ -1043,12 +1056,7 @@ pub struct HousingInstance {
 }
 
 impl HousingInstance {
-    pub fn new(
-        id: &str,
-        template_id: &str,
-        owner: &str,
-        entry_room_id: &str,
-    ) -> Self {
+    pub fn new(id: &str, template_id: &str, owner: &str, entry_room_id: &str) -> Self {
         Self {
             id: id.to_string(),
             template_id: template_id.to_string(),
@@ -1199,8 +1207,7 @@ impl QuestObjective {
 }
 
 /// Quest rewards that can be granted upon completion
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct QuestRewards {
     #[serde(default)]
     pub currency: Option<CurrencyAmount>,
@@ -1212,7 +1219,6 @@ pub struct QuestRewards {
     pub reputation: HashMap<String, i32>, // Faction -> reputation change
 }
 
-
 /// Quest record defining a quest template and player-specific progress
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuestRecord {
@@ -1220,7 +1226,7 @@ pub struct QuestRecord {
     pub name: String,
     pub description: String,
     pub quest_giver_npc: String, // NPC ID who gives the quest
-    pub difficulty: u8,           // 1-5 difficulty rating
+    pub difficulty: u8,          // 1-5 difficulty rating
     pub objectives: Vec<QuestObjective>,
     pub rewards: QuestRewards,
     #[serde(default)]
@@ -1797,7 +1803,11 @@ impl MailMessage {
             id: 0,
             sender: sender.to_string(),
             recipient: original.sender.clone(),
-            subject: if subject.is_empty() { reply_subject } else { subject.to_string() },
+            subject: if subject.is_empty() {
+                reply_subject
+            } else {
+                subject.to_string()
+            },
             body: body.to_string(),
             sent_at: Utc::now(),
             read_at: None,
@@ -2183,8 +2193,12 @@ impl TradeSession {
 
         format!(
             "{}: {} + {}\n{}: {} + {}",
-            self.player1, p1_items_str, p1_currency_str,
-            self.player2, p2_items_str, p2_currency_str
+            self.player1,
+            p1_items_str,
+            p1_currency_str,
+            self.player2,
+            p2_items_str,
+            p2_currency_str
         )
     }
 }
@@ -2200,7 +2214,7 @@ pub struct WorldConfig {
     pub updated_at: DateTime<Utc>,
     /// Updated by which admin
     pub updated_by: String,
-    
+
     // === BRANDING ===
     /// Welcome message shown when tutorial auto-starts
     pub welcome_message: String,
@@ -2210,7 +2224,7 @@ pub struct WorldConfig {
     pub world_name: String,
     /// Short description of the world
     pub world_description: String,
-    
+
     // === HELP SYSTEM TEMPLATES ===
     /// Main help menu text
     pub help_main: String,
@@ -2226,7 +2240,7 @@ pub struct WorldConfig {
     pub help_companion: String,
     /// Mail system help
     pub help_mail: String,
-    
+
     // === ERROR MESSAGE TEMPLATES ===
     /// Error when trying to move in blocked direction: "You can't go {direction} from here."
     pub err_no_exit: String,
@@ -2244,7 +2258,7 @@ pub struct WorldConfig {
     pub err_emote_what: String,
     /// Error when insufficient funds: "Insufficient funds."
     pub err_insufficient_funds: String,
-    
+
     // === SUCCESS MESSAGE TEMPLATES ===
     /// Success depositing to bank: "Deposited {amount} to bank.\nUse BALANCE to check your account."
     pub msg_deposit_success: String,
@@ -2256,7 +2270,7 @@ pub struct WorldConfig {
     pub msg_sell_success: String,
     /// Trade initiated: "Trade initiated with {player}!\nUse OFFER to add items/currency.\nType ACCEPT when ready."
     pub msg_trade_initiated: String,
-    
+
     // === VALIDATION & INPUT ERROR MESSAGES ===
     pub err_whisper_what: String,
     pub err_whisper_whom: String,
@@ -2265,7 +2279,7 @@ pub struct WorldConfig {
     pub err_amount_positive: String,
     pub err_invalid_amount_format: String,
     pub err_transfer_self: String,
-    
+
     // === EMPTY STATE MESSAGES ===
     pub msg_empty_inventory: String,
     pub msg_no_item_quantity: String,
@@ -2283,7 +2297,7 @@ pub struct WorldConfig {
     pub msg_no_active_trade_hint: String,
     pub msg_no_trade_history: String,
     pub msg_no_players_found: String,
-    
+
     // === SHOP ERROR MESSAGES ===
     pub err_shop_no_sell: String,
     pub err_shop_doesnt_sell: String,
@@ -2292,49 +2306,49 @@ pub struct WorldConfig {
     pub err_shop_wont_buy_price: String,
     pub err_item_not_owned: String,
     pub err_only_have_quantity: String,
-    
+
     // === TRADING SYSTEM MESSAGES ===
     pub err_trade_already_active: String,
     pub err_trade_partner_busy: String,
     pub err_trade_player_not_here: String,
     pub err_trade_insufficient_amount: String,
     pub msg_trade_accepted_waiting: String,
-    
+
     // === MOVEMENT & NAVIGATION MESSAGES ===
     pub err_movement_restricted: String,
     pub err_player_not_here: String,
-    
+
     // === QUEST SYSTEM MESSAGES ===
     pub err_quest_cannot_accept: String,
     pub err_quest_not_found: String,
     pub msg_quest_abandoned: String,
-    
+
     // === ACHIEVEMENT SYSTEM MESSAGES ===
     pub err_achievement_unknown_category: String,
     pub msg_no_achievements_category: String,
-    
+
     // === TITLE SYSTEM MESSAGES ===
     pub err_title_not_unlocked: String,
     pub msg_title_equipped: String,
     pub msg_title_equipped_display: String,
     pub err_title_usage: String,
-    
+
     // === COMPANION SYSTEM MESSAGES ===
     pub msg_companion_tamed: String,
     pub err_companion_owned: String,
     pub err_companion_not_found: String,
     pub msg_companion_released: String,
-    
+
     // === BULLETIN BOARD MESSAGES ===
     pub err_board_location_required: String,
     pub err_board_post_location: String,
     pub err_board_read_location: String,
-    
+
     // === NPC & TUTORIAL MESSAGES ===
     pub err_no_npc_here: String,
     pub msg_tutorial_completed: String,
     pub msg_tutorial_not_started: String,
-    
+
     // === HOUSING SYSTEM MESSAGES ===
     pub err_housing_not_at_office: String,
     pub err_housing_no_templates: String,
@@ -2348,7 +2362,7 @@ pub struct WorldConfig {
     pub msg_housing_payment_failed: String,
     pub msg_housing_payment_success: String,
     pub msg_housing_final_warning: String,
-    
+
     // === HOME/TELEPORT SYSTEM MESSAGES ===
     pub err_teleport_in_combat: String,
     pub err_teleport_restricted: String,
@@ -2363,7 +2377,7 @@ pub struct WorldConfig {
     pub msg_home_list_footer_set: String,
     pub err_home_not_found: String,
     pub msg_home_set_success: String,
-    
+
     // === GUEST/INVITE SYSTEM MESSAGES ===
     pub err_invite_no_housing: String,
     pub err_invite_not_in_housing: String,
@@ -2372,14 +2386,14 @@ pub struct WorldConfig {
     pub msg_invite_success: String,
     pub err_uninvite_not_guest: String,
     pub msg_uninvite_success: String,
-    
+
     // === DESCRIBE/CUSTOMIZATION SYSTEM MESSAGES ===
     pub err_describe_not_in_housing: String,
     pub err_describe_no_permission: String,
     pub err_describe_too_long: String,
     pub msg_describe_success: String,
     pub msg_describe_current: String,
-    
+
     // === TECHNICAL/SYSTEM MESSAGES ===
     pub err_player_load_failed: String,
     pub err_shop_save_failed: String,
@@ -2402,7 +2416,7 @@ impl Default for WorldConfig {
             version: 1,
             updated_at: Utc::now(),
             updated_by: "system".to_string(),
-            
+
             // Branding
             welcome_message: "* Welcome to Old Towne Mesh! *\n\n".to_string() +
                 "You've arrived at the Landing Gazebo.\n" +
@@ -2416,7 +2430,7 @@ impl Default for WorldConfig {
             motd: "Welcome to Old Towne Mesh!\nType HELP for commands.".to_string(),
             world_name: "Old Towne Mesh".to_string(),
             world_description: "A mesh-networked MUD adventure".to_string(),
-            
+
             // Help system templates
             help_main: "=TINYMUSH HELP=\n".to_string() +
                 "Move: N/S/E/W/U/D + diagonals\n" +
@@ -2468,7 +2482,7 @@ impl Default for WorldConfig {
                 "RMAIL <id> - read message\n" +
                 "DMAIL <id> - delete message\n" +
                 "Folders: inbox, sent, trash",
-            
+
             // Error messages
             err_no_exit: "You can't go {} from here.".to_string(),
             err_whisper_self: "You can't whisper to yourself!".to_string(),
@@ -2478,14 +2492,14 @@ impl Default for WorldConfig {
             err_say_what: "Say what?".to_string(),
             err_emote_what: "Emote what?".to_string(),
             err_insufficient_funds: "Insufficient funds.".to_string(),
-            
+
             // Success messages
             msg_deposit_success: "Deposited {amount} to bank.\nUse BALANCE to check your account.".to_string(),
             msg_withdraw_success: "Withdrew {amount} from bank.\nUse BALANCE to check your account.".to_string(),
             msg_buy_success: "You bought {quantity} x {item} for {price}.".to_string(),
             msg_sell_success: "You sold {quantity} x {item} for {price}.".to_string(),
             msg_trade_initiated: "Trade initiated with {target}!\nUse OFFER to add items/currency.\nType ACCEPT when ready.".to_string(),
-            
+
             // Validation & input errors
             err_whisper_what: "Whisper what?".to_string(),
             err_whisper_whom: "Whisper to whom?".to_string(),
@@ -2494,7 +2508,7 @@ impl Default for WorldConfig {
             err_amount_positive: "Amount must be positive.".to_string(),
             err_invalid_amount_format: "Invalid amount format.".to_string(),
             err_transfer_self: "You can't transfer to yourself!".to_string(),
-            
+
             // Empty state messages
             msg_empty_inventory: "You are carrying nothing.".to_string(),
             msg_no_item_quantity: "You only have {quantity} x {item}.".to_string(),
@@ -2512,7 +2526,7 @@ impl Default for WorldConfig {
             msg_no_active_trade_hint: "You have no active trade.\nUse TRADE <player> to start one.".to_string(),
             msg_no_trade_history: "No trade history.".to_string(),
             msg_no_players_found: "No players found.".to_string(),
-            
+
             // Shop error messages
             err_shop_no_sell: "No shop here sells '{item}'.".to_string(),
             err_shop_doesnt_sell: "Shop doesn't sell '{item}'.".to_string(),
@@ -2521,49 +2535,48 @@ impl Default for WorldConfig {
             err_shop_wont_buy_price: "Shop doesn't want to buy {item} for more than {price}.".to_string(),
             err_item_not_owned: "You don't have any '{item}'.".to_string(),
             err_only_have_quantity: "You only have {quantity} x {item}.".to_string(),
-            
+
             // Trading system messages
             err_trade_already_active: "You're already trading with {player}!\nType REJECT to cancel.".to_string(),
             err_trade_partner_busy: "{player} is already in a trade.".to_string(),
             err_trade_player_not_here: "{player} is not here!".to_string(),
             err_trade_insufficient_amount: "You don't have that much!".to_string(),
             msg_trade_accepted_waiting: "You accepted the trade.\nWaiting for other player...".to_string(),
-            
             // Movement & navigation messages
             err_movement_restricted: "You can't go {direction} right now. The area might be full or restricted.".to_string(),
             err_player_not_here: "Player '{player}' not found in this room.".to_string(),
-            
+
             // Quest system messages
             err_quest_cannot_accept: "Cannot accept that quest (already accepted/completed, or prerequisites not met).".to_string(),
             err_quest_not_found: "Quest '{quest}' not found in your active quests.".to_string(),
             msg_quest_abandoned: "You have abandoned the quest: {quest}".to_string(),
-            
+
             // Achievement system messages
             err_achievement_unknown_category: "Unknown category: {category}\nAvailable: COMBAT, EXPLORATION, SOCIAL, ECONOMIC, CRAFTING, QUEST, SPECIAL".to_string(),
             msg_no_achievements_category: "No achievements found in category: {category}".to_string(),
-            
+
             // Title system messages
             err_title_not_unlocked: "You haven't unlocked the title: {title}".to_string(),
             msg_title_equipped: "Title equipped: {title}".to_string(),
             msg_title_equipped_display: "Title equipped: {title}\nYou are now known as {display}".to_string(),
             err_title_usage: "Usage: TITLE [LIST|EQUIP <name>|UNEQUIP]".to_string(),
-            
+
             // Companion system messages
             msg_companion_tamed: "You've tamed {name}!\nLoyalty: {loyalty}/100".to_string(),
             err_companion_owned: "{name} already has an owner.".to_string(),
             err_companion_not_found: "There's no companion named '{name}' here.".to_string(),
             msg_companion_released: "You've released {name} back to the wild.".to_string(),
-            
+
             // Bulletin board messages
             err_board_location_required: "You must be at the Town Square to access the Town Stump bulletin board.\nHead to the town square and try again.".to_string(),
             err_board_post_location: "You must be at the Town Square to post to the bulletin board.".to_string(),
             err_board_read_location: "You must be at the Town Square to read bulletin board messages.".to_string(),
-            
+
             // NPC & tutorial messages
             err_no_npc_here: "There's nobody here to talk to.".to_string(),
             msg_tutorial_completed: "Mayor Thompson: 'You've already completed the tutorial. Welcome back!'".to_string(),
             msg_tutorial_not_started: "Mayor Thompson: 'Come back when you're ready for the tutorial.'".to_string(),
-            
+
             // Housing system messages
             err_housing_not_at_office: "You need to visit a housing office to inquire about available housing.\nLook for locations with rental services or property management.".to_string(),
             err_housing_no_templates: "No housing is available at this location right now.".to_string(),
@@ -2577,7 +2590,7 @@ impl Default for WorldConfig {
             msg_housing_payment_failed: "❌ HOUSING PAYMENT FAILED: Unable to deduct {amount} credits for '{name}'.\nYou have insufficient funds. Your housing has been marked inactive.\nItems have been moved to your reclaim box. Type RECLAIM to retrieve them.".to_string(),
             msg_housing_payment_success: "✅ HOUSING PAYMENT: Successfully paid {amount} credits for '{name}'.\nYour next payment is due in 30 days.".to_string(),
             msg_housing_final_warning: "🔴 FINAL WARNING: Your housing '{name}' has been inactive for {days} days.\nYour reclaim box will be permanently deleted at 90 days.\nLog in now to retrieve your items with the RECLAIM command!".to_string(),
-            
+
             // Home/teleport system messages
             err_teleport_in_combat: "You can't teleport while in combat!".to_string(),
             err_teleport_restricted: "You can't teleport from this location.".to_string(),
@@ -2592,7 +2605,7 @@ impl Default for WorldConfig {
             msg_home_list_footer_set: "Use 'HOME SET <number>' to change your primary home.".to_string(),
             err_home_not_found: "Housing '{id}' not found. Use HOME LIST to see your properties.".to_string(),
             msg_home_set_success: "Primary home set to: {name}\nUse HOME to teleport there.".to_string(),
-            
+
             // Guest/invite system messages
             err_invite_no_housing: "You don't own any housing to invite guests to.".to_string(),
             err_invite_not_in_housing: "You must be in your housing to invite guests.".to_string(),
@@ -2601,14 +2614,14 @@ impl Default for WorldConfig {
             msg_invite_success: "You've invited {name} to your housing.".to_string(),
             err_uninvite_not_guest: "{name} is not on your guest list.".to_string(),
             msg_uninvite_success: "You've removed {name} from your guest list.".to_string(),
-            
+
             // Describe/customization system messages
             err_describe_not_in_housing: "You can only use DESCRIBE in housing you own or have permission to edit.".to_string(),
             err_describe_no_permission: "You don't have permission to edit this room's description.".to_string(),
             err_describe_too_long: "Description too long. Maximum {max} characters (yours: {actual}).".to_string(),
             msg_describe_success: "✓ Room description updated!".to_string(),
             msg_describe_current: "Current: \"{desc}\"\n\nYou have permission to edit.\nUsage: DESCRIBE <new description>".to_string(),
-            
+
             // Technical/system messages
             err_player_load_failed: "Error loading player: {error}".to_string(),
             err_shop_save_failed: "Failed to save shop: {error}".to_string(),

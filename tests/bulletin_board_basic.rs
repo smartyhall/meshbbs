@@ -1,7 +1,7 @@
 //! Basic bulletin board functionality tests
 
-use meshbbs::tmush::TinyMushStoreBuilder;
 use meshbbs::tmush::types::{BulletinBoard, BulletinMessage};
+use meshbbs::tmush::TinyMushStoreBuilder;
 use tempfile::TempDir;
 
 #[test]
@@ -15,13 +15,13 @@ fn bulletin_board_round_trip() {
     // Create a bulletin board
     let board = BulletinBoard::new(
         "test_board",
-        "Test Board", 
+        "Test Board",
         "A test bulletin board",
-        "test_room"
+        "test_room",
     );
-    
+
     store.put_bulletin_board(board.clone()).expect("put board");
-    
+
     // Retrieve the board
     let retrieved_board = store.get_bulletin_board("test_board").expect("get board");
     assert_eq!(retrieved_board.id, board.id);
@@ -44,16 +44,18 @@ fn bulletin_message_posting_and_retrieval() {
     // Post a message
     let message = BulletinMessage::new(
         "test_user",
-        "Test Subject", 
+        "Test Subject",
         "This is a test message body",
-        "test_board"
+        "test_board",
     );
-    
+
     let message_id = store.post_bulletin(message.clone()).expect("post message");
     assert!(message_id > 0);
 
     // Retrieve the message
-    let retrieved_message = store.get_bulletin("test_board", message_id).expect("get message");
+    let retrieved_message = store
+        .get_bulletin("test_board", message_id)
+        .expect("get message");
     assert_eq!(retrieved_message.author, message.author);
     assert_eq!(retrieved_message.subject, message.subject);
     assert_eq!(retrieved_message.body, message.body);
@@ -79,20 +81,26 @@ fn bulletin_message_listing() {
             &format!("user_{}", i),
             &format!("Subject {}", i),
             &format!("Message body {}", i),
-            "test_board"
+            "test_board",
         );
         store.post_bulletin(message).expect("post message");
     }
 
     // List messages
-    let messages = store.list_bulletins("test_board", 0, 10).expect("list messages");
+    let messages = store
+        .list_bulletins("test_board", 0, 10)
+        .expect("list messages");
     assert_eq!(messages.len(), 5);
 
     // Check pagination
-    let first_page = store.list_bulletins("test_board", 0, 3).expect("first page");
+    let first_page = store
+        .list_bulletins("test_board", 0, 3)
+        .expect("first page");
     assert_eq!(first_page.len(), 3);
 
-    let second_page = store.list_bulletins("test_board", 3, 3).expect("second page");
+    let second_page = store
+        .list_bulletins("test_board", 3, 3)
+        .expect("second page");
     assert_eq!(second_page.len(), 2);
 }
 
@@ -112,9 +120,9 @@ fn bulletin_cleanup() {
     for i in 1..=10 {
         let message = BulletinMessage::new(
             &format!("user_{}", i),
-            &format!("Subject {}", i), 
+            &format!("Subject {}", i),
             &format!("Message body {}", i),
-            "test_board"
+            "test_board",
         );
         store.post_bulletin(message).expect("post message");
     }

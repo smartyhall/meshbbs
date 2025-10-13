@@ -7,12 +7,12 @@
 //! - Stock management and restocking
 //! - Shop persistence
 
+use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
-use anyhow::{Result, anyhow};
 
-use crate::tmush::types::{ObjectRecord, CurrencyAmount};
+use crate::tmush::types::{CurrencyAmount, ObjectRecord};
 
 /// Configuration for shop behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,8 +36,8 @@ impl Default for ShopConfig {
         Self {
             max_unique_items: 50,
             max_item_quantity: 999,
-            default_buy_markup: 1.2,      // Sell for 120% of base
-            default_sell_markdown: 0.7,   // Buy for 70% of base
+            default_buy_markup: 1.2,    // Sell for 120% of base
+            default_sell_markdown: 0.7, // Buy for 70% of base
             enable_restocking: true,
             restock_interval_secs: 86400, // 24 hours
         }
@@ -177,12 +177,7 @@ pub struct ShopRecord {
 
 impl ShopRecord {
     /// Create a new shop
-    pub fn new(
-        id: String,
-        name: String,
-        location: String,
-        owner: String,
-    ) -> Self {
+    pub fn new(id: String, name: String, location: String, owner: String) -> Self {
         let now = Utc::now();
         Self {
             id,
@@ -201,7 +196,10 @@ impl ShopRecord {
     /// Add an item to shop inventory
     pub fn add_item(&mut self, item: ShopItem) -> Result<()> {
         if self.inventory.len() >= self.config.max_unique_items {
-            return Err(anyhow!("Shop inventory full ({} items)", self.config.max_unique_items));
+            return Err(anyhow!(
+                "Shop inventory full ({} items)",
+                self.config.max_unique_items
+            ));
         }
 
         let object_id = item.object_id.clone();
@@ -230,19 +228,24 @@ impl ShopRecord {
     }
 
     /// Calculate buy price (what player pays to shop)
-    pub fn calculate_buy_price(&self, object: &ObjectRecord, quantity: u32, shop_item: &ShopItem) -> CurrencyAmount {
+    pub fn calculate_buy_price(
+        &self,
+        object: &ObjectRecord,
+        quantity: u32,
+        shop_item: &ShopItem,
+    ) -> CurrencyAmount {
         let markup = shop_item.markup.unwrap_or(self.config.default_buy_markup);
-        
+
         // Use currency_value if set, otherwise fall back to legacy value
         let base_value = if object.currency_value.is_positive() {
             object.currency_value.base_value()
         } else {
             object.value as i64
         };
-        
+
         // Apply markup and multiply by quantity
         let total = (base_value as f64 * markup * quantity as f64).round() as i64;
-        
+
         // Match the currency type from the object
         match &object.currency_value {
             CurrencyAmount::Decimal { .. } => CurrencyAmount::decimal(total),
@@ -251,19 +254,26 @@ impl ShopRecord {
     }
 
     /// Calculate sell price (what shop pays to player)
-    pub fn calculate_sell_price(&self, object: &ObjectRecord, quantity: u32, shop_item: &ShopItem) -> CurrencyAmount {
-        let markdown = shop_item.markdown.unwrap_or(self.config.default_sell_markdown);
-        
+    pub fn calculate_sell_price(
+        &self,
+        object: &ObjectRecord,
+        quantity: u32,
+        shop_item: &ShopItem,
+    ) -> CurrencyAmount {
+        let markdown = shop_item
+            .markdown
+            .unwrap_or(self.config.default_sell_markdown);
+
         // Use currency_value if set, otherwise fall back to legacy value
         let base_value = if object.currency_value.is_positive() {
             object.currency_value.base_value()
         } else {
             object.value as i64
         };
-        
+
         // Apply markdown and multiply by quantity
         let total = (base_value as f64 * markdown * quantity as f64).round() as i64;
-        
+
         // Match the currency type from the object
         match &object.currency_value {
             CurrencyAmount::Decimal { .. } => CurrencyAmount::decimal(total),
@@ -281,7 +291,8 @@ impl ShopRecord {
     ) -> Result<(CurrencyAmount, u32)> {
         // First check if item exists and get quantity info
         let (in_stock, available_qty) = {
-            let shop_item = self.get_item(object_id)
+            let shop_item = self
+                .get_item(object_id)
                 .ok_or_else(|| anyhow!("Item not in shop inventory"))?;
             (shop_item.in_stock(), shop_item.available())
         };
@@ -310,11 +321,13 @@ impl ShopRecord {
         // Now mutate: reduce shop stock
         let shop_item = self.get_item_mut(object_id).unwrap();
         shop_item.reduce_stock(actual_qty);
-        
+
         // Add currency to shop
-        self.currency = self.currency.add(&price)
+        self.currency = self
+            .currency
+            .add(&price)
             .map_err(|e| anyhow!("Currency overflow: {}", e))?;
-        
+
         self.updated_at = Utc::now();
         Ok((price, actual_qty))
     }
@@ -329,7 +342,8 @@ impl ShopRecord {
     ) -> Result<CurrencyAmount> {
         // Check if shop accepts this item and calculate price before mutating
         let price = {
-            let shop_item = self.get_item(object_id)
+            let shop_item = self
+                .get_item(object_id)
                 .ok_or_else(|| anyhow!("Shop does not buy this item"))?;
             self.calculate_sell_price(object, quantity, shop_item)
         };
@@ -342,11 +356,13 @@ impl ShopRecord {
         // Now mutate: increase shop stock
         let shop_item = self.get_item_mut(object_id).unwrap();
         shop_item.increase_stock(quantity);
-        
+
         // Deduct currency from shop
-        self.currency = self.currency.subtract(&price)
+        self.currency = self
+            .currency
+            .subtract(&price)
             .map_err(|e| anyhow!("Currency error: {}", e))?;
-        
+
         self.updated_at = Utc::now();
         Ok(price)
     }
@@ -377,9 +393,9 @@ pub fn format_shop_listing(
     get_object: impl Fn(&str) -> Option<ObjectRecord>,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    
+
     lines.push(format!("=== {} ===", shop.name));
-    
+
     if shop.inventory.is_empty() {
         lines.push("No items for sale.".to_string());
         return lines;
@@ -393,12 +409,14 @@ pub fn format_shop_listing(
             } else {
                 String::new()
             };
-            
+
             let price_str = match price {
-                CurrencyAmount::Decimal { minor_units } => format!("${:.2}", minor_units as f64 / 100.0),
+                CurrencyAmount::Decimal { minor_units } => {
+                    format!("${:.2}", minor_units as f64 / 100.0)
+                }
                 CurrencyAmount::MultiTier { base_units } => format!("{}c", base_units),
             };
-            
+
             lines.push(format!(
                 "{}. {}{} - {}",
                 idx + 1,
@@ -419,34 +437,34 @@ pub fn format_shop_item_detail(
     shop_item: &ShopItem,
 ) -> Vec<String> {
     let mut lines = Vec::new();
-    
+
     lines.push(format!("=== {} ===", object.name));
     lines.push(object.description.clone());
-    
+
     let buy_price = shop.calculate_buy_price(object, 1, shop_item);
     let sell_price = shop.calculate_sell_price(object, 1, shop_item);
-    
+
     let buy_str = match buy_price {
         CurrencyAmount::Decimal { minor_units } => format!("${:.2}", minor_units as f64 / 100.0),
         CurrencyAmount::MultiTier { base_units } => format!("{}c", base_units),
     };
-    
+
     let sell_str = match sell_price {
         CurrencyAmount::Decimal { minor_units } => format!("${:.2}", minor_units as f64 / 100.0),
         CurrencyAmount::MultiTier { base_units } => format!("{}c", base_units),
     };
-    
+
     lines.push(format!("Buy: {}", buy_str));
     lines.push(format!("Sell: {}", sell_str));
-    
+
     if let Some(qty) = shop_item.quantity {
         lines.push(format!("Stock: {}", qty));
     } else {
         lines.push("Stock: Unlimited".to_string());
     }
-    
+
     lines.push(format!("Weight: {}", object.weight));
-    
+
     lines
 }
 
@@ -464,7 +482,7 @@ mod tests {
             created_at: Utc::now(),
             weight: 5,
             currency_value: CurrencyAmount::decimal(100), // 100 pennies = $1.00
-            value: 100, // Legacy value
+            value: 100,                                   // Legacy value
             takeable: true,
             usable: false,
             actions: HashMap::new(),
@@ -473,7 +491,7 @@ mod tests {
             clone_count: 0,
             created_by: "world".to_string(),
             flags: Vec::new(),
-            locked: false, // Shop items unlocked by default
+            locked: false,             // Shop items unlocked by default
             ownership_history: vec![], // New items have no history
             schema_version: 1,
         }
@@ -482,14 +500,14 @@ mod tests {
     #[test]
     fn test_shop_item_stock_management() {
         let mut item = ShopItem::limited("sword1".to_string(), 10);
-        
+
         assert!(item.in_stock());
         assert_eq!(item.available(), Some(10));
-        
+
         let reduced = item.reduce_stock(3);
         assert_eq!(reduced, 3);
         assert_eq!(item.available(), Some(7));
-        
+
         item.increase_stock(5);
         assert_eq!(item.available(), Some(12));
     }
@@ -497,10 +515,10 @@ mod tests {
     #[test]
     fn test_shop_item_infinite_stock() {
         let mut item = ShopItem::infinite("potion1".to_string());
-        
+
         assert!(item.in_stock());
         assert_eq!(item.available(), None);
-        
+
         let reduced = item.reduce_stock(100);
         assert_eq!(reduced, 100);
         assert!(item.in_stock());
@@ -515,14 +533,14 @@ mod tests {
             "room1".to_string(),
             "vendor1".to_string(),
         );
-        
+
         let object = test_object();
         let shop_item = ShopItem::limited("sword1".to_string(), 5);
-        
+
         // Default markup 1.2 = 120 pennies
         let buy_price = shop.calculate_buy_price(&object, 1, &shop_item);
         assert_eq!(buy_price.base_value(), 120);
-        
+
         // Default markdown 0.7 = 70 pennies
         let sell_price = shop.calculate_sell_price(&object, 1, &shop_item);
         assert_eq!(sell_price.base_value(), 70);
@@ -536,18 +554,18 @@ mod tests {
             "room1".to_string(),
             "vendor1".to_string(),
         );
-        
+
         let object = test_object();
         let shop_item = ShopItem::limited("sword1".to_string(), 5);
         shop.add_item(shop_item).unwrap();
-        
+
         let result = shop.process_buy("sword1", 2, &object);
         assert!(result.is_ok());
-        
+
         let (price, qty) = result.unwrap();
         assert_eq!(qty, 2);
         assert_eq!(price.base_value(), 240); // 120 * 2
-        
+
         // Check stock reduced
         let item = shop.get_item("sword1").unwrap();
         assert_eq!(item.available(), Some(3));
@@ -561,15 +579,15 @@ mod tests {
             "room1".to_string(),
             "vendor1".to_string(),
         );
-        
+
         let object = test_object();
         let shop_item = ShopItem::limited("sword1".to_string(), 2);
         shop.add_item(shop_item).unwrap();
-        
+
         // Try to buy 5, only 2 available
         let result = shop.process_buy("sword1", 5, &object);
         assert!(result.is_ok());
-        
+
         let (price, qty) = result.unwrap();
         assert_eq!(qty, 2); // Only 2 were available
         assert_eq!(price.base_value(), 240); // 120 * 2
@@ -583,24 +601,24 @@ mod tests {
             "room1".to_string(),
             "vendor1".to_string(),
         );
-        
+
         // Give shop currency
         shop.currency = shop.currency.add(&CurrencyAmount::decimal(1000)).unwrap();
-        
+
         let object = test_object();
         let shop_item = ShopItem::limited("sword1".to_string(), 0);
         shop.add_item(shop_item).unwrap();
-        
+
         let result = shop.process_sell("sword1", 2, &object);
         assert!(result.is_ok());
-        
+
         let price = result.unwrap();
         assert_eq!(price.base_value(), 140); // 70 * 2
-        
+
         // Check stock increased
         let item = shop.get_item("sword1").unwrap();
         assert_eq!(item.available(), Some(2));
-        
+
         // Check shop currency reduced
         assert_eq!(shop.currency.base_value(), 860); // 1000 - 140
     }
@@ -613,14 +631,14 @@ mod tests {
             "room1".to_string(),
             "vendor1".to_string(),
         );
-        
+
         // Shop only has 50 pennies
         shop.currency = shop.currency.add(&CurrencyAmount::decimal(50)).unwrap();
-        
+
         let object = test_object();
         let shop_item = ShopItem::limited("sword1".to_string(), 0);
         shop.add_item(shop_item).unwrap();
-        
+
         // Try to sell for 70 pennies
         let result = shop.process_sell("sword1", 1, &object);
         assert!(result.is_err());
@@ -632,7 +650,7 @@ mod tests {
         item.restock_threshold = Some(5);
         item.restock_to = Some(10);
         item.last_restock = Some(Utc::now() - chrono::Duration::days(2));
-        
+
         // Should restock (below threshold and time elapsed)
         assert!(item.needs_restock());
         assert!(item.restock(86400)); // 24 hour interval

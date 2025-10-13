@@ -1,3 +1,6 @@
+pub mod admin;
+pub mod evaluator;
+pub mod integration;
 /// Trigger execution engine for TinyMUSH Phase 7
 ///
 /// This module provides a safe, sandboxed scripting system for interactive objects.
@@ -16,31 +19,26 @@
 /// ```text
 /// message("text") && condition ? action : fallback
 /// ```
-
 pub mod parser;
-pub mod evaluator;
-pub mod integration;
 pub mod rate_limit;
-pub mod admin;
 
 use crate::tmush::errors::TinyMushError;
 use crate::tmush::storage::TinyMushStore;
-use crate::tmush::types::{ObjectTrigger, PlayerRecord, RoomRecord, ObjectRecord};
+use crate::tmush::types::{ObjectRecord, ObjectTrigger, PlayerRecord, RoomRecord};
 use std::time::{Duration, Instant};
 
-pub use parser::{parse_script, AstNode, BinaryOperator};
+pub use admin::{
+    check_trigger_allowed, disable_object_trigger, enable_object_trigger, format_trigger_stats,
+    get_disabled_objects, get_trigger_stats, is_object_trigger_disabled, is_trigger_system_enabled,
+    record_trigger_execution, set_trigger_system_enabled,
+};
 pub use evaluator::{Evaluator, Value};
 pub use integration::{
-    execute_on_look, execute_on_take, execute_on_drop, execute_on_use, 
-    execute_on_poke, execute_room_on_enter
+    execute_on_drop, execute_on_look, execute_on_poke, execute_on_take, execute_on_use,
+    execute_room_on_enter,
 };
-pub use rate_limit::{TriggerRateLimiter, RateLimitReason, RateLimitStats};
-pub use admin::{
-    check_trigger_allowed, record_trigger_execution,
-    disable_object_trigger, enable_object_trigger,
-    is_object_trigger_disabled, get_disabled_objects, set_trigger_system_enabled,
-    is_trigger_system_enabled, get_trigger_stats, format_trigger_stats
-};
+pub use parser::{parse_script, AstNode, BinaryOperator};
+pub use rate_limit::{RateLimitReason, RateLimitStats, TriggerRateLimiter};
 
 /// Maximum script length in characters
 pub const MAX_SCRIPT_LENGTH: usize = 512;
@@ -71,42 +69,38 @@ pub const MAX_EXECUTIONS_PER_MINUTE: u16 = 100;
 pub struct TriggerContext {
     /// Username of the player who triggered this
     pub player_username: String,
-    
+
     /// Player's display name
     pub player_name: String,
-    
+
     /// ID of the object being triggered
     pub object_id: String,
-    
+
     /// Name of the object
     pub object_name: String,
-    
+
     /// Current room ID
     pub room_id: String,
-    
+
     /// Current room name
     pub room_name: String,
-    
+
     /// When execution started (for timeout checking)
     pub started_at: Instant,
-    
+
     /// How many actions have executed so far
     pub action_count: u8,
-    
+
     /// How many messages have been sent so far
     pub message_count: u8,
-    
+
     /// Current nesting depth (for recursion prevention)
     pub depth: u8,
 }
 
 impl TriggerContext {
     /// Create a new trigger execution context
-    pub fn new(
-        player: &PlayerRecord,
-        object: &ObjectRecord,
-        room: &RoomRecord,
-    ) -> Self {
+    pub fn new(player: &PlayerRecord, object: &ObjectRecord, room: &RoomRecord) -> Self {
         Self {
             player_username: player.username.clone(),
             player_name: player.display_name.clone(),
@@ -120,42 +114,42 @@ impl TriggerContext {
             depth: 0,
         }
     }
-    
+
     /// Check if execution has timed out
     pub fn is_timed_out(&self) -> bool {
         self.started_at.elapsed() > MAX_EXECUTION_TIME
     }
-    
+
     /// Check if action limit has been reached
     pub fn can_execute_action(&self) -> bool {
         self.action_count < MAX_ACTIONS_PER_TRIGGER
     }
-    
+
     /// Check if message limit has been reached
     pub fn can_send_message(&self) -> bool {
         self.message_count < MAX_MESSAGES_PER_TRIGGER
     }
-    
+
     /// Check if nesting depth is within limits
     pub fn can_nest_deeper(&self) -> bool {
         self.depth < MAX_NESTED_DEPTH
     }
-    
+
     /// Increment action counter
     pub fn increment_action(&mut self) {
         self.action_count += 1;
     }
-    
+
     /// Increment message counter
     pub fn increment_message(&mut self) {
         self.message_count += 1;
     }
-    
+
     /// Increment depth counter
     pub fn increment_depth(&mut self) {
         self.depth += 1;
     }
-    
+
     /// Decrement depth counter
     pub fn decrement_depth(&mut self) {
         self.depth = self.depth.saturating_sub(1);
@@ -167,19 +161,19 @@ impl TriggerContext {
 pub enum TriggerResult {
     /// Trigger executed successfully, returned messages for player
     Success(Vec<String>),
-    
+
     /// Trigger had no script or was empty
     NoScript,
-    
+
     /// Trigger execution was skipped (conditions not met)
     Skipped,
-    
+
     /// Trigger execution failed
     Failed(String),
-    
+
     /// Trigger execution timed out
     TimedOut,
-    
+
     /// Trigger hit rate limit
     RateLimited,
 }
@@ -204,7 +198,7 @@ pub fn execute_trigger(
     if script.is_empty() {
         return Ok(TriggerResult::NoScript);
     }
-    
+
     if script.len() > MAX_SCRIPT_LENGTH {
         return Ok(TriggerResult::Failed(format!(
             "Script too long ({} > {} chars)",
@@ -212,18 +206,18 @@ pub fn execute_trigger(
             MAX_SCRIPT_LENGTH
         )));
     }
-    
+
     // Check for timeout before starting
     if context.is_timed_out() {
         return Ok(TriggerResult::TimedOut);
     }
-    
+
     // Parse the script
     let ast = match parse_script(script) {
         Ok(ast) => ast,
         Err(e) => return Ok(TriggerResult::Failed(format!("Parse error: {}", e))),
     };
-    
+
     // Evaluate the script
     let mut evaluator = Evaluator::new(context, store);
     match evaluator.evaluate(&ast) {
@@ -251,7 +245,7 @@ pub fn validate_script(script: &str) -> Result<(), String> {
     if script.is_empty() {
         return Err("Script cannot be empty".to_string());
     }
-    
+
     if script.len() > MAX_SCRIPT_LENGTH {
         return Err(format!(
             "Script too long: {} characters (max {})",
@@ -259,10 +253,10 @@ pub fn validate_script(script: &str) -> Result<(), String> {
             MAX_SCRIPT_LENGTH
         ));
     }
-    
+
     // Parse the script to validate syntax
     parse_script(script)?;
-    
+
     Ok(())
 }
 
@@ -271,10 +265,10 @@ mod tests {
     use super::*;
     use crate::tmush::types::{ObjectOwner, RoomOwner, RoomVisibility};
     use chrono::Utc;
-    
+
     fn create_test_context() -> TriggerContext {
         let player = PlayerRecord::new("test_player", "Test Player", "test_room");
-        
+
         let object = ObjectRecord {
             id: "test_object".to_string(),
             name: "Test Object".to_string(),
@@ -296,7 +290,7 @@ mod tests {
             clone_count: 0,
             created_by: "world".to_string(),
         };
-        
+
         let room = RoomRecord {
             id: "test_room".to_string(),
             name: "Test Room".to_string(),
@@ -313,10 +307,10 @@ mod tests {
             locked: false,
             schema_version: 1,
         };
-        
+
         TriggerContext::new(&player, &object, &room)
     }
-    
+
     #[test]
     fn test_context_creation() {
         let ctx = create_test_context();
@@ -327,18 +321,18 @@ mod tests {
         assert_eq!(ctx.message_count, 0);
         assert_eq!(ctx.depth, 0);
     }
-    
+
     #[test]
     fn test_context_limits() {
         let mut ctx = create_test_context();
-        
+
         // Test action limit
         assert!(ctx.can_execute_action());
         for _ in 0..MAX_ACTIONS_PER_TRIGGER {
             ctx.increment_action();
         }
         assert!(!ctx.can_execute_action());
-        
+
         // Test message limit
         let mut ctx = create_test_context();
         assert!(ctx.can_send_message());
@@ -346,7 +340,7 @@ mod tests {
             ctx.increment_message();
         }
         assert!(!ctx.can_send_message());
-        
+
         // Test depth limit
         let mut ctx = create_test_context();
         assert!(ctx.can_nest_deeper());
@@ -355,22 +349,22 @@ mod tests {
         }
         assert!(!ctx.can_nest_deeper());
     }
-    
+
     #[test]
     fn test_validate_script_length() {
         assert!(validate_script("message(\"hello\")").is_ok());
-        
+
         let too_long = "x".repeat(MAX_SCRIPT_LENGTH + 1);
         assert!(validate_script(&too_long).is_err());
-        
+
         assert!(validate_script("").is_err());
     }
-    
+
     #[test]
     fn test_validate_script_parentheses() {
         assert!(validate_script("message(\"test\")").is_ok());
         assert!(validate_script("func(a, func(b))").is_ok());
-        
+
         assert!(validate_script("message(\"test\"").is_err());
         assert!(validate_script("message\"test\")").is_err());
         assert!(validate_script("((())").is_err());

@@ -22,11 +22,20 @@ async fn test_talk_with_topic_wares() {
     server.test_insert_session(session);
 
     // Enter TinyMUSH - use explicit game name instead of menu position
-    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
-    
+    server
+        .route_test_text_direct(&node_key, "TINYMUSH")
+        .await
+        .unwrap();
+
     // Register
-    server.route_test_text_direct(&node_key, "REGISTER Alice password123").await.unwrap();
-    server.route_test_text_direct(&node_key, "password123").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "REGISTER Alice password123")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "password123")
+        .await
+        .unwrap();
 
     // Move to Town Square, then to South Market (Mira's location)
     server.route_test_text_direct(&node_key, "N").await.unwrap();
@@ -34,17 +43,28 @@ async fn test_talk_with_topic_wares() {
 
     // Test TALK with topic
     let before = server.test_messages().len();
-    server.route_test_text_direct(&node_key, "TALK MIRA WARES").await.unwrap();
-    
+    server
+        .route_test_text_direct(&node_key, "TALK MIRA WARES")
+        .await
+        .unwrap();
+
     let response: Vec<String> = server.test_messages()[before..]
         .iter()
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
         .collect();
-    
+
     let full_response = response.join(" ");
-    assert!(full_response.contains("Mira"), "Expected Mira to respond, got: {}", full_response);
-    assert!(!full_response.contains("doesn't know"), "Expected valid topic response, got: {}", full_response);
+    assert!(
+        full_response.contains("Mira"),
+        "Expected Mira to respond, got: {}",
+        full_response
+    );
+    assert!(
+        !full_response.contains("doesn't know"),
+        "Expected valid topic response, got: {}",
+        full_response
+    );
 }
 
 #[tokio::test]
@@ -62,9 +82,18 @@ async fn test_talk_list_topics() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
-    server.route_test_text_direct(&node_key, "REGISTER Bob password123").await.unwrap();
-    server.route_test_text_direct(&node_key, "password123").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "TINYMUSH")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "REGISTER Bob password123")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "password123")
+        .await
+        .unwrap();
 
     // Move to Town Square, then to South Market
     server.route_test_text_direct(&node_key, "N").await.unwrap();
@@ -72,18 +101,24 @@ async fn test_talk_list_topics() {
 
     // Test LIST keyword
     let before = server.test_messages().len();
-    server.route_test_text_direct(&node_key, "TALK MIRA LIST").await.unwrap();
-    
+    server
+        .route_test_text_direct(&node_key, "TALK MIRA LIST")
+        .await
+        .unwrap();
+
     let response: Vec<String> = server.test_messages()[before..]
         .iter()
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
         .collect();
-    
+
     let full_response = response.join(" ");
     assert!(
-        full_response.contains("can talk about") || full_response.contains("wares") || full_response.contains("story"),
-        "Expected topic list, got: {}", full_response
+        full_response.contains("can talk about")
+            || full_response.contains("wares")
+            || full_response.contains("story"),
+        "Expected topic list, got: {}",
+        full_response
     );
 }
 
@@ -102,9 +137,18 @@ async fn test_talk_invalid_topic() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
-    server.route_test_text_direct(&node_key, "REGISTER Charlie password123").await.unwrap();
-    server.route_test_text_direct(&node_key, "password123").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "TINYMUSH")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "REGISTER Charlie password123")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "password123")
+        .await
+        .unwrap();
 
     // Move to Town Square, then to South Market
     server.route_test_text_direct(&node_key, "N").await.unwrap();
@@ -112,18 +156,22 @@ async fn test_talk_invalid_topic() {
 
     // Test invalid topic
     let before = server.test_messages().len();
-    server.route_test_text_direct(&node_key, "TALK MIRA NONSENSE").await.unwrap();
-    
+    server
+        .route_test_text_direct(&node_key, "TALK MIRA NONSENSE")
+        .await
+        .unwrap();
+
     let response: Vec<String> = server.test_messages()[before..]
         .iter()
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
         .collect();
-    
+
     let full_response = response.join(" ");
     assert!(
         full_response.contains("doesn't know") || full_response.contains("Try:"),
-        "Expected error for invalid topic, got: {}", full_response
+        "Expected error for invalid topic, got: {}",
+        full_response
     );
 }
 
@@ -142,9 +190,18 @@ async fn test_talk_guard_warning_topic() {
     let node_key = session.node_id.clone();
     server.test_insert_session(session);
 
-    server.route_test_text_direct(&node_key, "TINYMUSH").await.unwrap();
-    server.route_test_text_direct(&node_key, "REGISTER Diana password123").await.unwrap();
-    server.route_test_text_direct(&node_key, "password123").await.unwrap();
+    server
+        .route_test_text_direct(&node_key, "TINYMUSH")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "REGISTER Diana password123")
+        .await
+        .unwrap();
+    server
+        .route_test_text_direct(&node_key, "password123")
+        .await
+        .unwrap();
 
     // Move to Town Square, then to North Gate (Guard's location)
     server.route_test_text_direct(&node_key, "N").await.unwrap();
@@ -152,16 +209,21 @@ async fn test_talk_guard_warning_topic() {
 
     // Test Guard's warning topic
     let before = server.test_messages().len();
-    server.route_test_text_direct(&node_key, "TALK GUARD WARNING").await.unwrap();
-    
+    server
+        .route_test_text_direct(&node_key, "TALK GUARD WARNING")
+        .await
+        .unwrap();
+
     let response: Vec<String> = server.test_messages()[before..]
         .iter()
         .filter(|(k, _)| k == &node_key)
         .map(|(_, m)| m.clone())
         .collect();
-    
-    let full_response = response.join(" ");
-    assert!(full_response.contains("Guard") || full_response.contains("Gate"), 
-            "Expected Guard response, got: {}", full_response);
-}
 
+    let full_response = response.join(" ");
+    assert!(
+        full_response.contains("Guard") || full_response.contains("Gate"),
+        "Expected Guard response, got: {}",
+        full_response
+    );
+}

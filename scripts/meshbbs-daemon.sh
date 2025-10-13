@@ -5,9 +5,30 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Configuration (can be overridden with environment variables)
+if [[ -z "${MESHBBS_BIN:-}" ]]; then
+    for candidate in "$ROOT_DIR/bin/meshbbs" "$ROOT_DIR/target/release/meshbbs" "./target/release/meshbbs"; do
+        if [[ -x "$candidate" ]]; then
+            MESHBBS_BIN="$candidate"
+            break
+        fi
+    done
+fi
 : "${MESHBBS_BIN:=./target/release/meshbbs}"
+
+if [[ -z "${MESHBBS_CONFIG:-}" ]]; then
+    for candidate in "$ROOT_DIR/config.toml" "$ROOT_DIR/config.example.toml" "config.toml"; do
+        if [[ -f "$candidate" ]]; then
+            MESHBBS_CONFIG="$candidate"
+            break
+        fi
+    done
+fi
 : "${MESHBBS_CONFIG:=config.toml}"
+
 : "${MESHBBS_PID_FILE:=/tmp/meshbbs.pid}"
 : "${MESHBBS_PORT:=}"
 

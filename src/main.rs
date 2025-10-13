@@ -257,15 +257,15 @@ async fn main() -> Result<()> {
             use argon2::Argon2;
             use password_hash::{PasswordHasher, SaltString};
             use std::io::{self, BufRead};
-            
+
             let stdin = io::stdin();
             let mut handle = stdin.lock();
             let mut password = String::new();
             handle.read_line(&mut password)?;
-            
+
             // Remove trailing newline
             password = password.trim_end().to_string();
-            
+
             if password.len() < 8 {
                 eprintln!("Error: password too short (min 8 characters)");
                 std::process::exit(1);
@@ -274,7 +274,7 @@ async fn main() -> Result<()> {
                 eprintln!("Error: password too long (max 128 characters)");
                 std::process::exit(1);
             }
-            
+
             // Hash the password
             let salt = SaltString::generate(&mut rand::thread_rng());
             let argon = Argon2::default();
@@ -285,7 +285,7 @@ async fn main() -> Result<()> {
                     std::process::exit(1);
                 }
             };
-            
+
             // Output only the hash (no extra text for easy parsing)
             println!("{}", hash);
         }
@@ -449,10 +449,7 @@ fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
     use std::process::Command;
 
     // Determine log file path
-    let log_path = config
-        .logging
-        .file.as_deref()
-        .unwrap_or("meshbbs.log");
+    let log_path = config.logging.file.as_deref().unwrap_or("meshbbs.log");
 
     // Spawn ourselves as a background process
     let current_exe = std::env::current_exe()?;

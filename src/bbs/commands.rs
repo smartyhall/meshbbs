@@ -244,7 +244,7 @@ impl CommandProcessor {
     ) -> Result<String> {
         let raw = command.trim();
         let cmd_upper = raw.to_uppercase();
-        
+
         match session.state {
             // Game states - let door games handle their own commands including WHERE
             SessionState::TinyHack | SessionState::TinyMush => {
@@ -258,7 +258,7 @@ impl CommandProcessor {
                 }
             }
         }
-        
+
         match session.state {
             SessionState::Connected => {
                 self.handle_initial_connection(session, &cmd_upper, storage, config)
@@ -342,12 +342,14 @@ impl CommandProcessor {
                     session.state = SessionState::MainMenu;
                     return Ok(self.render_main_menu(session, config));
                 }
-                
+
                 // Forward all other commands to TinyMUSH command processor
                 // Use the shared store to avoid multi-handle caching issues
                 if let Some(store) = game_registry.get_tinymush_store() {
                     let mut processor = TinyMushProcessor::new(store.clone());
-                    processor.process_command(session, raw, storage, config).await
+                    processor
+                        .process_command(session, raw, storage, config)
+                        .await
                 } else {
                     Ok("TinyMUSH is not available".to_string())
                 }
@@ -535,7 +537,7 @@ impl CommandProcessor {
                         entry_counts.concurrent_peak,
                         entry_counts.entries
                     );
-                    
+
                     // Initialize TinyMUSH for the user and return welcome screen
                     // Use the shared store from game registry
                     if let Some(store) = game_registry.get_tinymush_store() {

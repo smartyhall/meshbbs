@@ -52,16 +52,16 @@ async fn tinyhack_enter_play_persist() {
     server.route_test_text_direct(&node_key, "E").await.unwrap();
     let after_e = server.test_messages().last().unwrap().1.clone();
     assert!(
-        after_e.ends_with("alice (lvl1)>"),
-        "screen should end with session prompt: {}",
+        !after_e.contains("alice (lvl1)>"),
+        "TinyHack chunk should not include session prompt: {}",
         after_e
     );
 
     server.route_test_text_direct(&node_key, "R").await.unwrap();
     let after_r = server.test_messages().last().unwrap().1.clone();
     assert!(
-        after_r.ends_with("alice (lvl1)>"),
-        "screen should end with session prompt: {}",
+        !after_r.contains("alice (lvl1)>"),
+        "TinyHack chunk should not include session prompt: {}",
         after_r
     );
 
@@ -89,6 +89,11 @@ async fn tinyhack_enter_play_persist() {
     let back_to_menu = server.test_messages().last().unwrap().1.clone();
     assert!(back_to_menu.contains("Main Menu:"));
     assert!(back_to_menu.contains("[G]ames"));
+    assert!(
+        back_to_menu.ends_with("alice (lvl1)>"),
+        "prompt should return after leaving TinyHack: {}",
+        back_to_menu
+    );
     let before2 = server.test_messages().len();
     server
         .route_test_text_direct(&node_key, "G1")

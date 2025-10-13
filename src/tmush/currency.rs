@@ -106,10 +106,7 @@ pub fn parse_currency(input: &str, system: &CurrencySystem) -> Result<CurrencyAm
 }
 
 /// Parse decimal currency input
-fn parse_decimal_input(
-    input: &str,
-    config: &DecimalCurrency,
-) -> Result<CurrencyAmount, String> {
+fn parse_decimal_input(input: &str, config: &DecimalCurrency) -> Result<CurrencyAmount, String> {
     // Remove currency symbol and name if present
     // Important: Remove plural before singular to avoid partial matches
     let cleaned = input
@@ -332,12 +329,7 @@ mod tests {
         assert_eq!(amount, CurrencyAmount::Decimal { minor_units: 1234 });
 
         let amount = parse_currency("100", &system).unwrap();
-        assert_eq!(
-            amount,
-            CurrencyAmount::Decimal {
-                minor_units: 10000
-            }
-        );
+        assert_eq!(amount, CurrencyAmount::Decimal { minor_units: 10000 });
 
         let amount = parse_currency("¤5.50", &system).unwrap();
         assert_eq!(amount, CurrencyAmount::Decimal { minor_units: 550 });
@@ -360,16 +352,9 @@ mod tests {
 
     #[test]
     fn test_conversion() {
-        let decimal = CurrencyAmount::Decimal {
-            minor_units: 10000,
-        };
+        let decimal = CurrencyAmount::Decimal { minor_units: 10000 };
         let multi_tier = convert_decimal_to_multi_tier(&decimal, None).unwrap();
-        assert_eq!(
-            multi_tier,
-            CurrencyAmount::MultiTier {
-                base_units: 10000
-            }
-        );
+        assert_eq!(multi_tier, CurrencyAmount::MultiTier { base_units: 10000 });
 
         let back = convert_multi_tier_to_decimal(&multi_tier, None).unwrap();
         assert_eq!(back, decimal);

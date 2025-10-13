@@ -2,7 +2,6 @@
 ///
 /// Validates end-to-end quest flow including accepting quests,
 /// completing objectives, earning rewards, and quest prerequisites.
-
 use meshbbs::tmush::{
     abandon_quest, accept_quest, can_accept_quest, complete_quest, format_quest_list,
     format_quest_status, get_active_quests, get_available_quests, get_completed_quests,
@@ -13,9 +12,7 @@ use tempfile::TempDir;
 fn setup_test_store() -> (TinyMushStore, TempDir) {
     let temp_dir = TempDir::new().unwrap();
     // Open with world seed to get starter quests
-    let store = TinyMushStoreBuilder::new(temp_dir.path())
-        .open()
-        .unwrap();
+    let store = TinyMushStoreBuilder::new(temp_dir.path()).open().unwrap();
     (store, temp_dir)
 }
 
@@ -33,7 +30,11 @@ fn quest_lifecycle_complete_flow() {
 
     // Verify all 3 starter quests exist in the store
     let all_quest_ids = store.list_quest_ids().expect("list quests");
-    assert_eq!(all_quest_ids.len(), 3, "should have 3 starter quests in store");
+    assert_eq!(
+        all_quest_ids.len(),
+        3,
+        "should have 3 starter quests in store"
+    );
 
     // Only welcome_towne should be available initially (others have prerequisites)
     let available = get_available_quests(&store, "alice").expect("get available");
@@ -320,7 +321,7 @@ fn quest_rewards_include_items() {
     // Verify quest is marked complete
     let completed = get_completed_quests(&store, "frank").expect("get completed");
     assert_eq!(completed.len(), 3, "should have completed all 3 quests");
-    
+
     // Note: Item rewards require catalog entries. The quest system attempts
     // to add items but silently ignores failures for non-existent catalog items.
     // This is intentional to allow symbolic/badge rewards.
@@ -343,12 +344,9 @@ fn abandoned_quest_can_be_retaken() {
         .iter()
         .find(|pq| pq.quest_id == "welcome_towne")
         .expect("quest should exist");
-    
+
     use meshbbs::tmush::types::QuestState;
-    assert!(matches!(
-        quest_status.state,
-        QuestState::Failed { .. }
-    ));
+    assert!(matches!(quest_status.state, QuestState::Failed { .. }));
 
     // Should be able to accept again
     let result = accept_quest(&store, "grace", "welcome_towne");

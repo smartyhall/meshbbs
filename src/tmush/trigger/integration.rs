@@ -4,12 +4,11 @@
 //! players interact with objects. Each function handles fetching required
 //! records, creating the execution context, and running the trigger.
 
-use super::{execute_trigger, TriggerContext, TriggerResult};
 use super::admin::{check_trigger_allowed, record_trigger_execution};
+use super::{execute_trigger, TriggerContext, TriggerResult};
 use crate::tmush::storage::TinyMushStore;
 use crate::tmush::types::{ObjectRecord, ObjectTrigger};
 use log::{error, warn};
-
 
 /// Execute OnLook trigger when player examines an object
 ///
@@ -32,22 +31,25 @@ pub fn execute_on_look(
         Some(s) => s,
         None => return vec![],
     };
-    
+
     // Check rate limiting
     if let Err(reason) = check_trigger_allowed(&object.id, player_username) {
         warn!("execute_on_look: Rate limited - {}", reason);
         return vec![];
     }
-    
+
     // Get player record
     let player = match store.get_player(player_username) {
         Ok(p) => p,
         Err(e) => {
-            warn!("execute_on_look: Failed to get player {}: {}", player_username, e);
+            warn!(
+                "execute_on_look: Failed to get player {}: {}",
+                player_username, e
+            );
             return vec![];
         }
     };
-    
+
     // Get room record
     let room = match store.get_room(room_id) {
         Ok(r) => r,
@@ -56,17 +58,17 @@ pub fn execute_on_look(
             return vec![];
         }
     };
-    
+
     // Create context
     let mut context = TriggerContext::new(&player, object, &room);
-    
+
     // Execute the trigger
     let result = match execute_trigger(ObjectTrigger::OnLook, script, &mut context, store) {
         Ok(TriggerResult::Success(messages)) => {
             // Record successful execution for rate limiting
             record_trigger_execution(&object.id, player_username);
             messages
-        },
+        }
         Ok(TriggerResult::NoScript) => vec![],
         Ok(TriggerResult::Skipped) => vec![],
         Ok(TriggerResult::RateLimited) => vec![],
@@ -77,7 +79,7 @@ pub fn execute_on_look(
             vec![]
         }
     };
-    
+
     result
 }
 
@@ -101,15 +103,18 @@ pub fn execute_on_take(
         Some(s) => s,
         None => return vec![],
     };
-    
+
     let player = match store.get_player(player_username) {
         Ok(p) => p,
         Err(e) => {
-            warn!("execute_on_take: Failed to get player {}: {}", player_username, e);
+            warn!(
+                "execute_on_take: Failed to get player {}: {}",
+                player_username, e
+            );
             return vec![];
         }
     };
-    
+
     let room = match store.get_room(room_id) {
         Ok(r) => r,
         Err(e) => {
@@ -117,9 +122,9 @@ pub fn execute_on_take(
             return vec![];
         }
     };
-    
+
     let mut context = TriggerContext::new(&player, object, &room);
-    
+
     match execute_trigger(ObjectTrigger::OnTake, script, &mut context, store) {
         Ok(TriggerResult::Success(messages)) => messages,
         Ok(TriggerResult::NoScript) => vec![],
@@ -154,15 +159,18 @@ pub fn execute_on_drop(
         Some(s) => s,
         None => return vec![],
     };
-    
+
     let player = match store.get_player(player_username) {
         Ok(p) => p,
         Err(e) => {
-            warn!("execute_on_drop: Failed to get player {}: {}", player_username, e);
+            warn!(
+                "execute_on_drop: Failed to get player {}: {}",
+                player_username, e
+            );
             return vec![];
         }
     };
-    
+
     let room = match store.get_room(room_id) {
         Ok(r) => r,
         Err(e) => {
@@ -170,9 +178,9 @@ pub fn execute_on_drop(
             return vec![];
         }
     };
-    
+
     let mut context = TriggerContext::new(&player, object, &room);
-    
+
     match execute_trigger(ObjectTrigger::OnDrop, script, &mut context, store) {
         Ok(TriggerResult::Success(messages)) => messages,
         Ok(TriggerResult::NoScript) => vec![],
@@ -207,15 +215,18 @@ pub fn execute_on_use(
         Some(s) => s,
         None => return vec![],
     };
-    
+
     let player = match store.get_player(player_username) {
         Ok(p) => p,
         Err(e) => {
-            warn!("execute_on_use: Failed to get player {}: {}", player_username, e);
+            warn!(
+                "execute_on_use: Failed to get player {}: {}",
+                player_username, e
+            );
             return vec![];
         }
     };
-    
+
     let room = match store.get_room(room_id) {
         Ok(r) => r,
         Err(e) => {
@@ -223,9 +234,9 @@ pub fn execute_on_use(
             return vec![];
         }
     };
-    
+
     let mut context = TriggerContext::new(&player, object, &room);
-    
+
     match execute_trigger(ObjectTrigger::OnUse, script, &mut context, store) {
         Ok(TriggerResult::Success(messages)) => messages,
         Ok(TriggerResult::NoScript) => vec![],
@@ -260,15 +271,18 @@ pub fn execute_on_poke(
         Some(s) => s,
         None => return vec![],
     };
-    
+
     let player = match store.get_player(player_username) {
         Ok(p) => p,
         Err(e) => {
-            warn!("execute_on_poke: Failed to get player {}: {}", player_username, e);
+            warn!(
+                "execute_on_poke: Failed to get player {}: {}",
+                player_username, e
+            );
             return vec![];
         }
     };
-    
+
     let room = match store.get_room(room_id) {
         Ok(r) => r,
         Err(e) => {
@@ -276,9 +290,9 @@ pub fn execute_on_poke(
             return vec![];
         }
     };
-    
+
     let mut context = TriggerContext::new(&player, object, &room);
-    
+
     match execute_trigger(ObjectTrigger::OnPoke, script, &mut context, store) {
         Ok(TriggerResult::Success(messages)) => messages,
         Ok(TriggerResult::NoScript) => vec![],
@@ -294,7 +308,7 @@ pub fn execute_on_poke(
 }
 
 /// Execute all OnEnter triggers for objects in a room
-/// 
+///
 /// This fires when a player enters a room, checking all objects in the room
 /// for OnEnter triggers and executing them in order.
 pub fn execute_room_on_enter(
@@ -303,45 +317,54 @@ pub fn execute_room_on_enter(
     store: &TinyMushStore,
 ) -> Vec<String> {
     let mut all_messages = Vec::new();
-    
+
     // Get the room
     let room = match store.get_room(room_id) {
         Ok(r) => r,
         Err(e) => {
-            warn!("execute_room_on_enter: Failed to get room {}: {}", room_id, e);
+            warn!(
+                "execute_room_on_enter: Failed to get room {}: {}",
+                room_id, e
+            );
             return vec![];
         }
     };
-    
+
     // Get player record
     let player = match store.get_player(player_username) {
         Ok(p) => p,
         Err(e) => {
-            warn!("execute_room_on_enter: Failed to get player {}: {}", player_username, e);
+            warn!(
+                "execute_room_on_enter: Failed to get player {}: {}",
+                player_username, e
+            );
             return vec![];
         }
     };
-    
+
     // For each object in the room
     for object_id in &room.items {
         // Get the object
         let object = match store.get_object(object_id) {
             Ok(obj) => obj,
             Err(e) => {
-                warn!("execute_room_on_enter: Failed to get object {}: {}", object_id, e);
+                warn!(
+                    "execute_room_on_enter: Failed to get object {}: {}",
+                    object_id, e
+                );
                 continue; // Skip this object but process others
             }
         };
-        
+
         // Check if it has an OnEnter trigger
         let script = match object.actions.get(&ObjectTrigger::OnEnter) {
             Some(s) => s,
             None => continue,
         };
-        
+
         // Create context
         let mut context = TriggerContext::new(&player, &object, &room);
-        
+
         // Execute the trigger
         match execute_trigger(ObjectTrigger::OnEnter, script, &mut context, store) {
             Ok(TriggerResult::Success(messages)) => {
@@ -353,36 +376,40 @@ pub fn execute_room_on_enter(
             Ok(TriggerResult::Failed(_)) => {}
             Ok(TriggerResult::TimedOut) => {}
             Err(e) => {
-                error!("execute_room_on_enter: Trigger execution failed for object {}: {}", object_id, e);
+                error!(
+                    "execute_room_on_enter: Trigger execution failed for object {}: {}",
+                    object_id, e
+                );
             }
         }
     }
-    
+
     all_messages
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-    use crate::tmush::types::{ObjectOwner, RoomOwner, RoomVisibility, CurrencyAmount};
-    use std::collections::HashMap;
+    use crate::tmush::types::{CurrencyAmount, ObjectOwner, RoomOwner, RoomVisibility};
     use chrono::Utc;
-    
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+
     fn create_test_store() -> (TempDir, TinyMushStore) {
         let temp = TempDir::new().unwrap();
         let store = TinyMushStore::open(temp.path()).unwrap();
         (temp, store)
     }
-    
+
     #[test]
     fn test_execute_on_look_with_message() {
         let (_temp, store) = create_test_store();
-        
+
         // Create player
-        let player = crate::tmush::types::PlayerRecord::new("test_player", "Test Player", "test_room");
+        let player =
+            crate::tmush::types::PlayerRecord::new("test_player", "Test Player", "test_room");
         store.put_player(player).unwrap();
-        
+
         // Create room
         let room = crate::tmush::types::RoomRecord {
             id: "test_room".to_string(),
@@ -401,14 +428,14 @@ mod tests {
             schema_version: 1,
         };
         store.put_room(room).unwrap();
-        
+
         // Create object with OnLook trigger
         let mut actions = HashMap::new();
         actions.insert(
             ObjectTrigger::OnLook,
             "message(\"You see something special!\")".to_string(),
         );
-        
+
         let object = ObjectRecord {
             id: "test_obj".to_string(),
             name: "Test Object".to_string(),
@@ -430,22 +457,23 @@ mod tests {
             clone_count: 0,
             created_by: String::new(),
         };
-        
+
         // Execute OnLook
         let messages = execute_on_look(&object, "test_player", "test_room", &store);
-        
+
         assert_eq!(messages.len(), 1);
         assert!(messages[0].contains("something special"));
     }
-    
+
     #[test]
     fn test_execute_on_look_no_trigger() {
         let (_temp, store) = create_test_store();
-        
+
         // Create player
-        let player = crate::tmush::types::PlayerRecord::new("test_player", "Test Player", "test_room");
+        let player =
+            crate::tmush::types::PlayerRecord::new("test_player", "Test Player", "test_room");
         store.put_player(player).unwrap();
-        
+
         // Create room
         let room = crate::tmush::types::RoomRecord {
             id: "test_room".to_string(),
@@ -464,7 +492,7 @@ mod tests {
             schema_version: 1,
         };
         store.put_room(room).unwrap();
-        
+
         // Create object without OnLook trigger
         let object = ObjectRecord {
             id: "test_obj".to_string(),
@@ -487,10 +515,10 @@ mod tests {
             clone_count: 0,
             created_by: String::new(),
         };
-        
+
         // Execute OnLook
         let messages = execute_on_look(&object, "test_player", "test_room", &store);
-        
+
         assert_eq!(messages.len(), 0);
     }
 }

@@ -186,16 +186,23 @@ pub fn format_inventory_compact(
             } else {
                 String::new()
             };
-            let lock_str = if item.locked {
-                " 🔒"
-            } else {
-                ""
-            };
-            lines.push(format!("{}. {}{}{}{}", idx + 1, qty_str, item.name, weight_str, lock_str));
+            let lock_str = if item.locked { " 🔒" } else { "" };
+            lines.push(format!(
+                "{}. {}{}{}{}",
+                idx + 1,
+                qty_str,
+                item.name,
+                weight_str,
+                lock_str
+            ));
         }
     }
 
-    lines.push(format!("Total: {} items, {}w", player.inventory_stacks.len(), total_weight));
+    lines.push(format!(
+        "Total: {} items, {}w",
+        player.inventory_stacks.len(),
+        total_weight
+    ));
     lines
 }
 
@@ -204,26 +211,26 @@ pub fn format_item_examination(item: &ObjectRecord, quantity: u32) -> Vec<String
     let mut lines = Vec::new();
 
     lines.push(format!("Name: {}", item.name));
-    
+
     if quantity > 1 {
         lines.push(format!("Quantity: {}", quantity));
     }
-    
+
     lines.push(format!("Description: {}", item.description));
-    
+
     if item.weight > 0 {
         lines.push(format!("Weight: {} units", item.weight));
     }
-    
+
     // Show value if non-zero
     if !item.currency_value.is_zero_or_negative() {
         lines.push(format!("Value: {:?}", item.currency_value));
     }
-    
+
     if item.takeable {
         lines.push("Can be taken".to_string());
     }
-    
+
     if item.usable {
         lines.push("Can be used".to_string());
     }
@@ -263,7 +270,7 @@ mod tests {
             clone_count: 0,
             created_by: "world".to_string(),
             flags: Vec::new(),
-            locked: false, // Test items unlocked
+            locked: false,             // Test items unlocked
             ownership_history: vec![], // Test items have no history
             schema_version: 1,
         }

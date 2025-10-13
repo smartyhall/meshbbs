@@ -24,8 +24,8 @@
 //! let here_room = resolve_object_name(&context, "here", &store).await?;
 //! ```
 
-use crate::tmush::storage::TinyMushStore;
 use crate::tmush::errors::TinyMushError;
+use crate::tmush::storage::TinyMushStore;
 
 /// Resolution context for object search
 #[derive(Debug, Clone)]
@@ -54,10 +54,10 @@ impl ResolutionContext {
 pub enum ResolveResult {
     /// Single unambiguous match
     Found(String),
-    
+
     /// Multiple matches - user must clarify
     Ambiguous(Vec<ObjectMatch>),
-    
+
     /// No matches found
     NotFound,
 }
@@ -67,13 +67,13 @@ pub enum ResolveResult {
 pub struct ObjectMatch {
     /// Object ID (ulid)
     pub id: String,
-    
+
     /// Object name
     pub name: String,
-    
+
     /// Location context ("inventory", "room", "container")
     pub location: String,
-    
+
     /// Container name if inside something
     pub container: Option<String>,
 }
@@ -86,8 +86,11 @@ impl ObjectMatch {
         } else {
             self.location.clone()
         };
-        
-        format!("{}) {} [#{}] ({})", index, self.name, self.id, location_desc)
+
+        format!(
+            "{}) {} [#{}] ({})",
+            index, self.name, self.id, location_desc
+        )
     }
 }
 
@@ -112,12 +115,12 @@ fn normalize_name(name: &str) -> String {
 fn name_matches(query: &str, object_name: &str) -> bool {
     let query_norm = normalize_name(query);
     let name_norm = normalize_name(object_name);
-    
+
     // Exact match
     if query_norm == name_norm {
         return true;
     }
-    
+
     // Partial match (query is substring of name)
     name_norm.contains(&query_norm)
 }
@@ -141,37 +144,37 @@ pub fn resolve_object_name(
     store: &TinyMushStore,
 ) -> Result<ResolveResult, TinyMushError> {
     let query = query.trim();
-    
+
     if query.is_empty() {
         return Ok(ResolveResult::NotFound);
     }
-    
+
     // Handle special keywords
     if query.eq_ignore_ascii_case("here") {
         // "here" refers to current room
         return Ok(ResolveResult::Found(context.current_room.clone()));
     }
-    
+
     if query.eq_ignore_ascii_case("this") {
         // "this" refers to last examined object
         if let Some(ref obj_id) = context.last_examined {
             return Ok(ResolveResult::Found(obj_id.clone()));
         } else {
             return Err(TinyMushError::NotFound(
-                "No object examined yet. Use /look <object> first.".to_string()
+                "No object examined yet. Use /look <object> first.".to_string(),
             ));
         }
     }
-    
+
     // Check for inventory-only prefix (@name)
     let (search_query, inventory_only) = if query.starts_with('@') {
         (&query[1..], true)
     } else {
         (query, false)
     };
-    
+
     let mut matches = Vec::new();
-    
+
     // Search player inventory
     let player_result = store.get_player(&context.username);
     if let Ok(player) = player_result {
@@ -188,7 +191,7 @@ pub fn resolve_object_name(
             }
         }
     }
-    
+
     // If inventory-only search, stop here
     if inventory_only {
         return match matches.len() {
@@ -197,7 +200,7 @@ pub fn resolve_object_name(
             _ => Ok(ResolveResult::Ambiguous(matches)),
         };
     }
-    
+
     // Search current room objects
     if let Ok(room) = store.get_room(&context.current_room) {
         for obj_id in &room.items {
@@ -213,7 +216,7 @@ pub fn resolve_object_name(
             }
         }
     }
-    
+
     // Return result based on match count
     match matches.len() {
         0 => Ok(ResolveResult::NotFound),
@@ -228,12 +231,12 @@ pub fn resolve_object_name(
 /// instructing the user to retry with a more specific name.
 pub fn format_disambiguation_prompt(matches: &[ObjectMatch]) -> String {
     let mut output = String::from("Multiple objects match that name:\n\n");
-    
+
     for (i, obj_match) in matches.iter().enumerate() {
         output.push_str(&obj_match.format_for_display(i + 1));
         output.push('\n');
     }
-    
+
     output.push_str("\nPlease be more specific or use the full name.");
     output
 }
@@ -241,29 +244,29 @@ pub fn format_disambiguation_prompt(matches: &[ObjectMatch]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_normalize_name() {
         assert_eq!(normalize_name("Rusty Key"), "rusty key");
         assert_eq!(normalize_name("  Crystal   Ball  "), "crystal ball");
         assert_eq!(normalize_name("MAGIC SWORD"), "magic sword");
     }
-    
+
     #[test]
     fn test_name_matches() {
         // Exact match
         assert!(name_matches("key", "key"));
         assert!(name_matches("Key", "KEY"));
-        
+
         // Partial match
         assert!(name_matches("key", "rusty key"));
         assert!(name_matches("rusty", "rusty key"));
-        
+
         // No match
         assert!(!name_matches("sword", "rusty key"));
         assert!(!name_matches("magic", "rusty key"));
     }
-    
+
     #[test]
     fn test_object_match_format() {
         let obj_match = ObjectMatch {
@@ -272,14 +275,14 @@ mod tests {
             location: "inventory".to_string(),
             container: None,
         };
-        
+
         let formatted = obj_match.format_for_display(1);
         assert!(formatted.contains("1)"));
         assert!(formatted.contains("rusty key"));
         assert!(formatted.contains("#01234567890123456789012345"));
         assert!(formatted.contains("inventory"));
     }
-    
+
     #[test]
     fn test_object_match_format_with_container() {
         let obj_match = ObjectMatch {
@@ -288,13 +291,13 @@ mod tests {
             location: "room".to_string(),
             container: Some("wooden chest".to_string()),
         };
-        
+
         let formatted = obj_match.format_for_display(2);
         assert!(formatted.contains("2)"));
         assert!(formatted.contains("gold coin"));
         assert!(formatted.contains("in wooden chest"));
     }
-    
+
     #[test]
     fn test_format_disambiguation_prompt() {
         let matches = vec![
@@ -311,7 +314,7 @@ mod tests {
                 container: None,
             },
         ];
-        
+
         let prompt = format_disambiguation_prompt(&matches);
         assert!(prompt.contains("Multiple objects"));
         assert!(prompt.contains("1)"));

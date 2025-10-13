@@ -461,13 +461,17 @@ impl BbsServer {
             // Initialize backup scheduler
             backup_scheduler: {
                 use crate::storage::backup_scheduler::{BackupScheduler, BackupSchedulerConfig};
-                let scheduler_config = BackupSchedulerConfig::load()
-                    .unwrap_or_else(|e| {
-                        warn!("Failed to load backup scheduler config, using defaults: {}", e);
-                        BackupSchedulerConfig::default()
-                    });
-                info!("Backup scheduler initialized: enabled={}, frequency={:?}", 
-                      scheduler_config.enabled, scheduler_config.frequency);
+                let scheduler_config = BackupSchedulerConfig::load().unwrap_or_else(|e| {
+                    warn!(
+                        "Failed to load backup scheduler config, using defaults: {}",
+                        e
+                    );
+                    BackupSchedulerConfig::default()
+                });
+                info!(
+                    "Backup scheduler initialized: enabled={}, frequency={:?}",
+                    scheduler_config.enabled, scheduler_config.frequency
+                );
                 Some(BackupScheduler::new(scheduler_config))
             },
             #[cfg(feature = "meshtastic-proto")]
@@ -503,16 +507,19 @@ impl BbsServer {
         if !server.config.message_topics.is_empty() {
             Self::merge_toml_topics_to_runtime(&mut server.storage, &server.config).await?;
         }
-        
+
         // Initialize door game resources in the registry
         if server.config.games.tinymush_enabled {
-            let db_path = server.config.games.tinymush_db_path
+            let db_path = server
+                .config
+                .games
+                .tinymush_db_path
                 .as_deref()
                 .unwrap_or("data/tinymush");
-            
+
             // Use BBS sysop username as TinyMUSH admin
             let admin_username = server.config.bbs.sysop.clone();
-            
+
             match crate::tmush::storage::TinyMushStoreBuilder::new(db_path)
                 .with_admin_username(admin_username)
                 .open()
@@ -526,7 +533,7 @@ impl BbsServer {
                 }
             }
         }
-        
+
         // Announce enabled games at startup
         if server.config.games.tinyhack_enabled {
             info!(
@@ -889,7 +896,7 @@ impl BbsServer {
         if let Some(ref mut scheduler) = self.backup_scheduler {
             // Reload config from disk to pick up changes from /BACKUPCONFIG commands
             let _ = scheduler.reload_config();
-            
+
             match scheduler.check_and_backup() {
                 Ok(Some(backup_id)) => {
                     info!("Automatic backup created: {}", backup_id);
@@ -1020,7 +1027,7 @@ impl BbsServer {
                             let _ = self.fetch_weather().await;
                             self.weather_last_poll = Instant::now();
                         }
-                        
+
                         // Housing cleanup check (once per day: 86400 seconds)
                         if self.housing_cleanup_last_check.elapsed() >= Duration::from_secs(86400) {
                             if let Err(e) = self.check_housing_cleanup().await {
@@ -1028,7 +1035,7 @@ impl BbsServer {
                             }
                             self.housing_cleanup_last_check = Instant::now();
                         }
-                        
+
                         // Housing recurring payments (once per day: 86400 seconds)
                         if self.housing_payment_last_check.elapsed() >= Duration::from_secs(86400) {
                             if let Err(e) = self.process_housing_payments().await {
@@ -1036,14 +1043,14 @@ impl BbsServer {
                             }
                             self.housing_payment_last_check = Instant::now();
                         }
-                        
+
                         if self.node_cache_last_cleanup.elapsed() >= Duration::from_secs(3600) {
                             self.node_cache_last_cleanup = Instant::now();
                         }
                         if let Err(e) = self.check_and_send_ident().await {
                             debug!("Ident beacon error: {}", e);
                         }
-                        
+
                         // Check if automatic backup is needed
                         if let Err(e) = self.check_and_backup().await {
                             debug!("Backup scheduler error: {}", e);
@@ -1474,199 +1481,239 @@ impl BbsServer {
             .map(|_| ())
     }
     /// Test helper to create a TinyMUSH player WITH admin level in one atomic operation.
-    /// 
+    ///
     /// This helper must be called BEFORE entering TinyMUSH with "G1". It creates the player
     /// record directly in the database with admin privileges, avoiding the Sled caching issue
     /// where different handles see stale data.
-    /// 
+    ///
     /// # Arguments
     /// * `node_key` - The session node key
     /// * `level` - Admin level (1=Moderator, 2=Admin, 3=Sysop)
-    /// 
+    ///
     /// # Returns
     /// * `Ok(())` if player was created successfully
     /// * `Err` if the session wasn't found or creation failed
     #[allow(dead_code)]
-    pub async fn test_tmush_create_player_with_admin(&mut self, node_key: &str, level: u8) -> Result<()> {
+    pub async fn test_tmush_create_player_with_admin(
+        &mut self,
+        node_key: &str,
+        level: u8,
+    ) -> Result<()> {
         use crate::tmush::types::PlayerRecord;
-        
-        let session = self.sessions.get(node_key)
+
+        let session = self
+            .sessions
+            .get(node_key)
             .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
         let username = session.display_name();
-        
-        let store = self.game_registry.get_tinymush_store()
+
+        let store = self
+            .game_registry
+            .get_tinymush_store()
             .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
-        
+
         // Create player with admin level in one atomic operation using transaction
         let result = store.primary_tree().transaction(|tx_tree| {
             let key = format!("players:{}", username.to_ascii_lowercase());
-            
+
             // Check if player already exists
             if tx_tree.get(key.as_bytes())?.is_some() {
                 return Err(sled::transaction::ConflictableTransactionError::Abort(
-                    anyhow::anyhow!("Player {} already exists", username)
+                    anyhow::anyhow!("Player {} already exists", username),
                 ));
             }
-            
+
             // Create new player with admin privileges
             let mut player = PlayerRecord::new(
                 &username,
                 &username,
-                crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+                crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
             );
             player.grant_admin(level);
             player.touch();
-            
+
             // Serialize and insert
-            let player_bytes = bincode::serialize(&player)
-                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
-                    anyhow::anyhow!("Failed to serialize player: {}", e)
-                ))?;
-            
+            let player_bytes = bincode::serialize(&player).map_err(|e| {
+                sled::transaction::ConflictableTransactionError::Abort(anyhow::anyhow!(
+                    "Failed to serialize player: {}",
+                    e
+                ))
+            })?;
+
             tx_tree.insert(key.as_bytes(), player_bytes.as_slice())?;
-            
+
             Ok(())
         });
-        
+
         result.map_err(|e| anyhow::anyhow!("Transaction failed: {:?}", e))?;
-        
+
         // Flush the entire database to ensure cross-handle visibility
         store.db().flush()?;
-        
+
         // VERIFY: Read back the player to confirm admin was set
-        let verify_player = store.get_player(&username)
+        let verify_player = store
+            .get_player(&username)
             .map_err(|e| anyhow::anyhow!("Failed to verify player creation: {}", e))?;
         if !verify_player.is_admin() {
-            return Err(anyhow::anyhow!("Player created but admin flag not set! Level={:?}", verify_player.admin_level));
+            return Err(anyhow::anyhow!(
+                "Player created but admin flag not set! Level={:?}",
+                verify_player.admin_level
+            ));
         }
-        eprintln!("✓ Verified player {} has admin level {:?}", username, verify_player.admin_level);
-        
+        eprintln!(
+            "✓ Verified player {} has admin level {:?}",
+            username, verify_player.admin_level
+        );
+
         Ok(())
     }
 
     /// Test helper to grant admin privileges using Sled transaction for atomicity.
-    /// 
+    ///
     /// This uses a transaction to ensure the write is immediately visible to all
     /// other handles/processes reading the same database, avoiding cache issues.
     #[allow(dead_code)]
     pub async fn test_tmush_grant_admin(&mut self, username: &str, level: u8) -> Result<()> {
         use crate::tmush::types::PlayerRecord;
-        
+
         // Use the shared store from game_registry instead of opening a new connection
-        let store = self.game_registry.get_tinymush_store()
+        let store = self
+            .game_registry
+            .get_tinymush_store()
             .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
-        
+
         // Use Tree transaction for atomic read-modify-write
         let result = store.primary_tree().transaction(|tx_tree| {
             // Construct the key (same as TinyMushStore::players_key)
             let key = format!("players:{}", username.to_ascii_lowercase());
-            
+
             // Read current player record
-            let player_bytes = tx_tree.get(key.as_bytes())?
-                .ok_or(sled::transaction::ConflictableTransactionError::Abort(
-                    anyhow::anyhow!("Player not found: {}", username)
-                ))?;
-            
+            let player_bytes = tx_tree.get(key.as_bytes())?.ok_or(
+                sled::transaction::ConflictableTransactionError::Abort(anyhow::anyhow!(
+                    "Player not found: {}",
+                    username
+                )),
+            )?;
+
             // Deserialize
-            let mut player: PlayerRecord = bincode::deserialize(&player_bytes)
-                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
-                    anyhow::anyhow!("Failed to deserialize player: {}", e)
-                ))?;
-            
+            let mut player: PlayerRecord = bincode::deserialize(&player_bytes).map_err(|e| {
+                sled::transaction::ConflictableTransactionError::Abort(anyhow::anyhow!(
+                    "Failed to deserialize player: {}",
+                    e
+                ))
+            })?;
+
             // Modify
             player.grant_admin(level);
             player.touch();
-            
+
             // Serialize
-            let new_bytes = bincode::serialize(&player)
-                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
-                    anyhow::anyhow!("Failed to serialize player: {}", e)
-                ))?;
-            
+            let new_bytes = bincode::serialize(&player).map_err(|e| {
+                sled::transaction::ConflictableTransactionError::Abort(anyhow::anyhow!(
+                    "Failed to serialize player: {}",
+                    e
+                ))
+            })?;
+
             // Write back atomically
             tx_tree.insert(key.as_bytes(), new_bytes.as_slice())?;
-            
+
             Ok(())
         });
-        
+
         result.map_err(|e| anyhow::anyhow!("Transaction failed: {:?}", e))?;
-        
+
         // Flush the entire database to ensure cross-handle visibility
         store.db().flush()?;
-        
+
         Ok(())
     }
-    
+
     /// Test helper to create a TinyMUSH player WITH admin level in one operation.
     /// This avoids Sled caching issues that occur when creating and then modifying a player.
     #[allow(dead_code)]
-    pub async fn test_tmush_create_admin_player(&mut self, node_key: &str, level: u8) -> Result<()> {
+    pub async fn test_tmush_create_admin_player(
+        &mut self,
+        node_key: &str,
+        level: u8,
+    ) -> Result<()> {
         use crate::tmush::types::PlayerRecord;
-        
-        let session = self.sessions.get(node_key)
+
+        let session = self
+            .sessions
+            .get(node_key)
             .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
         let username = session.display_name();
-        
-        let store = self.game_registry.get_tinymush_store()
+
+        let store = self
+            .game_registry
+            .get_tinymush_store()
             .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
-        
+
         // Check if player already exists
         if store.get_player(&username).is_ok() {
             return Err(anyhow::anyhow!("Player {} already exists", username));
         }
-        
+
         // Create player with admin level in one operation
         let mut player = PlayerRecord::new(
             &username,
             &username,
-            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
         );
         player.grant_admin(level);
-        
-        store.put_player(player)
+
+        store
+            .put_player(player)
             .map_err(|e| anyhow::anyhow!("Failed to create admin player: {}", e))?;
-        
+
         Ok(())
-    }    /// Test helper to force TinyMUSH player record creation.
-    /// 
+    }
+    /// Test helper to force TinyMUSH player record creation.
+    ///
     /// Call this IMMEDIATELY after route_test_text_direct("G2") to directly
     /// create a TinyMUSH player record. This bypasses lazy initialization
     /// so subsequent operations (like test_tmush_grant_admin) can find it.
-    /// 
+    ///
     /// # Arguments
     /// * `node_key` - The session node key
-    /// 
+    ///
     /// # Returns
     /// * `Ok(())` if player record was created successfully
     /// * `Err` if the session wasn't found or creation failed
     #[allow(dead_code)]
     pub async fn test_tmush_ensure_player_exists(&mut self, node_key: &str) -> Result<()> {
         use crate::tmush::types::PlayerRecord;
-        
+
         // Get the username from the session
-        let session = self.sessions.get(node_key)
+        let session = self
+            .sessions
+            .get(node_key)
             .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
         let username = session.display_name();
-        
+
         // Get TinyMUSH store from game registry (shared cache)
-        let store = self.game_registry.get_tinymush_store()
+        let store = self
+            .game_registry
+            .get_tinymush_store()
             .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
-        
+
         // Check if player already exists
         if store.get_player(&username).is_ok() {
             return Ok(()); // Player already exists, nothing to do
         }
-        
+
         // Create new player at landing location (gazebo)
         let player = PlayerRecord::new(
             &username,
             &username, // Use username as display name
-            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
         );
-        
-        store.put_player(player)
+
+        store
+            .put_player(player)
             .map_err(|e| anyhow::anyhow!("Failed to create player: {}", e))?;
-        
+
         Ok(())
     }
     #[allow(dead_code)]
@@ -1782,7 +1829,9 @@ impl BbsServer {
         config: &crate::config::Config,
     ) -> Result<String> {
         // Process help text via command processor and append one-time shortcuts hint
-        let mut help_text = session.process_command("H", storage, config, &self.game_registry).await?;
+        let mut help_text = session
+            .process_command("H", storage, config, &self.game_registry)
+            .await?;
         if !session.help_seen {
             session.help_seen = true;
             help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
@@ -2188,7 +2237,9 @@ impl BbsServer {
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
                     // Process help command and send response
-                    let mut help_text = session.process_command("H", &mut self.storage, &self.config, &self.game_registry).await?;
+                    let mut help_text = session
+                        .process_command("H", &mut self.storage, &self.config, &self.game_registry)
+                        .await?;
                     if !session.help_seen {
                         session.help_seen = true;
                         help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
@@ -3022,12 +3073,15 @@ impl BbsServer {
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
                     // Process help command and send response (inlined to avoid borrowing conflicts)
-                    let mut help_text = session.process_command("H", &mut self.storage, &self.config, &self.game_registry).await?;
+                    let mut help_text = session
+                        .process_command("H", &mut self.storage, &self.config, &self.game_registry)
+                        .await?;
                     if !session.help_seen {
                         session.help_seen = true;
                         help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
                     }
-                    self.send_session_message(&node_key, &help_text, true).await?;
+                    self.send_session_message(&node_key, &help_text, true)
+                        .await?;
                     return Ok(());
                 } else {
                     let redact = ["REGISTER ", "LOGIN ", "SETPASS ", "CHPASS "];
@@ -3038,7 +3092,12 @@ impl BbsServer {
                     };
                     trace!("Session {} generic command '{}'", node_key, log_snippet);
                     let response = session
-                        .process_command(&raw_content, &mut self.storage, &self.config, &self.game_registry)
+                        .process_command(
+                            &raw_content,
+                            &mut self.storage,
+                            &self.config,
+                            &self.game_registry,
+                        )
                         .await?;
                     if !response.is_empty() {
                         deferred_reply = Some(response);
@@ -3095,7 +3154,7 @@ impl BbsServer {
                     }
                 }
             } // End of session mutable borrow scope
-            
+
             // Send deferred chunks (for HELP+) after releasing session borrow
             if let Some(chunks) = deferred_chunks {
                 let total = chunks.len();
@@ -3105,7 +3164,7 @@ impl BbsServer {
                     self.send_session_message(&node_key, &chunk, last).await?;
                 }
             }
-            
+
             // Send deferred reply after releasing session borrow to allow send_session_message to access session
             if let Some(msg) = deferred_reply {
                 self.send_session_message(&node_key, &msg, true).await?;
@@ -3723,7 +3782,12 @@ impl BbsServer {
                             } else {
                                 format!("{}\n{}", clamped, prompt)
                             };
-                            debug!("Sending last chunk: {} bytes (clamped={}, prompt={})", msg.len(), clamped.len(), prompt.len());
+                            debug!(
+                                "Sending last chunk: {} bytes (clamped={}, prompt={})",
+                                msg.len(),
+                                clamped.len(),
+                                prompt.len()
+                            );
                             self.send_message(node_key, &msg).await?;
                         } else {
                             // Send as-is (no prompt on intermediate parts)
@@ -3869,21 +3933,34 @@ impl BbsServer {
                             session.state = super::session::SessionState::TinyMush;
                             session.current_game_slug = Some(door.slug.to_string());
                             let _username = session.display_name();
-                            
+
                             // Initialize TinyMUSH and send welcome using shared store from game registry
                             if let Some(store) = self.game_registry.get_tinymush_store() {
-                                let mut processor = crate::tmush::commands::TinyMushProcessor::new(store.clone());
-                                let welcome = processor.initialize_player(session, &mut self.storage, &self.config).await?;
+                                let mut processor =
+                                    crate::tmush::commands::TinyMushProcessor::new(store.clone());
+                                let welcome = processor
+                                    .initialize_player(session, &mut self.storage, &self.config)
+                                    .await?;
                                 self.send_session_message(node_key, &welcome, true).await?;
                             } else {
-                                self.send_session_message(node_key, "TinyMUSH is not available", true).await?;
+                                self.send_session_message(
+                                    node_key,
+                                    "TinyMUSH is not available",
+                                    true,
+                                )
+                                .await?;
                             }
                             return Ok(());
                         }
                     }
                 } else {
                     let response = session
-                        .process_command(&raw_content, &mut self.storage, &self.config, &self.game_registry)
+                        .process_command(
+                            &raw_content,
+                            &mut self.storage,
+                            &self.config,
+                            &self.game_registry,
+                        )
                         .await?;
                     if !response.is_empty() {
                         deferred_reply = Some(response);
@@ -3917,33 +3994,44 @@ impl BbsServer {
 
     /// Check for abandoned housing and process cleanup
     async fn check_housing_cleanup(&mut self) -> Result<()> {
-        use crate::tmush::housing_cleanup::{check_and_cleanup_housing, CleanupConfig, CleanupStats};
-        
+        use crate::tmush::housing_cleanup::{
+            check_and_cleanup_housing, CleanupConfig, CleanupStats,
+        };
+
         info!("Running daily housing cleanup check");
-        
+
         // Get TinyMUSH store from game registry
         let Some(tmush_store) = self.game_registry.get_tinymush_store() else {
             debug!("TinyMUSH not available, skipping housing cleanup");
             return Ok(());
         };
-        
+
         // Get world config for notifications
         let world_config = tmush_store.get_world_config()?;
-        
+
         // Create notification callback that sends DMs to online users
         let sessions = self.sessions.clone();
-        let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
-            // Check if user is online
-            if let Some(_session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
-                // User is online - notification would be sent here
-                // For now, just log it since we don't have direct access to send_message
-                info!("Housing notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
-            }
-        });
-        
+        let notification_fn =
+            std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
+                // Check if user is online
+                if let Some(_session) = sessions
+                    .values()
+                    .find(|s| s.username.as_deref() == Some(username))
+                {
+                    // User is online - notification would be sent here
+                    // For now, just log it since we don't have direct access to send_message
+                    info!(
+                        "Housing notification for {}: {} - {}",
+                        username,
+                        housing_name,
+                        message.lines().next().unwrap_or("")
+                    );
+                }
+            });
+
         let config = CleanupConfig::default();
         let mut stats = CleanupStats::default();
-        
+
         check_and_cleanup_housing(
             &tmush_store,
             &self.storage,
@@ -3951,8 +4039,9 @@ impl BbsServer {
             &mut stats,
             &world_config,
             Some(notification_fn),
-        ).await?;
-        
+        )
+        .await?;
+
         info!(
             "Housing cleanup complete: {} checks, {} marked inactive, {} warnings, {} reclaim boxes deleted",
             stats.checks_performed,
@@ -3960,48 +4049,58 @@ impl BbsServer {
             stats.warnings_issued,
             stats.reclaim_boxes_deleted
         );
-        
+
         Ok(())
     }
 
     /// Process recurring housing payments
     async fn process_housing_payments(&mut self) -> Result<()> {
         use crate::tmush::housing_cleanup::process_recurring_payments;
-        
+
         info!("Processing daily housing recurring payments");
-        
+
         // Get TinyMUSH store from game registry
         let Some(tmush_store) = self.game_registry.get_tinymush_store() else {
             debug!("TinyMUSH not available, skipping housing payments");
             return Ok(());
         };
-        
+
         // Get world config for notifications
         let world_config = tmush_store.get_world_config()?;
-        
+
         // Create notification callback that sends DMs to online users
         let sessions = self.sessions.clone();
-        let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
-            // Check if user is online
-            if let Some(_session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
-                // User is online - notification would be sent here
-                // For now, just log it since we don't have direct access to send_message
-                info!("Housing payment notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
-            }
-        });
-        
+        let notification_fn =
+            std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
+                // Check if user is online
+                if let Some(_session) = sessions
+                    .values()
+                    .find(|s| s.username.as_deref() == Some(username))
+                {
+                    // User is online - notification would be sent here
+                    // For now, just log it since we don't have direct access to send_message
+                    info!(
+                        "Housing payment notification for {}: {} - {}",
+                        username,
+                        housing_name,
+                        message.lines().next().unwrap_or("")
+                    );
+                }
+            });
+
         let (processed, failed) = process_recurring_payments(
             &tmush_store,
             &self.storage,
             &world_config,
             Some(notification_fn),
-        ).await?;
-        
+        )
+        .await?;
+
         info!(
             "Housing payments complete: {} successful, {} failed",
             processed, failed
         );
-        
+
         Ok(())
     }
 

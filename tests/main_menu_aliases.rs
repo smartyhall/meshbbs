@@ -9,7 +9,7 @@ async fn main_menu_single_letter_aliases() {
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
     let mut session = meshbbs::bbs::session::Session::new("s_mm".into(), "node_mm".into());
     let registry = common::empty_game_registry();
-    
+
     // Transition to MainMenu
     let _banner = meshbbs::bbs::commands::CommandProcessor::new()
         .process(&mut session, "anything", &mut storage, &cfg, &registry)

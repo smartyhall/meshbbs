@@ -3,8 +3,8 @@
 //! Tests core mail functionality including sending, reading, deleting,
 //! and folder management using the TinyMushStore directly.
 
-use meshbbs::tmush::TinyMushStoreBuilder;
 use meshbbs::tmush::types::{MailMessage, MailStatus};
+use meshbbs::tmush::TinyMushStoreBuilder;
 use tempfile::TempDir;
 
 #[test]
@@ -18,17 +18,19 @@ fn mail_message_round_trip() {
     // Create a mail message
     let message = MailMessage::new(
         "alice",
-        "bob", 
+        "bob",
         "Test Subject",
-        "This is a test mail message body"
+        "This is a test mail message body",
     );
-    
+
     // Send the message
     let message_id = store.send_mail(message.clone()).expect("send mail");
     assert!(message_id > 0);
-    
+
     // Retrieve from bob's inbox
-    let retrieved_message = store.get_mail("inbox", "bob", message_id).expect("get mail");
+    let retrieved_message = store
+        .get_mail("inbox", "bob", message_id)
+        .expect("get mail");
     assert_eq!(retrieved_message.sender, message.sender);
     assert_eq!(retrieved_message.recipient, message.recipient);
     assert_eq!(retrieved_message.subject, message.subject);
@@ -36,7 +38,9 @@ fn mail_message_round_trip() {
     assert_eq!(retrieved_message.status, MailStatus::Unread);
 
     // Retrieve from alice's sent folder
-    let sent_message = store.get_mail("sent", "alice", message_id).expect("get sent mail");
+    let sent_message = store
+        .get_mail("sent", "alice", message_id)
+        .expect("get sent mail");
     assert_eq!(sent_message.sender, message.sender);
     assert_eq!(sent_message.recipient, message.recipient);
 }
@@ -55,7 +59,7 @@ fn mail_list_and_pagination() {
             "alice",
             "bob",
             &format!("Subject {}", i),
-            &format!("Message body {}", i)
+            &format!("Message body {}", i),
         );
         store.send_mail(message).expect("send mail");
     }
@@ -63,7 +67,7 @@ fn mail_list_and_pagination() {
     // List all messages in bob's inbox
     let inbox_messages = store.list_mail("inbox", "bob", 0, 10).expect("list inbox");
     assert_eq!(inbox_messages.len(), 5);
-    
+
     // Check that messages are sorted by date (newest first)
     for i in 0..4 {
         assert!(inbox_messages[i].sent_at >= inbox_messages[i + 1].sent_at);
@@ -72,7 +76,7 @@ fn mail_list_and_pagination() {
     // Test pagination
     let first_page = store.list_mail("inbox", "bob", 0, 3).expect("first page");
     let second_page = store.list_mail("inbox", "bob", 3, 3).expect("second page");
-    
+
     assert_eq!(first_page.len(), 3);
     assert_eq!(second_page.len(), 2);
 
@@ -98,24 +102,34 @@ fn mail_mark_read_and_delete() {
     assert_eq!(unread_count, 1);
 
     // Mark as read
-    store.mark_mail_read("inbox", "bob", message_id).expect("mark read");
-    
+    store
+        .mark_mail_read("inbox", "bob", message_id)
+        .expect("mark read");
+
     // Verify it's now read
-    let unread_count = store.count_unread_mail("bob").expect("count unread after read");
+    let unread_count = store
+        .count_unread_mail("bob")
+        .expect("count unread after read");
     assert_eq!(unread_count, 0);
 
-    let read_message = store.get_mail("inbox", "bob", message_id).expect("get read message");
+    let read_message = store
+        .get_mail("inbox", "bob", message_id)
+        .expect("get read message");
     assert_eq!(read_message.status, MailStatus::Read);
 
     // Delete the message
-    store.delete_mail("inbox", "bob", message_id).expect("delete mail");
-    
+    store
+        .delete_mail("inbox", "bob", message_id)
+        .expect("delete mail");
+
     // Verify it's gone
     let result = store.get_mail("inbox", "bob", message_id);
     assert!(result.is_err());
 
     // Verify count is correct
-    let total_count = store.count_mail("inbox", "bob").expect("count after delete");
+    let total_count = store
+        .count_mail("inbox", "bob")
+        .expect("count after delete");
     assert_eq!(total_count, 0);
 }
 
@@ -134,7 +148,7 @@ fn mail_quota_enforcement() {
             "alice",
             "bob",
             &format!("Message {}", i),
-            &format!("Body {}", i)
+            &format!("Body {}", i),
         );
         let message_id = store.send_mail(message).expect("send mail");
         message_ids.push(message_id);
@@ -142,7 +156,9 @@ fn mail_quota_enforcement() {
 
     // Mark first 5 as read
     for &message_id in &message_ids[0..5] {
-        store.mark_mail_read("inbox", "bob", message_id).expect("mark read");
+        store
+            .mark_mail_read("inbox", "bob", message_id)
+            .expect("mark read");
     }
 
     // Enforce quota of 7 messages
@@ -172,19 +188,21 @@ fn mail_cleanup_old_messages() {
             "alice",
             "bob",
             &format!("Old Message {}", i),
-            &format!("Old body {}", i)
+            &format!("Old body {}", i),
         );
         let message_id = store.send_mail(message).expect("send mail");
-        store.mark_mail_read("inbox", "bob", message_id).expect("mark read");
+        store
+            .mark_mail_read("inbox", "bob", message_id)
+            .expect("mark read");
     }
 
     // Send some unread messages
     for i in 1..=3 {
         let message = MailMessage::new(
-            "alice", 
+            "alice",
             "bob",
             &format!("New Message {}", i),
-            &format!("New body {}", i)
+            &format!("New body {}", i),
         );
         store.send_mail(message).expect("send mail");
     }
@@ -199,7 +217,7 @@ fn mail_cleanup_old_messages() {
     // Verify unread messages remain
     let final_count = store.count_mail("inbox", "bob").expect("final count");
     assert_eq!(final_count, 3);
-    
+
     let unread_count = store.count_unread_mail("bob").expect("unread count");
     assert_eq!(unread_count, 3);
 }

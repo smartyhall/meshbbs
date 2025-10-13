@@ -11,11 +11,11 @@
 //! - Automatic retention policy enforcement
 //! - No external dependencies (no cron required)
 
-use std::time::Instant;
-use chrono::{DateTime, Utc, Timelike};
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
-use log::{info, debug};
+use chrono::{DateTime, Timelike, Utc};
+use log::{debug, info};
+use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 use super::backup::{BackupManager, BackupType, RetentionPolicy};
 
@@ -156,8 +156,10 @@ impl BackupScheduler {
     /// Update the scheduler configuration (for admin commands)
     pub fn update_config(&mut self, config: BackupSchedulerConfig) {
         self.config = config;
-        info!("Backup scheduler configuration updated: enabled={}, frequency={:?}", 
-              self.config.enabled, self.config.frequency);
+        info!(
+            "Backup scheduler configuration updated: enabled={}, frequency={:?}",
+            self.config.enabled, self.config.frequency
+        );
     }
 
     /// Get the current configuration
@@ -188,12 +190,14 @@ impl BackupScheduler {
         match BackupSchedulerConfig::load() {
             Ok(new_config) => {
                 // Check if config actually changed
-                let changed = new_config.enabled != self.config.enabled 
+                let changed = new_config.enabled != self.config.enabled
                     || new_config.frequency != self.config.frequency;
-                
+
                 if changed {
-                    info!("Backup scheduler config changed: enabled={}, frequency={:?}", 
-                          new_config.enabled, new_config.frequency);
+                    info!(
+                        "Backup scheduler config changed: enabled={}, frequency={:?}",
+                        new_config.enabled, new_config.frequency
+                    );
                     self.config = new_config;
                     Ok(true)
                 } else {
@@ -245,8 +249,11 @@ impl BackupScheduler {
         }
 
         // Create the backup
-        info!("Creating automatic backup (frequency: {})", self.config.frequency.description());
-        
+        info!(
+            "Creating automatic backup (frequency: {})",
+            self.config.frequency.description()
+        );
+
         let mut manager = BackupManager::new(
             self.config.db_path.clone(),
             self.config.backup_path.clone(),
@@ -261,9 +268,12 @@ impl BackupScheduler {
 
         let backup_name = format!("auto_{}", now.format("%Y%m%d_%H%M%S"));
         let metadata = manager.create_backup(Some(backup_name), backup_type)?;
-        
-        info!("Automatic backup created: {} ({} bytes)", metadata.id, metadata.size_bytes);
-        
+
+        info!(
+            "Automatic backup created: {} ({} bytes)",
+            metadata.id, metadata.size_bytes
+        );
+
         // Apply retention policy to clean up old backups
         let deleted = manager.apply_retention_policy()?;
         if !deleted.is_empty() {
@@ -318,31 +328,45 @@ pub struct BackupSchedulerStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_frequency_parsing() {
-        assert_eq!(BackupFrequency::from_str("disabled"), Some(BackupFrequency::Disabled));
-        assert_eq!(BackupFrequency::from_str("hourly"), Some(BackupFrequency::Hourly));
-        assert_eq!(BackupFrequency::from_str("2h"), Some(BackupFrequency::Every2Hours));
-        assert_eq!(BackupFrequency::from_str("daily"), Some(BackupFrequency::Daily));
+        assert_eq!(
+            BackupFrequency::from_str("disabled"),
+            Some(BackupFrequency::Disabled)
+        );
+        assert_eq!(
+            BackupFrequency::from_str("hourly"),
+            Some(BackupFrequency::Hourly)
+        );
+        assert_eq!(
+            BackupFrequency::from_str("2h"),
+            Some(BackupFrequency::Every2Hours)
+        );
+        assert_eq!(
+            BackupFrequency::from_str("daily"),
+            Some(BackupFrequency::Daily)
+        );
         assert_eq!(BackupFrequency::from_str("invalid"), None);
     }
 
     #[test]
     fn test_frequency_descriptions() {
         assert_eq!(BackupFrequency::Hourly.description(), "Every hour");
-        assert_eq!(BackupFrequency::Daily.description(), "Daily at midnight UTC");
+        assert_eq!(
+            BackupFrequency::Daily.description(),
+            "Daily at midnight UTC"
+        );
     }
 
     #[test]
     fn test_scheduler_enable_disable() {
         let config = BackupSchedulerConfig::default();
         let mut scheduler = BackupScheduler::new(config);
-        
+
         scheduler.disable();
         assert!(!scheduler.config().enabled);
-        
+
         scheduler.enable();
         assert!(scheduler.config().enabled);
     }
@@ -351,7 +375,7 @@ mod tests {
     fn test_scheduler_frequency() {
         let config = BackupSchedulerConfig::default();
         let mut scheduler = BackupScheduler::new(config);
-        
+
         scheduler.set_frequency(BackupFrequency::Daily);
         assert_eq!(scheduler.config().frequency, BackupFrequency::Daily);
     }

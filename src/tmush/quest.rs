@@ -29,9 +29,10 @@ pub fn can_accept_quest(
 
     // Check prerequisites
     for prereq_id in &quest.prerequisites {
-        let has_completed = player.quests.iter().any(|pq| {
-            pq.quest_id == *prereq_id && pq.is_complete()
-        });
+        let has_completed = player
+            .quests
+            .iter()
+            .any(|pq| pq.quest_id == *prereq_id && pq.is_complete());
         if !has_completed {
             return Ok(false); // Missing prerequisite
         }
@@ -58,7 +59,7 @@ pub fn accept_quest(
     // Create player quest with fresh objectives
     let player_quest = PlayerQuest::new(quest_id, quest.objectives.clone());
     player.quests.push(player_quest);
-    
+
     store.put_player(player)?;
     Ok(())
 }
@@ -72,15 +73,16 @@ pub fn update_quest_objective(
     progress: u32,
 ) -> Result<bool, TinyMushError> {
     let mut player = store.get_player(username)?;
-    
+
     // Find the quest
-    let quest_pos = player.quests.iter().position(|pq| {
-        pq.quest_id == quest_id && pq.is_active()
-    });
+    let quest_pos = player
+        .quests
+        .iter()
+        .position(|pq| pq.quest_id == quest_id && pq.is_active());
 
     if let Some(pos) = quest_pos {
         let quest = &mut player.quests[pos];
-        
+
         // Find matching objective
         for objective in &mut quest.objectives {
             if objective.objective_type == *objective_type {
@@ -107,9 +109,10 @@ pub fn complete_quest(
     let mut player = store.get_player(username)?;
 
     // Find the quest and verify all objectives complete
-    let quest_pos = player.quests.iter().position(|pq| {
-        pq.quest_id == quest_id && pq.is_active() && pq.all_objectives_complete()
-    });
+    let quest_pos = player
+        .quests
+        .iter()
+        .position(|pq| pq.quest_id == quest_id && pq.is_active() && pq.all_objectives_complete());
 
     if let Some(pos) = quest_pos {
         // Distribute rewards BEFORE marking complete and saving
@@ -149,9 +152,10 @@ pub fn abandon_quest(
 ) -> Result<(), TinyMushError> {
     let mut player = store.get_player(username)?;
 
-    let quest_pos = player.quests.iter().position(|pq| {
-        pq.quest_id == quest_id && pq.is_active()
-    });
+    let quest_pos = player
+        .quests
+        .iter()
+        .position(|pq| pq.quest_id == quest_id && pq.is_active());
 
     if let Some(pos) = quest_pos {
         player.quests[pos].mark_failed();
@@ -188,7 +192,11 @@ pub fn get_active_quests(
     username: &str,
 ) -> Result<Vec<PlayerQuest>, TinyMushError> {
     let player = store.get_player(username)?;
-    Ok(player.quests.into_iter().filter(|pq| pq.is_active()).collect())
+    Ok(player
+        .quests
+        .into_iter()
+        .filter(|pq| pq.is_active())
+        .collect())
 }
 
 /// Get player's completed quests
@@ -197,7 +205,11 @@ pub fn get_completed_quests(
     username: &str,
 ) -> Result<Vec<PlayerQuest>, TinyMushError> {
     let player = store.get_player(username)?;
-    Ok(player.quests.into_iter().filter(|pq| pq.is_complete()).collect())
+    Ok(player
+        .quests
+        .into_iter()
+        .filter(|pq| pq.is_complete())
+        .collect())
 }
 
 /// Format quest status message for display (<200 bytes)
@@ -207,10 +219,10 @@ pub fn format_quest_status(
     player_quest: &PlayerQuest,
 ) -> Result<String, TinyMushError> {
     let quest = store.get_quest(quest_id)?;
-    
+
     let mut output = format!("=== {} ===\n", quest.name);
     output.push_str(&format!("Difficulty: {}/5\n", quest.difficulty));
-    
+
     for obj in &player_quest.objectives {
         let status = if obj.is_complete() { "✓" } else { " " };
         output.push_str(&format!(
@@ -239,7 +251,7 @@ pub fn format_quest_list(
     for (idx, quest_id) in quest_ids.iter().enumerate() {
         if let Ok(quest) = store.get_quest(quest_id) {
             let line = format!("{}. {} (Lv{})\n", idx + 1, quest.name, quest.difficulty);
-            
+
             if current.len() + line.len() > 190 {
                 // Start new message
                 messages.push(current.clone());
@@ -333,7 +345,8 @@ mod tests {
         let objective_type = ObjectiveType::VisitLocation {
             room_id: "town_square".to_string(),
         };
-        let all_complete = update_quest_objective(&store, "alice", "quest1", &objective_type, 1).unwrap();
+        let all_complete =
+            update_quest_objective(&store, "alice", "quest1", &objective_type, 1).unwrap();
         assert!(all_complete);
 
         let player = store.get_player("alice").unwrap();
@@ -370,7 +383,10 @@ mod tests {
         abandon_quest(&store, "alice", "quest1").unwrap();
 
         let player = store.get_player("alice").unwrap();
-        assert!(matches!(player.quests[0].state, crate::tmush::types::QuestState::Failed { .. }));
+        assert!(matches!(
+            player.quests[0].state,
+            crate::tmush::types::QuestState::Failed { .. }
+        ));
     }
 
     #[test]
@@ -447,7 +463,7 @@ mod tests {
 
         let quest_ids = vec!["quest1".to_string(), "quest2".to_string()];
         let messages = format_quest_list(&store, &quest_ids).unwrap();
-        
+
         assert!(!messages.is_empty());
         assert!(messages[0].contains("Test Quest"));
         assert!(messages[0].len() < 200);

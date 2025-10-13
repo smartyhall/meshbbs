@@ -2,8 +2,8 @@
 use tempfile::TempDir;
 
 use meshbbs::tmush::{
-    InventoryConfig, InventoryResult, ObjectOwner, ObjectRecord, PlayerRecord,
-    TinyMushStoreBuilder, CurrencyAmount,
+    CurrencyAmount, InventoryConfig, InventoryResult, ObjectOwner, ObjectRecord, PlayerRecord,
+    TinyMushStoreBuilder,
 };
 use std::collections::HashMap;
 
@@ -48,7 +48,7 @@ fn test_player_add_and_remove_item() {
     let result = store
         .player_add_item("alice", "sword1", 1, &config)
         .expect("add item");
-    
+
     match result {
         InventoryResult::Added { quantity, stacked } => {
             assert_eq!(quantity, 1);
@@ -58,8 +58,15 @@ fn test_player_add_and_remove_item() {
     }
 
     // Verify player has the item
-    assert!(store.player_has_item("alice", "sword1", 1).expect("has item"));
-    assert_eq!(store.player_item_quantity("alice", "sword1").expect("quantity"), 1);
+    assert!(store
+        .player_has_item("alice", "sword1", 1)
+        .expect("has item"));
+    assert_eq!(
+        store
+            .player_item_quantity("alice", "sword1")
+            .expect("quantity"),
+        1
+    );
 
     // Remove the item
     let result = store
@@ -74,7 +81,9 @@ fn test_player_add_and_remove_item() {
     }
 
     // Verify item is gone
-    assert!(!store.player_has_item("alice", "sword1", 1).expect("has item"));
+    assert!(!store
+        .player_has_item("alice", "sword1", 1)
+        .expect("has item"));
 }
 
 #[test]
@@ -93,7 +102,12 @@ fn test_player_add_item_with_stacking() {
     store
         .player_add_item("bob", "potion1", 5, &config)
         .expect("add item");
-    assert_eq!(store.player_item_quantity("bob", "potion1").expect("quantity"), 5);
+    assert_eq!(
+        store
+            .player_item_quantity("bob", "potion1")
+            .expect("quantity"),
+        5
+    );
 
     // Add second batch (should stack)
     let result = store
@@ -108,7 +122,12 @@ fn test_player_add_item_with_stacking() {
         _ => panic!("Expected Added result with stacked=true"),
     }
 
-    assert_eq!(store.player_item_quantity("bob", "potion1").expect("quantity"), 8);
+    assert_eq!(
+        store
+            .player_item_quantity("bob", "potion1")
+            .expect("quantity"),
+        8
+    );
 }
 
 #[test]
@@ -184,8 +203,12 @@ fn test_player_inventory_list() {
     store.put_object(potion).expect("put object");
 
     // Add items
-    store.player_add_item("eve", "sword1", 1, &config).expect("add sword");
-    store.player_add_item("eve", "potion1", 5, &config).expect("add potions");
+    store
+        .player_add_item("eve", "sword1", 1, &config)
+        .expect("add sword");
+    store
+        .player_add_item("eve", "potion1", 5, &config)
+        .expect("add potions");
 
     // Get inventory list
     let inventory = store.player_inventory_list("eve").expect("get inventory");
@@ -217,12 +240,16 @@ fn test_player_inventory_weight() {
     assert_eq!(weight, 0);
 
     // Add sword
-    store.player_add_item("frank", "sword1", 1, &config).expect("add sword");
+    store
+        .player_add_item("frank", "sword1", 1, &config)
+        .expect("add sword");
     let weight = store.player_inventory_weight("frank").expect("get weight");
     assert_eq!(weight, 10);
 
     // Add shield
-    store.player_add_item("frank", "shield1", 1, &config).expect("add shield");
+    store
+        .player_add_item("frank", "shield1", 1, &config)
+        .expect("add shield");
     let weight = store.player_inventory_weight("frank").expect("get weight");
     assert_eq!(weight, 25);
 }
@@ -242,9 +269,19 @@ fn test_transfer_item_between_players() {
     store.put_object(gem).expect("put object");
 
     // Give Alice some gems
-    store.player_add_item("alice", "gem1", 10, &config).expect("add gems");
-    assert_eq!(store.player_item_quantity("alice", "gem1").expect("quantity"), 10);
-    assert_eq!(store.player_item_quantity("bob", "gem1").expect("quantity"), 0);
+    store
+        .player_add_item("alice", "gem1", 10, &config)
+        .expect("add gems");
+    assert_eq!(
+        store
+            .player_item_quantity("alice", "gem1")
+            .expect("quantity"),
+        10
+    );
+    assert_eq!(
+        store.player_item_quantity("bob", "gem1").expect("quantity"),
+        0
+    );
 
     // Transfer 3 gems from Alice to Bob
     store
@@ -252,8 +289,16 @@ fn test_transfer_item_between_players() {
         .expect("transfer");
 
     // Verify quantities
-    assert_eq!(store.player_item_quantity("alice", "gem1").expect("quantity"), 7);
-    assert_eq!(store.player_item_quantity("bob", "gem1").expect("quantity"), 3);
+    assert_eq!(
+        store
+            .player_item_quantity("alice", "gem1")
+            .expect("quantity"),
+        7
+    );
+    assert_eq!(
+        store.player_item_quantity("bob", "gem1").expect("quantity"),
+        3
+    );
 }
 
 #[test]
@@ -296,14 +341,28 @@ fn test_transfer_item_receiver_over_capacity() {
     store.put_object(boulder).expect("put object");
 
     // Give Alice an anvil, Bob a boulder
-    store.player_add_item("alice", "anvil1", 1, &config).expect("add anvil");
-    store.player_add_item("bob", "boulder1", 1, &config).expect("add boulder");
+    store
+        .player_add_item("alice", "anvil1", 1, &config)
+        .expect("add anvil");
+    store
+        .player_add_item("bob", "boulder1", 1, &config)
+        .expect("add boulder");
 
     // Try to transfer anvil to Bob (would put him at 70 weight, over 50 limit)
     let result = store.transfer_item("alice", "bob", "anvil1", 1, &config);
 
     assert!(result.is_err());
     // Alice should still have the anvil
-    assert_eq!(store.player_item_quantity("alice", "anvil1").expect("quantity"), 1);
-    assert_eq!(store.player_item_quantity("bob", "anvil1").expect("quantity"), 0);
+    assert_eq!(
+        store
+            .player_item_quantity("alice", "anvil1")
+            .expect("quantity"),
+        1
+    );
+    assert_eq!(
+        store
+            .player_item_quantity("bob", "anvil1")
+            .expect("quantity"),
+        0
+    );
 }

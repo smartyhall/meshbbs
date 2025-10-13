@@ -33,3 +33,12 @@ pub fn writable_fixture() -> tempfile::TempDir {
 pub fn empty_game_registry() -> meshbbs::bbs::GameRegistry {
     meshbbs::bbs::GameRegistry::new()
 }
+
+#[test]
+fn empty_registry_helper_creates_no_games() {
+    let registry = empty_game_registry();
+    assert!(
+        registry.get_tinymush_store().is_none(),
+        "Helper should return a registry with no games registered"
+    );
+}

@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 
 use crate::tmush::types::{
-    AchievementCategory, AchievementRecord, AchievementTrigger, Direction, RoomFlag, RoomRecord,
-    ObjectRecord, ObjectOwner, ObjectTrigger, CurrencyAmount, OBJECT_SCHEMA_VERSION,
+    AchievementCategory, AchievementRecord, AchievementTrigger, CurrencyAmount, Direction,
+    ObjectOwner, ObjectRecord, ObjectTrigger, RoomFlag, RoomRecord, OBJECT_SCHEMA_VERSION,
 };
 
 /// Required landing location where new characters are staged before entering the world.
@@ -414,20 +414,35 @@ pub fn seed_starter_companions() -> Vec<crate::tmush::types::CompanionRecord> {
 
     // A gentle horse available at the stable
     companions.push(
-        CompanionRecord::new("gentle_mare", "Gentle Mare", CompanionType::Horse, "south_market")
-            .with_description("A gentle brown mare with kind eyes. She seems eager for a rider."),
+        CompanionRecord::new(
+            "gentle_mare",
+            "Gentle Mare",
+            CompanionType::Horse,
+            "south_market",
+        )
+        .with_description("A gentle brown mare with kind eyes. She seems eager for a rider."),
     );
 
     // A loyal dog at the town square
     companions.push(
-        CompanionRecord::new("loyal_hound", "Loyal Hound", CompanionType::Dog, REQUIRED_START_LOCATION_ID)
-            .with_description("A friendly dog with alert eyes. He wags his tail hopefully."),
+        CompanionRecord::new(
+            "loyal_hound",
+            "Loyal Hound",
+            CompanionType::Dog,
+            REQUIRED_START_LOCATION_ID,
+        )
+        .with_description("A friendly dog with alert eyes. He wags his tail hopefully."),
     );
 
     // A mysterious cat near the museum
     companions.push(
-        CompanionRecord::new("shadow_cat", "Shadow Cat", CompanionType::Cat, "mesh_museum")
-            .with_description("A sleek black cat with piercing green eyes. She watches you intently."),
+        CompanionRecord::new(
+            "shadow_cat",
+            "Shadow Cat",
+            CompanionType::Cat,
+            "mesh_museum",
+        )
+        .with_description("A sleek black cat with piercing green eyes. She watches you intently."),
     );
 
     companions
@@ -465,7 +480,7 @@ Welcome to Old Towne Mesh, citizen!",
         "Looking for something to do? I have some tasks that could use a capable \
 adventurer like yourself. Check back when you're ready for a challenge!",
     );
-    
+
     npcs.push(mayor);
 
     // City Hall Clerk - Administrative help
@@ -488,7 +503,7 @@ understanding how things work around here, just ask!",
 complete quests, trade with others, and even claim housing! Type HELP for commands.",
     )
     .with_flag(crate::tmush::types::NpcFlag::TutorialNpc);
-    
+
     npcs.push(clerk);
 
     // Gate Guard - Security and direction
@@ -511,7 +526,7 @@ the wilderness - beautiful but dangerous for the unprepared.",
 signal weakens past the ridge, and you'll be on your own out there.",
     )
     .with_flag(crate::tmush::types::NpcFlag::Guard);
-    
+
     npcs.push(guard);
 
     // Market Vendor - Trading and commerce
@@ -539,7 +554,7 @@ Right now I'm running low on inventory, but check back soon - I restock regularl
 of the original mesh pioneers. These goods carry that legacy!",
     )
     .with_flag(crate::tmush::types::NpcFlag::Vendor);
-    
+
     npcs.push(vendor);
 
     // Museum Curator - Lore and history
@@ -569,27 +584,29 @@ It ran for 72 hours on backup power, keeping the southern district connected. \
 Legendary piece of equipment.",
     )
     .with_flag(crate::tmush::types::NpcFlag::TutorialNpc);
-    
+
     npcs.push(curator);
 
     npcs
 }
 
 /// Seed full dialogue trees for all NPCs (called after seed_npcs_if_needed)
-pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore) -> Result<usize, crate::tmush::errors::TinyMushError> {
-    use crate::tmush::types::{DialogNode, DialogChoice};
+pub fn seed_npc_dialogues_if_needed(
+    store: &crate::tmush::storage::TinyMushStore,
+) -> Result<usize, crate::tmush::errors::TinyMushError> {
+    use crate::tmush::types::{DialogChoice, DialogNode};
     use std::collections::HashMap;
-    
+
     let mut updated = 0;
-    
+
     // Mayor Thompson - Tutorial and town info
     match store.get_npc("mayor_thompson") {
         Ok(mut mayor) => {
             if mayor.dialog_tree.is_empty() {
-            let mut tree = HashMap::new();
-            
-            // Root greeting node
-            tree.insert("greeting".to_string(), DialogNode::new(
+                let mut tree = HashMap::new();
+
+                // Root greeting node
+                tree.insert("greeting".to_string(), DialogNode::new(
                 "Welcome to Old Towne Mesh! I'm Mayor Thompson, and I oversee operations here. \
                 Whether you're just starting out or looking for what to do next, I'm here to help!"
             )
@@ -597,9 +614,9 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
             .with_choice(DialogChoice::new("What is there to do in town?").goto("town_info"))
             .with_choice(DialogChoice::new("Do you have any quests?").goto("quest_check"))
             .with_choice(DialogChoice::new("Thanks, I'll look around").exit()));
-            
-            // Tutorial branch
-            tree.insert("tutorial".to_string(), DialogNode::new(
+
+                // Tutorial branch
+                tree.insert("tutorial".to_string(), DialogNode::new(
                 "The tutorial will teach you the basics of navigating our world - movement, talking to NPCs, \
                 using items, and more. It's a great way to get your bearings!"
             )
@@ -607,67 +624,70 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
             .with_choice(DialogChoice::new("What commands should I know?").goto("tutorial_commands"))
             .with_choice(DialogChoice::new("I'd rather skip it").goto("skip_tutorial"))
             .with_choice(DialogChoice::new("Let me think about it").exit()));
-            
-            tree.insert("tutorial_start".to_string(), DialogNode::new(
+
+                tree.insert("tutorial_start".to_string(), DialogNode::new(
                 "Just type START TUTORIAL and you'll begin! The tutorial will guide you through each step. \
                 When you complete it, come back and I'll have a small reward for you."
             )
             .with_choice(DialogChoice::new("Thanks, I'll try it!").exit())
             .with_choice(DialogChoice::new("What else is there?").goto("town_info")));
-            
-            tree.insert("tutorial_commands".to_string(), DialogNode::new(
+
+                tree.insert("tutorial_commands".to_string(), DialogNode::new(
                 "Basic commands: LOOK (examine surroundings), GO <direction> (move), TALK <npc> (chat), \
                 INVENTORY (check items), HELP (full command list). The tutorial covers all of these!"
             )
             .with_choice(DialogChoice::new("Got it!").exit())
             .with_choice(DialogChoice::new("Tell me about town").goto("town_info")));
-            
-            tree.insert("skip_tutorial".to_string(), DialogNode::new(
+
+                tree.insert("skip_tutorial".to_string(), DialogNode::new(
                 "That's fine! You can always start it later with START TUTORIAL. Feel free to explore \
                 on your own - the City Clerk can help with questions."
             )
             .with_choice(DialogChoice::new("Thanks").exit()));
-            
-            // Town info branch
-            tree.insert("town_info".to_string(), DialogNode::new(
+
+                // Town info branch
+                tree.insert("town_info".to_string(), DialogNode::new(
                 "Old Towne Mesh has everything you need! We have a museum of mesh history, a marketplace, \
                 City Hall for administrative help, and gates leading to the wilderness."
             )
             .with_choice(DialogChoice::new("Tell me about housing").goto("housing_info"))
             .with_choice(DialogChoice::new("What about quests?").goto("quest_check"))
             .with_choice(DialogChoice::new("Thanks!").exit()));
-            
-            tree.insert("housing_info".to_string(), DialogNode::new(
+
+                tree.insert("housing_info".to_string(), DialogNode::new(
                 "You can claim housing through City Hall! Talk to the City Clerk about available options. \
                 Having your own place lets you store items and customize your space."
             )
             .with_choice(DialogChoice::new("Sounds great!").exit())
             .with_choice(DialogChoice::new("What else?").goto("town_info")));
-            
-            // Quest branch
-            tree.insert("quest_check".to_string(), DialogNode::new(
+
+                // Quest branch
+                tree.insert("quest_check".to_string(), DialogNode::new(
                 "I have some tasks that need doing, but I like to make sure folks are ready first. \
                 Complete the tutorial and get familiar with town, then come back!"
             )
             .with_choice(DialogChoice::new("Will do!").exit())
             .with_choice(DialogChoice::new("Tell me about town").goto("town_info")));
-            
-            mayor.dialog_tree = tree;
-            store.put_npc(mayor)?;
-            updated += 1;
+
+                mayor.dialog_tree = tree;
+                store.put_npc(mayor)?;
+                updated += 1;
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: Could not load mayor_thompson for dialogue seeding: {}",
+                e
+            );
         }
     }
-    Err(e) => {
-        eprintln!("Warning: Could not load mayor_thompson for dialogue seeding: {}", e);
-    }
-}
-    
+
     // City Clerk - Administrative help
     match store.get_npc("city_clerk") {
         Ok(mut clerk) => {
             if clerk.dialog_tree.is_empty() {
                 let mut tree = HashMap::new();
-                
+
                 // Root greeting node
                 tree.insert("greeting".to_string(), DialogNode::new(
                     "Welcome to City Hall! I'm here to help with administrative matters. Whether you need \
@@ -677,7 +697,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("What quests are available?").goto("quest_help"))
                 .with_choice(DialogChoice::new("What services does City Hall offer?").goto("services"))
                 .with_choice(DialogChoice::new("Thanks, I'm all set").exit()));
-                
+
                 // Housing branch
                 tree.insert("housing_help".to_string(), DialogNode::new(
                     "City Hall manages the housing system! You can claim an apartment or larger space \
@@ -686,7 +706,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("How much does housing cost?").goto("housing_cost"))
                 .with_choice(DialogChoice::new("What else can you tell me?").goto("services"))
                 .with_choice(DialogChoice::new("I'll think about it").exit()));
-                
+
                 tree.insert("housing_cost".to_string(), DialogNode::new(
                     "We have several options! Studio apartments start at 100 credits to claim, with a small \
                     recurring fee. Larger apartments with multiple rooms cost more but give you more space. \
@@ -694,7 +714,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("Sounds good!").exit())
                 .with_choice(DialogChoice::new("Tell me about other services").goto("services")));
-                
+
                 // Quest branch
                 tree.insert("quest_help".to_string(), DialogNode::new(
                     "Various people around town have tasks they need help with. Mayor Thompson coordinates \
@@ -703,14 +723,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Where should I look?").goto("quest_locations"))
                 .with_choice(DialogChoice::new("What else can you help with?").goto("services"))
                 .with_choice(DialogChoice::new("Thanks!").exit()));
-                
+
                 tree.insert("quest_locations".to_string(), DialogNode::new(
                     "The Mayor's office is a great place to start. The museum curator, market vendors, and \
                     even the gate guards sometimes have work available. Keep your eyes open!"
                 )
                 .with_choice(DialogChoice::new("Got it!").exit())
                 .with_choice(DialogChoice::new("Tell me about housing").goto("housing_help")));
-                
+
                 // Services branch
                 tree.insert("services".to_string(), DialogNode::new(
                     "City Hall handles housing claims, maintains public records, and coordinates with \
@@ -720,23 +740,26 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Very helpful, thanks!").exit())
                 .with_choice(DialogChoice::new("About housing...").goto("housing_help"))
                 .with_choice(DialogChoice::new("About quests...").goto("quest_help")));
-                
+
                 clerk.dialog_tree = tree;
                 store.put_npc(clerk)?;
                 updated += 1;
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not load city_clerk for dialogue seeding: {}", e);
+            eprintln!(
+                "Warning: Could not load city_clerk for dialogue seeding: {}",
+                e
+            );
         }
     }
-    
+
     // Gate Guard - Security and warnings
     match store.get_npc("gate_guard") {
         Ok(mut guard) => {
             if guard.dialog_tree.is_empty() {
                 let mut tree = HashMap::new();
-                
+
                 // Root greeting node
                 tree.insert("greeting".to_string(), DialogNode::new(
                     "Greetings, traveler. I keep watch over the northern approach. Beyond this gate lies \
@@ -746,7 +769,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("What dangers should I know about?").goto("dangers"))
                 .with_choice(DialogChoice::new("Any advice for exploring?").goto("advice"))
                 .with_choice(DialogChoice::new("Just passing through").exit()));
-                
+
                 // Looking branch
                 tree.insert("looking".to_string(), DialogNode::new(
                     "The wilderness holds many opportunities - rare resources, ancient relics, and \
@@ -756,7 +779,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("What kind of dangers?").goto("dangers"))
                 .with_choice(DialogChoice::new("Should I go out there?").goto("adventure_warning"))
                 .with_choice(DialogChoice::new("I'll be careful").exit()));
-                
+
                 // Dangers branch
                 tree.insert("dangers".to_string(), DialogNode::new(
                     "Wild animals, unstable terrain, signal dead zones... The wilderness doesn't forgive \
@@ -765,14 +788,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("How should I prepare?").goto("equipment"))
                 .with_choice(DialogChoice::new("Maybe I should stay in town").goto("adventure_warning"))
                 .with_choice(DialogChoice::new("Thanks for the warning").exit()));
-                
+
                 tree.insert("adventure_warning".to_string(), DialogNode::new(
                     "Smart thinking. Build your skills in town first. Complete some quests, gather supplies, \
                     and learn your way around. The wilderness will still be here when you're ready."
                 )
                 .with_choice(DialogChoice::new("Good advice").exit())
                 .with_choice(DialogChoice::new("Where's the market?").goto("market_direction")));
-                
+
                 // Equipment branch
                 tree.insert("equipment".to_string(), DialogNode::new(
                     "At minimum, bring food, water, and basic tools. A reliable signal booster helps maintain \
@@ -780,13 +803,13 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("Where's the market?").goto("market_direction"))
                 .with_choice(DialogChoice::new("Thanks, I'll gear up").exit()));
-                
+
                 tree.insert("market_direction".to_string(), DialogNode::new(
                     "Head south from the town square. You can't miss it - lots of stalls and activity. \
                     Mira runs a good operation, fair prices and quality gear."
                 )
                 .with_choice(DialogChoice::new("Thanks!").exit()));
-                
+
                 // Advice branch
                 tree.insert("advice".to_string(), DialogNode::new(
                     "Never go out alone on your first trip. Stay within sight of the walls until you know \
@@ -795,23 +818,26 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("I'll remember that").exit())
                 .with_choice(DialogChoice::new("Tell me about the dangers").goto("dangers")));
-                
+
                 guard.dialog_tree = tree;
                 store.put_npc(guard)?;
                 updated += 1;
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not load gate_guard for dialogue seeding: {}", e);
+            eprintln!(
+                "Warning: Could not load gate_guard for dialogue seeding: {}",
+                e
+            );
         }
     }
-    
+
     // Market Vendor - Trading and commerce
     match store.get_npc("market_vendor") {
         Ok(mut vendor) => {
             if vendor.dialog_tree.is_empty() {
                 let mut tree = HashMap::new();
-                
+
                 // Root greeting node
                 tree.insert("greeting".to_string(), DialogNode::new(
                     "Welcome to my stall! I'm Mira, and I've got the finest mesh components and supplies \
@@ -821,7 +847,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Tell me about yourself").goto("story"))
                 .with_choice(DialogChoice::new("I'd like to buy something").goto("buying"))
                 .with_choice(DialogChoice::new("Just browsing, thanks").exit()));
-                
+
                 // Wares branch
                 tree.insert("wares".to_string(), DialogNode::new(
                     "I stock everything a traveler needs! Basic tools, signal boosters, mesh hardware, \
@@ -831,14 +857,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Can I buy something now?").goto("buying"))
                 .with_choice(DialogChoice::new("Tell me your story").goto("story"))
                 .with_choice(DialogChoice::new("Thanks!").exit()));
-                
+
                 tree.insert("best_item".to_string(), DialogNode::new(
                     "Right now? I've got a mesh signal booster that's perfect for wilderness exploration. \
                     Keeps you connected even in weak signal areas. 50 credits and it's yours!"
                 )
                 .with_choice(DialogChoice::new("I'll take it!").goto("buy_booster"))
                 .with_choice(DialogChoice::new("Maybe later").exit()));
-                
+
                 // Story branch
                 tree.insert("story".to_string(), DialogNode::new(
                     "This stall has been in my family for three generations! My grandmother was one of the \
@@ -847,14 +873,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("That's a great tradition!").exit())
                 .with_choice(DialogChoice::new("What do you sell?").goto("wares"))
                 .with_choice(DialogChoice::new("Tell me more history").goto("history_detail")));
-                
+
                 tree.insert("history_detail".to_string(), DialogNode::new(
                     "My grandmother kept the network running during the great storms of '19. Every piece \
                     of hardware here carries that legacy - built to last, tested in harsh conditions."
                 )
                 .with_choice(DialogChoice::new("Impressive!").exit())
                 .with_choice(DialogChoice::new("Show me what you have").goto("wares")));
-                
+
                 // Buying branch
                 tree.insert("buying".to_string(), DialogNode::new(
                     "Wonderful! I have some items ready for immediate purchase, or you can browse my full \
@@ -862,7 +888,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("What's available now?").goto("prices"))
                 .with_choice(DialogChoice::new("Never mind").exit()));
-                
+
                 tree.insert("prices".to_string(), DialogNode::new(
                     "I've got a few items on hand: A basic knife (15 credits) - handy for cutting rope and \
                     general tasks. A signal booster (50 credits) - essential for wilderness travel. More items \
@@ -871,7 +897,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("I'll buy the knife").goto("purchase_knife"))
                 .with_choice(DialogChoice::new("I'll buy the booster").goto("buy_booster"))
                 .with_choice(DialogChoice::new("Just looking for now").exit()));
-                
+
                 // Note: These nodes would use DialogCondition::HasCurrency and DialogAction::TakeCurrency + GiveItem
                 // but we're keeping them simple text for now. The @DIALOG EDIT command can add the actions.
                 tree.insert("purchase_knife".to_string(), DialogNode::new(
@@ -880,14 +906,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("Thanks!").exit())
                 .with_choice(DialogChoice::new("What else do you have?").goto("prices")));
-                
+
                 tree.insert("buy_booster".to_string(), DialogNode::new(
                     "The signal booster is 50 credits. (This is a placeholder - use @DIALOG EDIT to add \
                     currency conditions and give_item actions)"
                 )
                 .with_choice(DialogChoice::new("Thanks!").exit())
                 .with_choice(DialogChoice::new("What else?").goto("prices")));
-                
+
                 // Additional info branches
                 tree.insert("valuable_items".to_string(), DialogNode::new(
                     "Looking for something special? I occasionally get rare mesh components from salvagers. \
@@ -895,14 +921,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("How do I find those?").goto("finding_valuables"))
                 .with_choice(DialogChoice::new("Interesting!").exit()));
-                
+
                 tree.insert("finding_valuables".to_string(), DialogNode::new(
                     "Explore the wilderness, check abandoned sites, complete quests. Bring me anything \
                     interesting you find - I'll give you a fair price or trade you something useful!"
                 )
                 .with_choice(DialogChoice::new("Will do!").exit())
                 .with_choice(DialogChoice::new("Show me your current stock").goto("wares")));
-                
+
                 tree.insert("weapons".to_string(), DialogNode::new(
                     "I keep a few basic weapons for self-defense. Nothing fancy, but reliable. The knife is \
                     practical for everyday carry, and I sometimes have staves or other tools."
@@ -910,23 +936,26 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("I'll take the knife").goto("purchase_knife"))
                 .with_choice(DialogChoice::new("What else do you have?").goto("wares"))
                 .with_choice(DialogChoice::new("Maybe later").exit()));
-                
+
                 vendor.dialog_tree = tree;
                 store.put_npc(vendor)?;
                 updated += 1;
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not load market_vendor for dialogue seeding: {}", e);
+            eprintln!(
+                "Warning: Could not load market_vendor for dialogue seeding: {}",
+                e
+            );
         }
     }
-    
+
     // Museum Curator - Lore and history
     match store.get_npc("museum_curator") {
         Ok(mut curator) => {
             if curator.dialog_tree.is_empty() {
                 let mut tree = HashMap::new();
-                
+
                 // Root greeting node
                 tree.insert("greeting".to_string(), DialogNode::new(
                     "Ah, welcome to the Mesh Museum! I'm Dr. Reeves, curator and historian. Every artifact \
@@ -936,7 +965,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("What's the history here?").goto("history"))
                 .with_choice(DialogChoice::new("Any special exhibits?").goto("exhibit"))
                 .with_choice(DialogChoice::new("Just looking around").exit()));
-                
+
                 // Museum branch
                 tree.insert("about_museum".to_string(), DialogNode::new(
                     "This museum preserves the history of the mesh network - from the first nodes to today. \
@@ -945,14 +974,14 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Who founded it?").goto("founder"))
                 .with_choice(DialogChoice::new("Tell me about the history").goto("history"))
                 .with_choice(DialogChoice::new("Fascinating!").exit()));
-                
+
                 tree.insert("founder".to_string(), DialogNode::new(
                     "The museum was founded by the original mesh pioneers - people like Mira's grandmother. \
                     They wanted future generations to understand what it took to build this network from nothing."
                 )
                 .with_choice(DialogChoice::new("Amazing dedication").exit())
                 .with_choice(DialogChoice::new("Tell me more history").goto("history_detail")));
-                
+
                 // History branch
                 tree.insert("history".to_string(), DialogNode::new(
                     "The mesh network started small - just a few nodes connecting neighbors. Through \
@@ -962,7 +991,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Tell me more").goto("history_detail"))
                 .with_choice(DialogChoice::new("What about the exhibits?").goto("exhibit"))
                 .with_choice(DialogChoice::new("Impressive").exit()));
-                
+
                 tree.insert("history_detail".to_string(), DialogNode::new(
                     "Take the Winter Storm of '19 - power was out for days across the region. But the mesh \
                     stayed up! Battery backups, solar panels, people sharing generators... The network became \
@@ -971,7 +1000,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("That's incredible!").exit())
                 .with_choice(DialogChoice::new("Tell me about that relay").goto("relay_story"))
                 .with_choice(DialogChoice::new("What else is here?").goto("exhibit")));
-                
+
                 tree.insert("relay_story".to_string(), DialogNode::new(
                     "That relay in the center display? It ran for 72 hours straight on backup power, keeping \
                     the southern district connected. The operator - Sarah Chen - stayed with it the entire time, \
@@ -979,7 +1008,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("Amazing story").exit())
                 .with_choice(DialogChoice::new("Are there other exhibits?").goto("other_exhibits")));
-                
+
                 // Exhibits branch
                 tree.insert("exhibit".to_string(), DialogNode::new(
                     "Our centerpiece is the Winter Storm '19 relay - a legendary piece of equipment. We also \
@@ -988,7 +1017,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 .with_choice(DialogChoice::new("Tell me about the storm").goto("relay_story"))
                 .with_choice(DialogChoice::new("What about the pioneers?").goto("pioneers"))
                 .with_choice(DialogChoice::new("Very interesting!").exit()));
-                
+
                 tree.insert("other_exhibits".to_string(), DialogNode::new(
                     "We have sections on early mesh protocols, the evolution of hardware, and profiles of \
                     key network architects. There's also a hands-on area where you can see how old equipment \
@@ -996,7 +1025,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("I'd like to see that").exit())
                 .with_choice(DialogChoice::new("Tell me about the pioneers").goto("pioneers")));
-                
+
                 tree.insert("pioneers".to_string(), DialogNode::new(
                     "The mesh pioneers were ordinary people who saw a need and met it with creativity and \
                     determination. They didn't have perfect equipment or unlimited resources - just commitment \
@@ -1004,7 +1033,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("Inspiring!").exit())
                 .with_choice(DialogChoice::new("Who were the heroes?").goto("heroes")));
-                
+
                 tree.insert("heroes".to_string(), DialogNode::new(
                     "Too many to list! Sarah Chen of Storm '19 fame, Marcus Webb who designed the resilient \
                     routing protocols we still use, the Tanaka family who donated land for relay towers... \
@@ -1012,22 +1041,25 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
                 )
                 .with_choice(DialogChoice::new("I should learn more").exit())
                 .with_choice(DialogChoice::new("Thanks for sharing").exit()));
-                
+
                 curator.dialog_tree = tree;
                 store.put_npc(curator)?;
                 updated += 1;
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not load museum_curator for dialogue seeding: {}", e);
+            eprintln!(
+                "Warning: Could not load museum_curator for dialogue seeding: {}",
+                e
+            );
         }
     }
-    
+
     Ok(updated)
 }
 
 /// Create example trigger objects for Phase 9 testing
-/// 
+///
 /// This creates 6 example objects demonstrating all trigger types:
 /// - Healing Potion (OnUse with consume + heal)
 /// - Ancient Key (OnLook with quest check, OnUse unlocks exit)
@@ -1037,7 +1069,7 @@ pub fn seed_npc_dialogues_if_needed(store: &crate::tmush::storage::TinyMushStore
 /// - Singing Mushroom (OnEnter ambient message)
 pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
     let mut objects = Vec::new();
-    
+
     // 1. Healing Potion - OnUse trigger with consume() and heal()
     let mut healing_potion = ObjectRecord {
         id: "example_healing_potion".to_string(),
@@ -1062,15 +1094,17 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
     };
     healing_potion.actions.insert(
         ObjectTrigger::OnUse,
-        "message(\"The potion glows brightly as you drink it!\") && heal(50) && consume()".to_string()
+        "message(\"The potion glows brightly as you drink it!\") && heal(50) && consume()"
+            .to_string(),
     );
     objects.push(healing_potion);
-    
+
     // 2. Ancient Key - OnLook with quest check, OnUse unlocks exit
     let mut ancient_key = ObjectRecord {
         id: "example_ancient_key".to_string(),
         name: "Ancient Key".to_string(),
-        description: "A tarnished brass key with mysterious runes etched along its length.".to_string(),
+        description: "A tarnished brass key with mysterious runes etched along its length."
+            .to_string(),
         owner: ObjectOwner::World,
         created_at: now,
         weight: 1,
@@ -1094,10 +1128,10 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
     );
     ancient_key.actions.insert(
         ObjectTrigger::OnUse,
-        "message(\"The key turns in an invisible lock...\") && unlock_exit(\"north\")".to_string()
+        "message(\"The key turns in an invisible lock...\") && unlock_exit(\"north\")".to_string(),
     );
     objects.push(ancient_key);
-    
+
     // 3. Mystery Box - OnPoke with random chance
     let mut mystery_box = ObjectRecord {
         id: "example_mystery_box".to_string(),
@@ -1125,7 +1159,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         "random_chance(50) ? message(\"🎁 A small treat pops out!\") : message(\"💨 The box releases a puff of dust.\")".to_string()
     );
     objects.push(mystery_box);
-    
+
     // 4. Quest Clue - OnLook with dynamic description
     let mut quest_clue = ObjectRecord {
         id: "example_quest_clue".to_string(),
@@ -1150,10 +1184,11 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
     };
     quest_clue.actions.insert(
         ObjectTrigger::OnLook,
-        "message(\"The note reads: 'Meet me at the old gazebo when the moon is high. - M'\")".to_string()
+        "message(\"The note reads: 'Meet me at the old gazebo when the moon is high. - M'\")"
+            .to_string(),
     );
     objects.push(quest_clue);
-    
+
     // 5. Teleport Stone - OnUse teleports player
     let mut teleport_stone = ObjectRecord {
         id: "example_teleport_stone".to_string(),
@@ -1178,10 +1213,11 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
     };
     teleport_stone.actions.insert(
         ObjectTrigger::OnUse,
-        "message(\"✨ The stone flashes brilliantly!\") && teleport(\"old_towne_square\")".to_string()
+        "message(\"✨ The stone flashes brilliantly!\") && teleport(\"old_towne_square\")"
+            .to_string(),
     );
     objects.push(teleport_stone);
-    
+
     // 6. Singing Mushroom - OnEnter ambient message
     let mut singing_mushroom = ObjectRecord {
         id: "example_singing_mushroom".to_string(),
@@ -1206,10 +1242,9 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
     };
     singing_mushroom.actions.insert(
         ObjectTrigger::OnEnter,
-        "message(\"🍄 The mushroom chimes a cheerful tune as you enter the room!\")".to_string()
+        "message(\"🍄 The mushroom chimes a cheerful tune as you enter the room!\")".to_string(),
     );
     objects.push(singing_mushroom);
-    
+
     objects
 }
-

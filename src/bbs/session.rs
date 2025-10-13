@@ -162,7 +162,9 @@ impl Session {
         );
 
         let processor = CommandProcessor::new();
-        let response = processor.process(self, command, storage, config, game_registry).await?;
+        let response = processor
+            .process(self, command, storage, config, game_registry)
+            .await?;
 
         Ok(response)
     }

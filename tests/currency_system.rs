@@ -2,9 +2,8 @@
 use tempfile::TempDir;
 
 use meshbbs::tmush::{
-    format_currency, parse_currency, CurrencyAmount, CurrencySystem, CurrencyTier,
-    DecimalCurrency, MultiTierCurrency, PlayerRecord, TinyMushError, TinyMushStoreBuilder,
-    TransactionReason,
+    format_currency, parse_currency, CurrencyAmount, CurrencySystem, CurrencyTier, DecimalCurrency,
+    MultiTierCurrency, PlayerRecord, TinyMushError, TinyMushStoreBuilder, TransactionReason,
 };
 
 #[test]
@@ -123,12 +122,7 @@ fn test_decimal_currency_parsing() {
 
     // Whole number
     let amount = parse_currency("100", &system).unwrap();
-    assert_eq!(
-        amount,
-        CurrencyAmount::Decimal {
-            minor_units: 10000
-        }
-    );
+    assert_eq!(amount, CurrencyAmount::Decimal { minor_units: 10000 });
 
     // With symbol
     let amount = parse_currency("¤5.50", &system).unwrap();
@@ -136,12 +130,7 @@ fn test_decimal_currency_parsing() {
 
     // With currency name
     let amount = parse_currency("10 credits", &system).unwrap();
-    assert_eq!(
-        amount,
-        CurrencyAmount::Decimal {
-            minor_units: 1000
-        }
-    );
+    assert_eq!(amount, CurrencyAmount::Decimal { minor_units: 1000 });
 
     // Edge case: just decimals
     let amount = parse_currency("0.99", &system).unwrap();
@@ -193,12 +182,7 @@ fn test_multi_tier_currency_parsing() {
 
     // Single tier
     let amount = parse_currency("10 gold", &system).unwrap();
-    assert_eq!(
-        amount,
-        CurrencyAmount::MultiTier {
-            base_units: 1000
-        }
-    );
+    assert_eq!(amount, CurrencyAmount::MultiTier { base_units: 1000 });
 }
 
 #[test]
@@ -254,10 +238,7 @@ fn test_currency_transfer() {
     // Verify balances
     let alice = store.get_player("alice").expect("get alice");
     let bob = store.get_player("bob").expect("get bob");
-    assert_eq!(
-        alice.currency,
-        CurrencyAmount::Decimal { minor_units: 700 }
-    );
+    assert_eq!(alice.currency, CurrencyAmount::Decimal { minor_units: 700 });
     assert_eq!(bob.currency, transfer_amount);
 
     // Verify transaction was logged
@@ -311,10 +292,7 @@ fn test_bank_deposit_and_withdrawal() {
 
     // Verify pocket and bank balances
     let alice = store.get_player("alice").expect("get alice");
-    assert_eq!(
-        alice.currency,
-        CurrencyAmount::Decimal { minor_units: 500 }
-    );
+    assert_eq!(alice.currency, CurrencyAmount::Decimal { minor_units: 500 });
     assert_eq!(alice.banked_currency, deposit_amount);
 
     // Withdraw some
@@ -325,10 +303,7 @@ fn test_bank_deposit_and_withdrawal() {
 
     // Verify balances
     let alice = store.get_player("alice").expect("get alice");
-    assert_eq!(
-        alice.currency,
-        CurrencyAmount::Decimal { minor_units: 700 }
-    );
+    assert_eq!(alice.currency, CurrencyAmount::Decimal { minor_units: 700 });
     assert_eq!(
         alice.banked_currency,
         CurrencyAmount::Decimal { minor_units: 300 }

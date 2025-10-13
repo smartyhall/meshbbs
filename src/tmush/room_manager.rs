@@ -4,14 +4,14 @@
 //! capacity limits. It supports both world rooms and instanced rooms (apartments,
 //! hotel rooms) with proper permissions and quotas.
 
-use std::collections::HashMap;
-use std::time::Instant;
 use anyhow::Result;
 use log::debug;
+use std::collections::HashMap;
+use std::time::Instant;
 
-use crate::tmush::types::{RoomRecord, RoomFlag};
 use crate::tmush::storage::TinyMushStore;
-use crate::tmush::{TinyMushError, PlayerRecord};
+use crate::tmush::types::{RoomFlag, RoomRecord};
+use crate::tmush::{PlayerRecord, TinyMushError};
 
 /// Default maximum number of rooms to cache
 const DEFAULT_CACHE_SIZE: usize = 50;
@@ -64,30 +64,40 @@ impl RoomManager {
         if let Some(cached) = self.cache.get_mut(room_id) {
             cached.last_accessed = Instant::now();
             cached.access_count += 1;
-            debug!("Room cache hit: {} (access_count: {})", room_id, cached.access_count);
+            debug!(
+                "Room cache hit: {} (access_count: {})",
+                room_id, cached.access_count
+            );
             return Ok(cached.room.clone());
         }
 
         // Cache miss - load from store
         debug!("Room cache miss: {}", room_id);
         let room = self.store.get_room(room_id)?;
-        
+
         // Add to cache
         self.cache_room(room_id.to_string(), room.clone());
-        
+
         Ok(room)
     }
 
     /// Check if a player can enter a room (capacity and permissions)
-    pub fn can_enter_room(&mut self, player: &PlayerRecord, room_id: &str) -> Result<bool, TinyMushError> {
+    pub fn can_enter_room(
+        &mut self,
+        player: &PlayerRecord,
+        room_id: &str,
+    ) -> Result<bool, TinyMushError> {
         let room = self.get_room(room_id)?;
-        
+
         // Check room capacity
         let current_occupancy = self.get_room_occupancy(room_id);
         let capacity_limit = self.get_room_capacity_limit(&room);
-        
+
         if current_occupancy >= capacity_limit {
-            debug!("Room {} at capacity: {}/{}", room_id, current_occupancy, capacity_limit);
+            debug!(
+                "Room {} at capacity: {}/{}",
+                room_id, current_occupancy, capacity_limit
+            );
             return Ok(false);
         }
 
@@ -100,7 +110,7 @@ impl RoomManager {
                     if username == &player.username {
                         return Ok(true);
                     }
-                    
+
                     // Check if player is a guest
                     // Find the housing instance for this room
                     let instances = self.store.get_player_housing_instances(username)?;
@@ -112,10 +122,12 @@ impl RoomManager {
                             }
                         }
                     }
-                    
+
                     // Not owner or guest
-                    debug!("Player {} denied access to locked room {} (owner: {})", 
-                           player.username, room_id, username);
+                    debug!(
+                        "Player {} denied access to locked room {} (owner: {})",
+                        player.username, room_id, username
+                    );
                     return Ok(false);
                 }
                 crate::tmush::types::RoomOwner::World => {
@@ -132,8 +144,10 @@ impl RoomManager {
             match &room.owner {
                 crate::tmush::types::RoomOwner::Player { username } => {
                     if username != &player.username {
-                        debug!("Player {} denied access to private room {} (owner: {})", 
-                               player.username, room_id, username);
+                        debug!(
+                            "Player {} denied access to private room {} (owner: {})",
+                            player.username, room_id, username
+                        );
                         return Ok(false);
                     }
                 }
@@ -148,7 +162,11 @@ impl RoomManager {
     }
 
     /// Move a player to a room (with capacity and permission checks)
-    pub fn move_player_to_room(&mut self, player: &mut PlayerRecord, room_id: &str) -> Result<bool, TinyMushError> {
+    pub fn move_player_to_room(
+        &mut self,
+        player: &mut PlayerRecord,
+        room_id: &str,
+    ) -> Result<bool, TinyMushError> {
         // Check if player can enter the room
         if !self.can_enter_room(player, room_id)? {
             return Ok(false);
@@ -160,9 +178,10 @@ impl RoomManager {
         }
 
         // Add to new location
-        self.player_locations.insert(player.username.clone(), room_id.to_string());
+        self.player_locations
+            .insert(player.username.clone(), room_id.to_string());
         player.current_room = room_id.to_string();
-        
+
         debug!("Player {} entered room {}", player.username, room_id);
         Ok(true)
     }
@@ -185,7 +204,8 @@ impl RoomManager {
         // Determine capacity by room type
         if room.flags.contains(&RoomFlag::Shop) {
             DEFAULT_SHOP_CAPACITY
-        } else if room.flags.contains(&RoomFlag::Indoor) || room.flags.contains(&RoomFlag::Private) {
+        } else if room.flags.contains(&RoomFlag::Indoor) || room.flags.contains(&RoomFlag::Private)
+        {
             DEFAULT_STANDARD_CAPACITY
         } else {
             DEFAULT_SOCIAL_CAPACITY
@@ -206,7 +226,11 @@ impl RoomManager {
         };
 
         self.cache.insert(room_id.clone(), cached_room);
-        debug!("Cached room: {} (cache size: {})", room_id, self.cache.len());
+        debug!(
+            "Cached room: {} (cache size: {})",
+            room_id,
+            self.cache.len()
+        );
     }
 
     /// Evict the least recently used room from cache
@@ -215,7 +239,8 @@ impl RoomManager {
             return;
         }
 
-        let oldest_key = self.cache
+        let oldest_key = self
+            .cache
             .iter()
             .min_by_key(|(_, cached)| cached.last_accessed)
             .map(|(key, _)| key.clone());
@@ -229,7 +254,7 @@ impl RoomManager {
     /// Get cache statistics for debugging/monitoring
     pub fn cache_stats(&self) -> CacheStats {
         let total_accesses: u64 = self.cache.values().map(|c| c.access_count).sum();
-        
+
         CacheStats {
             cache_size: self.cache.len(),
             max_cache_size: self.max_cache_size,
@@ -256,7 +281,10 @@ impl RoomManager {
     /// Remove a player from tracking (when they disconnect)
     pub fn remove_player(&mut self, username: &str) {
         if let Some(room_id) = self.player_locations.remove(username) {
-            debug!("Removed player {} from room tracking (was in {})", username, room_id);
+            debug!(
+                "Removed player {} from room tracking (was in {})",
+                username, room_id
+            );
         }
     }
 }
@@ -273,10 +301,10 @@ pub struct CacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tmush::types::{RoomRecord, RoomOwner, RoomVisibility};
     use crate::tmush::storage::TinyMushStoreBuilder;
-    use tempfile::TempDir;
+    use crate::tmush::types::{RoomOwner, RoomRecord, RoomVisibility};
     use chrono::Utc;
+    use tempfile::TempDir;
 
     fn create_test_store() -> (TinyMushStore, TempDir) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -317,7 +345,10 @@ mod tests {
 
         // Create and store a test room
         let room = create_test_room("test_room", "Test Room", 10);
-        manager.store.put_room(room.clone()).expect("Failed to store room");
+        manager
+            .store
+            .put_room(room.clone())
+            .expect("Failed to store room");
 
         // Test cache miss and hit
         let retrieved1 = manager.get_room("test_room").expect("Failed to get room");
@@ -369,11 +400,17 @@ mod tests {
         let mut player3 = create_test_player("player3", "spawn");
 
         // Move first two players (should succeed)
-        assert!(manager.move_player_to_room(&mut player1, "small_room").expect("Move failed"));
-        assert!(manager.move_player_to_room(&mut player2, "small_room").expect("Move failed"));
+        assert!(manager
+            .move_player_to_room(&mut player1, "small_room")
+            .expect("Move failed"));
+        assert!(manager
+            .move_player_to_room(&mut player2, "small_room")
+            .expect("Move failed"));
 
         // Try to move third player (should fail due to capacity)
-        assert!(!manager.move_player_to_room(&mut player3, "small_room").expect("Move failed"));
+        assert!(!manager
+            .move_player_to_room(&mut player3, "small_room")
+            .expect("Move failed"));
 
         // Check occupancy
         assert_eq!(manager.get_room_occupancy("small_room"), 2);
@@ -387,18 +424,28 @@ mod tests {
         // Create test rooms
         let room1 = create_test_room("room1", "Room 1", 10);
         let room2 = create_test_room("room2", "Room 2", 10);
-        manager.store.put_room(room1).expect("Failed to store room1");
-        manager.store.put_room(room2).expect("Failed to store room2");
+        manager
+            .store
+            .put_room(room1)
+            .expect("Failed to store room1");
+        manager
+            .store
+            .put_room(room2)
+            .expect("Failed to store room2");
 
         // Create and move player
         let mut player = create_test_player("testuser", "spawn");
-        
-        manager.move_player_to_room(&mut player, "room1").expect("Move to room1 failed");
+
+        manager
+            .move_player_to_room(&mut player, "room1")
+            .expect("Move to room1 failed");
         assert_eq!(manager.get_room_occupancy("room1"), 1);
         assert_eq!(manager.get_room_occupancy("room2"), 0);
 
         // Move to different room
-        manager.move_player_to_room(&mut player, "room2").expect("Move to room2 failed");
+        manager
+            .move_player_to_room(&mut player, "room2")
+            .expect("Move to room2 failed");
         assert_eq!(manager.get_room_occupancy("room1"), 0);
         assert_eq!(manager.get_room_occupancy("room2"), 1);
 

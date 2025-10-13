@@ -11,9 +11,13 @@
 
 use crate::tmush::{
     errors::TinyMushError,
-    resolver::{resolve_object_name, ResolutionContext, ResolveResult, format_disambiguation_prompt},
+    resolver::{
+        format_disambiguation_prompt, resolve_object_name, ResolutionContext, ResolveResult,
+    },
     storage::TinyMushStore,
-    types::{ObjectRecord, ObjectOwner, ObjectFlag, OwnershipReason, OwnershipTransfer, CurrencyAmount},
+    types::{
+        CurrencyAmount, ObjectFlag, ObjectOwner, ObjectRecord, OwnershipReason, OwnershipTransfer,
+    },
 };
 use chrono::Utc;
 use log::{info, warn};
@@ -66,11 +70,11 @@ pub fn clone_object(
     // Get source object and player
     let source = store.get_object(source_id)?;
     let mut player = store.get_player(cloner_username)?;
-    
+
     let now = Utc::now().timestamp() as u64;
-    
+
     // ===== SECURITY CHECKS (FAIL FAST) =====
-    
+
     // Check 1: Player must own the source object
     if !is_owner(&source, cloner_username) {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -78,7 +82,7 @@ pub fn clone_object(
             source.name
         )));
     }
-    
+
     // Check 2: Object must be clonable
     if !source.flags.contains(&ObjectFlag::Clonable) {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -86,7 +90,7 @@ pub fn clone_object(
             source.name, source.name
         )));
     }
-    
+
     // Check 3: Object must not be unique
     if source.flags.contains(&ObjectFlag::Unique) {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -94,7 +98,7 @@ pub fn clone_object(
             source.name
         )));
     }
-    
+
     // Check 4: Quest items cannot be cloned
     if source.flags.contains(&ObjectFlag::QuestItem) {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -102,7 +106,7 @@ pub fn clone_object(
             source.name
         )));
     }
-    
+
     // Check 5: Companions cannot be cloned
     if source.flags.contains(&ObjectFlag::Companion) {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -110,7 +114,7 @@ pub fn clone_object(
             source.name
         )));
     }
-    
+
     // Check 6: Clone depth limit
     if source.clone_depth >= MAX_CLONE_DEPTH {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -118,7 +122,7 @@ pub fn clone_object(
             source.name, source.clone_depth, MAX_CLONE_DEPTH
         )));
     }
-    
+
     // Check 7: Player clone quota
     if player.clone_quota == 0 {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -126,7 +130,7 @@ pub fn clone_object(
             CLONES_PER_HOUR
         )));
     }
-    
+
     // Check 8: Clone cooldown
     if player.last_clone_time > 0 && (now - player.last_clone_time) < CLONE_COOLDOWN {
         let remaining = CLONE_COOLDOWN - (now - player.last_clone_time);
@@ -135,7 +139,7 @@ pub fn clone_object(
             remaining
         )));
     }
-    
+
     // Check 9: Player object ownership limit
     if player.total_objects_owned >= MAX_OBJECTS_PER_PLAYER {
         return Err(TinyMushError::PermissionDenied(format!(
@@ -143,47 +147,48 @@ pub fn clone_object(
             player.total_objects_owned, MAX_OBJECTS_PER_PLAYER
         )));
     }
-    
+
     // Check 10: Value limit (economic protection)
-    let object_value = source.value.max(source.currency_value.base_value().abs() as u32);
+    let object_value = source
+        .value
+        .max(source.currency_value.base_value().abs() as u32);
     if object_value > MAX_CLONABLE_VALUE {
         return Err(TinyMushError::PermissionDenied(format!(
             "'{}' is too valuable to clone ({} gold > {} limit).",
             source.name, object_value, MAX_CLONABLE_VALUE
         )));
     }
-    
+
     // ===== CREATE SANITIZED CLONE =====
-    
+
     // Generate new ID for clone (using monotonic counter + username hash for uniqueness)
-    let clone_id = format!("obj_{}_{}_{}", 
-        cloner_username, 
-        now, 
-        player.total_objects_owned
+    let clone_id = format!(
+        "obj_{}_{}_{}",
+        cloner_username, now, player.total_objects_owned
     );
-    
+
     let mut clone = source.clone();
-    
+
     // Security: Always owned by cloner (NEVER inherit permissions)
     clone.id = clone_id.clone();
     clone.owner = ObjectOwner::Player {
         username: cloner_username.to_string(),
     };
-    
+
     // Clone tracking
     clone.clone_depth = source.clone_depth + 1;
     clone.clone_source_id = Some(source_id.to_string());
     clone.clone_count = 0; // Reset for new object
     clone.created_by = cloner_username.to_string();
     clone.created_at = Utc::now();
-    
+
     // Sanitization: Strip dangerous attributes
     clone.value = 0; // No free money!
     clone.currency_value = CurrencyAmount::default(); // Zero out all currency
-    
+
     // Remove quest associations
     clone.flags.retain(|f| f != &ObjectFlag::QuestItem);
-    
+
     // Record ownership transfer in history
     clone.ownership_history.push(OwnershipTransfer {
         from_owner: Some(match &source.owner {
@@ -194,31 +199,31 @@ pub fn clone_object(
         timestamp: Utc::now(),
         reason: OwnershipReason::Clone,
     });
-    
+
     // ===== UPDATE SOURCE TRACKING =====
-    
+
     let mut updated_source = source;
     updated_source.clone_count += 1;
     store.put_object(updated_source)?;
-    
+
     // ===== UPDATE PLAYER LIMITS =====
-    
+
     player.clone_quota -= 1;
     player.last_clone_time = now;
     player.total_objects_owned += 1;
-    
+
     // Capture values for logging before move
     let quota_remaining = player.clone_quota;
     let total_objects = player.total_objects_owned;
-    
+
     store.put_player(player)?;
-    
+
     // ===== SAVE CLONE =====
-    
+
     store.put_object(clone.clone())?;
-    
+
     // ===== AUDIT LOG =====
-    
+
     info!(
         "CLONE: {} cloned {} -> {} (depth {}, quota {}/{}, total_objects {}/{})",
         cloner_username,
@@ -230,7 +235,7 @@ pub fn clone_object(
         total_objects,
         MAX_OBJECTS_PER_PLAYER
     );
-    
+
     // Alert if approaching limits
     if clone.clone_depth == MAX_CLONE_DEPTH {
         warn!(
@@ -238,14 +243,14 @@ pub fn clone_object(
             cloner_username, clone_id
         );
     }
-    
+
     if total_objects >= MAX_OBJECTS_PER_PLAYER - 10 {
         warn!(
             "CLONE_QUOTA_WARNING: {} approaching object limit ({}/{})",
             cloner_username, total_objects, MAX_OBJECTS_PER_PLAYER
         );
     }
-    
+
     Ok(clone)
 }
 
@@ -267,7 +272,7 @@ pub fn handle_clone_command(
 ) -> Result<String, TinyMushError> {
     // Resolve object name
     let resolve_result = resolve_object_name(context, object_name, store)?;
-    
+
     let object_id = match resolve_result {
         ResolveResult::Found(id) => id,
         ResolveResult::Ambiguous(matches) => {
@@ -280,13 +285,13 @@ pub fn handle_clone_command(
             )));
         }
     };
-    
+
     // Perform clone operation
     let clone = clone_object(&object_id, &context.username, store)?;
-    
+
     // Get updated player to show quota
     let player = store.get_player(&context.username)?;
-    
+
     // Format success message
     Ok(format!(
         "✨ Cloned '{}'!\n\n\
@@ -309,7 +314,9 @@ pub fn handle_clone_command(
 /// Check if player owns an object
 fn is_owner(object: &ObjectRecord, username: &str) -> bool {
     match &object.owner {
-        ObjectOwner::Player { username: owner_username } => owner_username == username,
+        ObjectOwner::Player {
+            username: owner_username,
+        } => owner_username == username,
         ObjectOwner::World => false, // World objects cannot be cloned
     }
 }
@@ -317,37 +324,37 @@ fn is_owner(object: &ObjectRecord, username: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_max_clone_depth_enforced() {
         // Verify depth limit constant
         assert_eq!(MAX_CLONE_DEPTH, 3);
     }
-    
+
     #[test]
     fn test_clone_cooldown_enforced() {
         // Verify cooldown constant
         assert_eq!(CLONE_COOLDOWN, 60);
     }
-    
+
     #[test]
     fn test_clone_quota_per_hour() {
         // Verify quota constant
         assert_eq!(CLONES_PER_HOUR, 20);
     }
-    
+
     #[test]
     fn test_max_objects_per_player() {
         // Verify player limit constant
         assert_eq!(MAX_OBJECTS_PER_PLAYER, 100);
     }
-    
+
     #[test]
     fn test_max_clonable_value() {
         // Verify value limit constant
         assert_eq!(MAX_CLONABLE_VALUE, 100);
     }
-    
+
     #[test]
     fn test_is_owner_player_owned() {
         let obj = ObjectRecord::new_player_owned(
@@ -357,19 +364,19 @@ mod tests {
             "alice",
             OwnershipReason::Created,
         );
-        
+
         assert!(is_owner(&obj, "alice"));
         assert!(!is_owner(&obj, "bob"));
     }
-    
+
     #[test]
     fn test_is_owner_world_owned() {
         let obj = ObjectRecord::new_world("obj1", "Rock", "A world rock");
-        
+
         assert!(!is_owner(&obj, "alice"));
         assert!(!is_owner(&obj, "bob"));
     }
-    
+
     #[test]
     fn test_clone_flags() {
         // Verify ObjectFlag variants exist
@@ -377,7 +384,7 @@ mod tests {
         let unique = ObjectFlag::Unique;
         let no_value = ObjectFlag::NoValue;
         let no_clone_children = ObjectFlag::NoCloneChildren;
-        
+
         assert_ne!(clonable, unique);
         assert_ne!(no_value, no_clone_children);
     }

@@ -63,6 +63,8 @@ usermod -a -G dialout "$SERVICE_USER" 2>/dev/null || true
 # Create installation directory
 echo -e "${YELLOW}Creating installation directory: $INSTALL_PATH${NC}"
 mkdir -p "$INSTALL_PATH"
+mkdir -p "$INSTALL_PATH/bin"
+mkdir -p "$INSTALL_PATH/scripts"
 mkdir -p "$INSTALL_PATH/data"
 mkdir -p "$INSTALL_PATH/data/messages"
 mkdir -p "$INSTALL_PATH/data/users"
@@ -72,8 +74,15 @@ mkdir -p "$INSTALL_PATH/data/backups"
 
 # Copy binary
 echo -e "${YELLOW}Installing binary${NC}"
-cp target/release/meshbbs "$INSTALL_PATH/"
-chmod 755 "$INSTALL_PATH/meshbbs"
+cp target/release/meshbbs "$INSTALL_PATH/bin/meshbbs"
+chmod 755 "$INSTALL_PATH/bin/meshbbs"
+
+# Copy daemon helper script
+if [ -f "scripts/meshbbs-daemon.sh" ]; then
+    echo -e "${YELLOW}Installing daemon helper script${NC}"
+    cp scripts/meshbbs-daemon.sh "$INSTALL_PATH/scripts/meshbbs-daemon.sh"
+    chmod 755 "$INSTALL_PATH/scripts/meshbbs-daemon.sh"
+fi
 
 # Copy or create configuration
 if [ ! -f "$INSTALL_PATH/config.toml" ]; then
@@ -106,7 +115,7 @@ if [ ! -f "$INSTALL_PATH/config.toml" ]; then
     
     # Hash the password using the meshbbs binary
     echo -e "${YELLOW}Hashing password...${NC}"
-    SYSOP_HASH=$(echo -n "$SYSOP_PASSWORD" | "$INSTALL_PATH/meshbbs" hash-password 2>/dev/null || echo "")
+    SYSOP_HASH=$(echo -n "$SYSOP_PASSWORD" | "$INSTALL_PATH/bin/meshbbs" hash-password 2>/dev/null || echo "")
     
     if [ -z "$SYSOP_HASH" ]; then
         echo -e "${YELLOW}Warning: Could not hash password automatically. Will use plaintext marker.${NC}"
@@ -283,8 +292,10 @@ chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_PATH"
 
 # Set permissions
 chmod 755 "$INSTALL_PATH"
+chmod 755 "$INSTALL_PATH/bin"
+chmod 755 "$INSTALL_PATH/scripts"
 chmod 755 "$INSTALL_PATH/data"
-chmod 755 "$INSTALL_PATH/meshbbs"
+chmod 755 "$INSTALL_PATH/bin/meshbbs"
 
 # Install systemd service if systemd is available
 if command -v systemctl &> /dev/null; then
@@ -303,7 +314,7 @@ Type=simple
 User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_PATH
-ExecStart=$INSTALL_PATH/meshbbs
+ExecStart=$INSTALL_PATH/bin/meshbbs
 Restart=always
 RestartSec=10
 TimeoutStopSec=30
@@ -353,7 +364,10 @@ echo ""
 echo -e "${GREEN}Installation complete!${NC}"
 echo ""
 echo "Installation details:"
-echo "  Binary:        $INSTALL_PATH/meshbbs"
+echo "  Binary:        $INSTALL_PATH/bin/meshbbs"
+if [ -f "$INSTALL_PATH/scripts/meshbbs-daemon.sh" ]; then
+    echo "  Daemon script: $INSTALL_PATH/scripts/meshbbs-daemon.sh"
+fi
 echo "  Config:        $INSTALL_PATH/config.toml"
 echo "  Data:          $INSTALL_PATH/data"
 echo "  User:          $SERVICE_USER"
@@ -366,7 +380,7 @@ if command -v systemctl &> /dev/null; then
     echo "  4. Enable service: sudo systemctl enable meshbbs"
     echo "  5. Start service: sudo systemctl start meshbbs"
 else
-    echo "  4. Run manually: cd $INSTALL_PATH && sudo -u $SERVICE_USER ./meshbbs"
+    echo "  4. Run manually: cd $INSTALL_PATH && sudo -u $SERVICE_USER ./scripts/meshbbs-daemon.sh start"
 fi
 echo ""
 echo "Documentation: $INSTALL_PATH/docs/ or https://martinbogo.github.io/meshbbs/"

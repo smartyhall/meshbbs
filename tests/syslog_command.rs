@@ -44,17 +44,35 @@ async fn sysop_syslog_and_user_denied() {
 
     // Bad usage
     let usage = proc
-        .process(&mut sys_session, "SYSLOG", &mut storage, &cfg, &game_registry)
+        .process(
+            &mut sys_session,
+            "SYSLOG",
+            &mut storage,
+            &cfg,
+            &game_registry,
+        )
         .await
         .unwrap();
     assert!(usage.starts_with("Usage: SYSLOG"));
     let usage2 = proc
-        .process(&mut sys_session, "SYSLOG INFO", &mut storage, &cfg, &game_registry)
+        .process(
+            &mut sys_session,
+            "SYSLOG INFO",
+            &mut storage,
+            &cfg,
+            &game_registry,
+        )
         .await
         .unwrap();
     assert!(usage2.starts_with("Usage: SYSLOG"));
     let usage3 = proc
-        .process(&mut sys_session, "SYSLOG BAD level", &mut storage, &cfg, &game_registry)
+        .process(
+            &mut sys_session,
+            "SYSLOG BAD level",
+            &mut storage,
+            &cfg,
+            &game_registry,
+        )
         .await
         .unwrap();
     assert!(usage3.starts_with("Usage: SYSLOG"));
