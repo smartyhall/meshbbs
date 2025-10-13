@@ -2,12 +2,24 @@
 
 This guide covers your first end-to-end run after installation.
 
-## 1) Initialize
+## 1) Initial Setup
 
-If you haven't already, create the default configuration and runtime topics:
+### Option A: Using install.sh (Recommended for Linux/Raspberry Pi)
+
+If you used the `install.sh` script, configuration is already complete. Skip to step 2.
+
+### Option B: Manual Setup
+
+Create your configuration file:
 
 ```bash
-./target/release/meshbbs init
+cp config.example.toml config.toml
+```
+
+Then set your sysop password:
+
+```bash
+./target/release/meshbbs sysop-passwd
 ```
 
 ## 2) Configure

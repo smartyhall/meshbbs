@@ -138,7 +138,51 @@ These docs reflect the inline rustdoc comments throughout the codebase. If you a
 
 > **Prerequisites**: Rust 1.82+, Meshtastic device, USB cable
 
+### 🦀 Installing Rust
+
+Meshbbs requires Rust 1.82 or later. If you don't have Rust installed:
+
+**Linux & macOS:**
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+**Windows:**
+Download and run [rustup-init.exe](https://rustup.rs/) from the official Rust website.
+
+**All Platforms:**
+For detailed installation instructions, visit the official Rust installation guide:
+- 🌐 **[https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)**
+
+After installation, verify Rust is installed:
+```bash
+rustc --version
+cargo --version
+```
+
 ### 📦 Installation
+
+**Option 1: Automated Installation (Linux/Raspberry Pi - Recommended)**
+
+For Linux systems and Raspberry Pi, use the provided installation script:
+
+```bash
+# Clone the repository
+git clone --recurse-submodules https://github.com/martinbogo/meshbbs.git
+cd meshbbs
+
+# Run the installer (will prompt for configuration)
+sudo ./install.sh
+```
+
+The installer will:
+- Build the release binary
+- Create necessary directories
+- Guide you through configuration (sysop password, serial port, etc.)
+- Set up systemd service for automatic startup
+- Install to `/opt/meshbbs`
+
+**Option 2: Manual Installation (All Platforms)**
 
 ```bash
 # Clone the repository
@@ -148,10 +192,12 @@ cd meshbbs
 # Build the project
 cargo build --release
 
-# Initialize the BBS configuration
-./target/release/meshbbs init
-```
+# Copy example configuration
+cp config.example.toml config.toml
 
+# Edit configuration (see below)
+nano config.toml
+```
 ### ⚙️ Configure Your BBS
 
 After initialization, edit the `config.toml` file to set up your BBS:
@@ -209,17 +255,18 @@ nano config.toml  # or vim, code, etc.
 
 | Command | Description |
 |---------|-------------|
-| `meshbbs init` | Create initial configuration file |
-| `meshbbs sysop-passwd` | Set/update sysop password (do this first!) |
+| `meshbbs sysop-passwd` | Set/update sysop password interactively |
+| `meshbbs hash-password` | Hash a password from stdin (for scripts) |
 | `meshbbs start` | Start BBS server with config.toml settings |
 | `meshbbs start --port /dev/ttyUSB0` | Override port from command line |
 | `meshbbs status` | Show server statistics and status |
+| `meshbbs check-device --port <PORT>` | Verify Meshtastic device connectivity |
 
 ## ⚙️ Configuration
 
-Meshbbs uses a `config.toml` file for all settings. Run `meshbbs init` to create a default configuration.
+Meshbbs uses a `config.toml` file for all settings. For automated setup, use `install.sh` (Linux/Raspberry Pi). For manual setup, copy `config.example.toml` to `config.toml` and edit as needed.
 
-Note: `meshbbs init` also seeds default forum topics into `data/topics.json` (runtime store). Topics are no longer defined in `config.toml`. Manage topics interactively from within the BBS; existing installations with `[message_topics.*]` in TOML remain supported for backward compatibility (they’ll be merged into the runtime store at startup).
+Topics are managed in `data/topics.json` (runtime store) and are seeded automatically on first startup. Manage topics interactively from within the BBS; existing installations with `[message_topics.*]` in TOML remain supported for backward compatibility (they'll be merged into the runtime store at startup).
 
 <details>
 <summary><strong>📋 View Example Configuration</strong></summary>
@@ -297,14 +344,11 @@ Metrics (preview):
 # Start the BBS server
 meshbbs start --port /dev/ttyUSB0
 
-# Initialize configuration  
-meshbbs init
-
 # Show status and statistics
 meshbbs status
 
-# Run serial smoke test
-meshbbs smoke-test
+# Check Meshtastic device connectivity
+meshbbs check-device --port /dev/ttyUSB0
 
 # Set/update sysop password
 meshbbs sysop-passwd

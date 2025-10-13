@@ -3,7 +3,7 @@
 //! Commands:
 //! - `start [--port <path>] [--daemon] [--pid-file <path>]` - run the BBS server with optional daemon mode
 //! - `status` - print current status and a brief summary
-//! - `smoketest --port <path> [-b <baud>] [--timeout <s>]` - probe device link
+//! - `check-device --port <path> [-b <baud>] [--timeout <s>]` - verify Meshtastic device connectivity
 //! - `sysop-passwd` - interactively set the sysop password (argon2 hashed)
 //!
 //! ## Installation
@@ -66,8 +66,8 @@ enum Commands {
     },
     /// Show BBS status and statistics
     Status,
-    /// Run a serial smoke test: collect node & channel info
-    SmokeTest {
+    /// Check Meshtastic device connectivity and configuration over serial
+    CheckDevice {
         /// Device serial port
         #[arg(short, long)]
         port: String,
@@ -80,6 +80,8 @@ enum Commands {
     },
     /// Set or update the sysop (primary administrator) password in the config file
     SysopPasswd,
+    /// Hash a password for use in config.toml (reads password from stdin)
+    HashPassword,
 }
 
 #[tokio::main]
@@ -250,7 +252,44 @@ async fn main() -> Result<()> {
             tokio::fs::write(&cli.config, serialized).await?;
             println!("Sysop password updated successfully.");
         }
-        Commands::SmokeTest {
+        Commands::HashPassword => {
+            // Read password from stdin (one line)
+            use argon2::Argon2;
+            use password_hash::{PasswordHasher, SaltString};
+            use std::io::{self, BufRead};
+            
+            let stdin = io::stdin();
+            let mut handle = stdin.lock();
+            let mut password = String::new();
+            handle.read_line(&mut password)?;
+            
+            // Remove trailing newline
+            password = password.trim_end().to_string();
+            
+            if password.len() < 8 {
+                eprintln!("Error: password too short (min 8 characters)");
+                std::process::exit(1);
+            }
+            if password.len() > 128 {
+                eprintln!("Error: password too long (max 128 characters)");
+                std::process::exit(1);
+            }
+            
+            // Hash the password
+            let salt = SaltString::generate(&mut rand::thread_rng());
+            let argon = Argon2::default();
+            let hash = match argon.hash_password(password.as_bytes(), &salt) {
+                Ok(h) => h.to_string(),
+                Err(e) => {
+                    eprintln!("Hash error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            
+            // Output only the hash (no extra text for easy parsing)
+            println!("{}", hash);
+        }
+        Commands::CheckDevice {
             port,
             baud,
             timeout,
@@ -258,7 +297,7 @@ async fn main() -> Result<()> {
             init_logging(&pre_config, cli.verbose);
             #[cfg(not(all(feature = "serial", feature = "meshtastic-proto")))]
             {
-                error!("SmokeTest requires 'serial' and 'meshtastic-proto' features");
+                error!("CheckDevice requires 'serial' and 'meshtastic-proto' features");
                 std::process::exit(2);
             }
             #[cfg(all(feature = "serial", feature = "meshtastic-proto"))]
@@ -266,7 +305,7 @@ async fn main() -> Result<()> {
                 use meshbbs::meshtastic::MeshtasticDevice;
                 use tokio::time::{sleep, Duration, Instant};
                 let mut device = MeshtasticDevice::new(&port, baud).await?;
-                info!("Starting smoke test on {} @ {} baud", port, baud);
+                info!("Checking device on {} @ {} baud", port, baud);
                 let mut last_hb = Instant::now();
                 let start = Instant::now();
                 let deadline = start + Duration::from_secs(timeout);

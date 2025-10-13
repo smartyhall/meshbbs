@@ -106,11 +106,11 @@ if [ ! -f "$INSTALL_PATH/config.toml" ]; then
     
     # Hash the password using the meshbbs binary
     echo -e "${YELLOW}Hashing password...${NC}"
-    SYSOP_HASH=$(echo -n "$SYSOP_PASSWORD" | "$INSTALL_PATH/meshbbs" --hash-password 2>/dev/null || echo "")
+    SYSOP_HASH=$(echo -n "$SYSOP_PASSWORD" | "$INSTALL_PATH/meshbbs" hash-password 2>/dev/null || echo "")
     
     if [ -z "$SYSOP_HASH" ]; then
         echo -e "${YELLOW}Warning: Could not hash password automatically. Will use plaintext marker.${NC}"
-        echo -e "${YELLOW}You'll need to run: meshbbs --hash-password${NC}"
+        echo -e "${YELLOW}You'll need to run: meshbbs sysop-passwd${NC}"
         SYSOP_HASH="REPLACE_WITH_HASHED_PASSWORD"
     fi
     

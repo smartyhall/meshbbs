@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.101-beta] - 2025-10-12
 
+### Added
+- **New CLI Command**: `hash-password` - Non-interactive password hashing for scripts
+  - Reads password from stdin
+  - Outputs Argon2 hash for use in config files
+  - Usage: `echo -n "password" | meshbbs hash-password`
+
+### Changed
+- **CLI Command Rename**: `smoke-test` → `check-device`
+  - More descriptive name for device connectivity testing
+  - Verifies Meshtastic device communication over serial
+  - Updated documentation to reflect new command name
+
 ### Fixed
 - **Schema Alignment**: Corrected 6 demo trigger objects from schema v1 to v2
   - Objects now use `OBJECT_SCHEMA_VERSION` constant instead of hardcoded value
@@ -23,9 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed `migrate_messages` binary entry (script was archived)
   - Fixes compilation error for archived script
 
-### Changed
-- Improved code maintainability by eliminating magic numbers in schema versions
-- All seed data constructors now consistent with schema version constant usage
+- **Installation Script**: Fixed password hashing in `install.sh`
+  - Now uses correct `hash-password` command instead of non-existent `--hash-password`
+  - Properly generates Argon2 password hash during installation
+  - Prevents `REPLACE_WITH_HASHED_PASSWORD` placeholder in config
+
+### Deprecated
+- **CLI Command Removed**: `meshbbs init` command has been fully removed
+  - Use `install.sh` for automated setup on Linux/Raspberry Pi
+  - Use `cp config.example.toml config.toml` for manual setup
+  - Updated all documentation to reflect removal
+
+### Documentation
+- Updated README.md with Rust installation instructions
+- Added links to official Rust installation guide (rust-lang.org)
+- Updated Quick Start guide to reference `install.sh` instead of deprecated `init`
+- Fixed all documentation references to removed `meshbbs init` command
+- Added `hash-password` command to CLI reference
+- Updated command descriptions for clarity
 
 ## [1.0.100-beta] - 2025-10-12
 

@@ -4,9 +4,15 @@ This guide covers initial setup and ongoing administration.
 
 ## Initialize and configure
 
-- Run `meshbbs init` to create `config.toml` and seed default topics
+### Automated Setup (Recommended)
+- For Linux/Raspberry Pi: Run `sudo ./install.sh`
+- The installer handles configuration, password setup, and systemd service
+
+### Manual Setup
+- Copy example config: `cp config.example.toml config.toml`
 - Edit `config.toml` to set BBS name, sysop, and Meshtastic port
 - Set the sysop password: `meshbbs sysop-passwd`
+- Topics are automatically seeded on first startup
 
 ## Managing topics
 

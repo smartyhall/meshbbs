@@ -3,9 +3,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 #[cfg(feature = "meshtastic-proto")]
 use chrono::Utc;
-use log::{debug, info};
-#[cfg(feature = "meshtastic-proto")]
-use log::{error, trace, warn};
+use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};

@@ -10,7 +10,28 @@ This guide will walk you through installing and setting up meshbbs on your syste
 
 ## Installation Steps
 
-### 1. Clone the Repository
+### Option A: Automated Installation (Linux/Raspberry Pi - Recommended)
+
+For Linux systems and Raspberry Pi, use the provided installation script:
+
+```bash
+git clone --recurse-submodules https://github.com/martinbogo/meshbbs.git
+cd meshbbs
+sudo ./install.sh
+```
+
+The installer will:
+- Build the release binary
+- Create necessary directories
+- Guide you through configuration (sysop password, serial port, etc.)
+- Set up systemd service for automatic startup
+- Install to `/opt/meshbbs`
+
+Skip to [First Run](first-run.md) after installation completes.
+
+### Option B: Manual Installation (All Platforms)
+
+#### 1. Clone the Repository
 
 ```bash
 git clone --recurse-submodules https://github.com/martinbogo/meshbbs.git
@@ -19,7 +40,7 @@ cd meshbbs
 
 > **Note**: The `--recurse-submodules` flag is important for including Meshtastic protobuf definitions.
 
-### 2. Build the Project
+#### 2. Build the Project
 
 ```bash
 # Debug build for development
@@ -29,18 +50,25 @@ cargo build
 cargo build --release
 ```
 
-### 3. Initialize Configuration
+#### 3. Create Configuration
 
 ```bash
-# Create default configuration
-./target/release/meshbbs init
+# Copy example configuration
+cp config.example.toml config.toml
 ```
 
-This creates a `config.toml` file with default settings.
+#### 4. Set Sysop Password
 
-It also seeds default forum topics into `data/topics.json` (the runtime topic store). From now on, topics are managed at runtime and not configured in TOML. If you have an older `config.toml` with `[message_topics.*]`, those will be merged into the runtime store at startup for backward compatibility.
+```bash
+# Interactively set the sysop password
+./target/release/meshbbs sysop-passwd
+```
 
-### 4. Configure Your BBS
+This creates a hashed password in your `config.toml` file.
+
+Topics are automatically seeded into `data/topics.json` on first startup. Topics are managed at runtime and not configured in TOML.
+
+#### 5. Configure Your BBS
 
 Edit the generated `config.toml` file:
 
