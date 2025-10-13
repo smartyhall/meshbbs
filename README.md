@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.65--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+   [![Version](https://img.shields.io/badge/version-1.0.100--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,23 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
+
+- **1.0.100-beta (2025-10-12): TinyMUSH Game Engine - Production Ready** 🎮
+   - **Complete MUD/MUSH Engine**: Interactive text-based adventure game with 20+ rooms
+   - **Interactive NPCs**: 5 NPCs with dialogue trees, quests, and dynamic interactions
+   - **Player Progression**: Inventory system, skills, achievements, and quest tracking
+   - **Advanced Triggers**: 14 action types with conditional logic and rate limiting
+   - **Economy System**: Currency, shops, trading, and item management
+   - **5 Games**: 8ball, fortune, slots, tinyhack (dungeon crawler), tinymush (MUD)
+   - **Production Infrastructure**: 
+     - Automated install/uninstall scripts
+     - Systemd service configuration
+     - Raspberry Pi deployment guide
+     - Backup system with retention policies
+     - Security hardening (zero critical vulnerabilities)
+   - **Test Coverage**: 237 tests passing (98% coverage)
+   - **Performance**: 458 db ops/sec, 14.58 concurrent users/sec
+   - **Documentation**: 73 markdown files with complete API reference
 
 - 1.0.65-beta (2025-10-05): **Production-Ready Daemon Mode & Graceful Shutdown**
    - **🔧 Daemon Mode**: Run meshbbs as a background service on Linux/macOS with `--daemon` flag
