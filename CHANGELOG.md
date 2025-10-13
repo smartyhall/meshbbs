@@ -58,6 +58,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added missing `max_welcomes_per_node` field
   - **Impact**: Users who configured welcome messages would have had their settings silently ignored
 
+- **Critical Config Bug**: Invalid `[storage.backup]` section removed from config files
+  - The `StorageConfig` struct only supports `data_dir` and `max_message_size`
+  - Backup system uses separate JSON config (`data/backup_scheduler.json`), not config.toml
+  - Backup configuration managed via in-game admin commands
+  - Removed invalid fields: `enabled`, `retention_days`, `interval_hours` from both config.example.toml and install.sh
+  - Added note explaining backup configuration location
+  - **Impact**: Users who tried to configure backups via config.toml had settings completely ignored
+
+- **Critical Config Bug**: TinyMUSH database path field name incorrect
+  - Fixed `[games.tinymush]` section with `data_dir` field (invalid subsection)
+  - Changed to optional `tinymush_db_path` field directly in `[games]` section
+  - Correct usage: `tinymush_db_path = "./data/tinymush"` (commented by default)
+  - Updated both config.example.toml and install.sh
+  - **Impact**: Database path overrides were silently ignored due to wrong field name
+
 ### Deprecated
 - **CLI Command Removed**: `meshbbs init` command has been fully removed
   - Use `install.sh` for automated setup on Linux/Raspberry Pi

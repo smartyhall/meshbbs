@@ -1,7 +1,13 @@
 # MeshBBS Configuration File
-# Copy this to config.toml and customize for your installation
+# Copy this to config.toml and customize for your # Maximum size for a single message (bytes)
+# Maximum payload allowed by Meshtastic is 230 bytes
+# Values above 230 will be clamped internally
+max_message_size = 230
 
-[bbs]
+# Note: Automatic backups are configured via in-game admin commands
+# and stored in data/backup_scheduler.json (not in this config file)
+
+# Logging configurationbbs]
 # Display name for your BBS (shown to users)
 name = "Your MeshBBS Name"
 
@@ -105,9 +111,8 @@ tinyhack_enabled = true
 # Enable TinyMUSH multi-user game
 tinymush_enabled = true
 
-[games.tinymush]
-# TinyMUSH data directory (relative to data_dir or absolute)
-data_dir = "./data/tinymush"
+# Optional: Override TinyMUSH database path (defaults to <data_dir>/tinymush)
+# tinymush_db_path = "./data/tinymush"
 
 [weather]
 # OpenWeatherMap API configuration

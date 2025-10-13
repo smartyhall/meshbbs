@@ -198,13 +198,8 @@ data_dir = "$INSTALL_PATH/data"
 # Maximum message size in bytes
 max_message_size = 230
 
-[storage.backup]
-# Enable automatic backups
-enabled = true
-# Backup retention in days
-retention_days = 30
-# Backup interval in hours
-interval_hours = 24
+# Note: Automatic backups are configured via in-game admin commands
+# and stored in data/backup_scheduler.json (not in this config file)
 
 [logging]
 # Log level: trace, debug, info, warn, error
@@ -220,9 +215,8 @@ tinyhack_enabled = true
 # Enable TinyMUSH multi-user game
 tinymush_enabled = true
 
-[games.tinymush]
-# TinyMUSH data directory
-data_dir = "$INSTALL_PATH/data/tinymush"
+# Optional: Override TinyMUSH database path (defaults to <data_dir>/tinymush)
+# tinymush_db_path = "$INSTALL_PATH/data/tinymush"
 
 [weather]
 # OpenWeatherMap API key - Get one at https://openweathermap.org/api
