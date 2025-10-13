@@ -2183,11 +2183,14 @@ impl BbsServer {
                     let chunks =
                         chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char());
                     let total = chunks.len();
+                    // Drop the mutable borrow before calling send_session_message
+                    drop(session);
                     for (i, chunk) in chunks.into_iter().enumerate() {
                         let last = i + 1 == total;
                         // For multi-part help, suppress prompt until final
                         self.send_session_message(&node_key, &chunk, last).await?;
                     }
+                    return Ok(());
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
@@ -2197,7 +2200,10 @@ impl BbsServer {
                         session.help_seen = true;
                         help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
                     }
+                    // Drop the mutable borrow before calling send_session_message
+                    drop(session);
                     self.send_session_message(&node_key, &help_text, true).await?;
+                    return Ok(());
                 } else if upper.starts_with("LOGIN ") {
                     // Enforce max_users only if this session is not yet logged in
                     if !session.is_logged_in()
@@ -3097,7 +3103,9 @@ impl BbsServer {
                         }
                     }
                 }
-            }
+            } // End of session mutable borrow scope
+            
+            // Send deferred reply after releasing session borrow to allow send_session_message to access session
             if let Some(msg) = deferred_reply {
                 self.send_session_message(&node_key, &msg, true).await?;
             }
@@ -3693,11 +3701,17 @@ impl BbsServer {
                 let extra_nl = if body.ends_with('\n') { 0 } else { 1 };
                 let budget = max_total.saturating_sub(prompt_len + extra_nl);
 
+                debug!(
+                    "send_session_message: body_len={} budget={} max_total={} prompt_len={} extra_nl={} state={:?}",
+                    body.len(), budget, max_total, prompt_len, extra_nl, session.state
+                );
+
                 if body.len() > budget {
                     // Auto-chunk oversized body into UTF-8 safe segments of size <= budget.
                     // Send intermediate chunks without prompt; attach prompt only to the last one.
                     let parts = self.chunk_utf8(body, budget);
                     let total = parts.len();
+                    debug!("Chunking message into {} parts", total);
                     for (i, chunk) in parts.into_iter().enumerate() {
                         let is_last = i + 1 == total;
                         if is_last {
@@ -3728,6 +3742,11 @@ impl BbsServer {
                 // Non-final chunk: send body as-is (no prompt). Caller handles sequencing.
                 return self.send_message(node_key, body).await;
             }
+        } else {
+            warn!(
+                "send_session_message: No session found for node_key={} body_len={} - sending without chunking!",
+                node_key, body.len()
+            );
         }
 
         // No session (should be rare): just forward as-is
