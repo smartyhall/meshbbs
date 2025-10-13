@@ -154,7 +154,7 @@ location = "90210"
 description = "Some information about your MeshBBS"
 
 # Sysop (system operator) username
-sysop_name = "sysop"
+sysop = "sysop"
 
 # Sysop password hash (generated during installation)
 sysop_password_hash = "$SYSOP_HASH"
