@@ -3715,6 +3715,7 @@ impl BbsServer {
                     debug!("Chunking message into {} parts", total);
                     for (i, chunk) in parts.into_iter().enumerate() {
                         let is_last = i + 1 == total;
+                        debug!("Chunk {}/{}: {} bytes", i + 1, total, chunk.len());
                         if is_last {
                             let clamped = clamp_utf8(&chunk, budget);
                             let msg = if clamped.ends_with('\n') {
@@ -3722,9 +3723,11 @@ impl BbsServer {
                             } else {
                                 format!("{}\n{}", clamped, prompt)
                             };
+                            debug!("Sending last chunk: {} bytes (clamped={}, prompt={})", msg.len(), clamped.len(), prompt.len());
                             self.send_message(node_key, &msg).await?;
                         } else {
                             // Send as-is (no prompt on intermediate parts)
+                            debug!("Sending intermediate chunk: {} bytes", chunk.len());
                             self.send_message(node_key, &chunk).await?;
                         }
                     }
