@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.101-beta] - 2025-10-12
+
+### Fixed
+- **Schema Alignment**: Corrected 6 demo trigger objects from schema v1 to v2
+  - Objects now use `OBJECT_SCHEMA_VERSION` constant instead of hardcoded value
+  - Prevents unnecessary migrations on fresh database initialization
+  - Affected objects: healing_potion, ancient_key, mystery_box, quest_clue, teleport_stone, singing_mushroom
+  
+- **Constructor Future-Proofing**: Updated type constructors to use schema version constants
+  - `NpcRecord::new()` now uses `NPC_SCHEMA_VERSION`
+  - `QuestRecord::new()` now uses `QUEST_SCHEMA_VERSION`
+  - `AchievementRecord::new()` now uses `ACHIEVEMENT_SCHEMA_VERSION`
+  - Ensures automatic version updates when schema evolves
+
+- **Build Configuration**: Removed archived binary reference from Cargo.toml
+  - Removed `migrate_messages` binary entry (script was archived)
+  - Fixes compilation error for archived script
+
+### Changed
+- Improved code maintainability by eliminating magic numbers in schema versions
+- All seed data constructors now consistent with schema version constant usage
+
 ## [1.0.100-beta] - 2025-10-12
 
 ### 🎮 Major: TinyMUSH Game Engine - Production Ready
