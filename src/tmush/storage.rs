@@ -54,6 +54,7 @@ fn next_timestamp_nanos() -> i64 {
 pub struct TinyMushStoreBuilder {
     path: PathBuf,
     ensure_world_seed: bool,
+    admin_username: String,
 }
 
 impl TinyMushStoreBuilder {
@@ -61,6 +62,7 @@ impl TinyMushStoreBuilder {
         Self {
             path: path.into(),
             ensure_world_seed: true,
+            admin_username: "admin".to_string(),
         }
     }
 
@@ -70,8 +72,14 @@ impl TinyMushStoreBuilder {
         self
     }
 
+    /// Set the admin username (defaults to "admin"). Should typically match the BBS sysop username.
+    pub fn with_admin_username(mut self, username: impl Into<String>) -> Self {
+        self.admin_username = username.into();
+        self
+    }
+
     pub fn open(self) -> Result<TinyMushStore, TinyMushError> {
-        TinyMushStore::open_with_options(self.path, self.ensure_world_seed)
+        TinyMushStore::open_with_options(self.path, self.ensure_world_seed, self.admin_username)
     }
 }
 
@@ -127,11 +135,12 @@ impl TinyMushStore {
     
     /// Open (or create) the TinyMUSH store rooted at `path`. When `seed_world` is true the
     /// canonical "Old Towne Mesh" rooms are inserted if no world rooms exist yet.
+    /// Uses "admin" as the default admin username.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, TinyMushError> {
-        Self::open_with_options(path, true)
+        Self::open_with_options(path, true, "admin".to_string())
     }
 
-    fn open_with_options<P: AsRef<Path>>(path: P, seed_world: bool) -> Result<Self, TinyMushError> {
+    fn open_with_options<P: AsRef<Path>>(path: P, seed_world: bool, admin_username: String) -> Result<Self, TinyMushError> {
         let path_ref = path.as_ref();
         std::fs::create_dir_all(path_ref)?;
         let db = sled::open(path_ref)?;
@@ -193,9 +202,9 @@ impl TinyMushStore {
             // Seed example trigger objects for Phase 9 testing
             store.seed_example_trigger_objects()?;
             
-            // Seed initial admin account (default: "admin")
-            // In production, this username could come from config
-            store.seed_admin_if_needed("admin")?;
+            // Seed initial admin account using provided username
+            // This should typically match the BBS sysop username from config
+            store.seed_admin_if_needed(&admin_username)?;
         }
 
         Ok(store)

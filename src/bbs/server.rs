@@ -510,7 +510,13 @@ impl BbsServer {
                 .as_deref()
                 .unwrap_or("data/tinymush");
             
-            match crate::tmush::storage::TinyMushStore::open(db_path) {
+            // Use BBS sysop username as TinyMUSH admin
+            let admin_username = server.config.bbs.sysop.clone();
+            
+            match crate::tmush::storage::TinyMushStoreBuilder::new(db_path)
+                .with_admin_username(admin_username)
+                .open()
+            {
                 Ok(store) => {
                     info!("[games] TinyMUSH store initialized at: {}", db_path);
                     server.game_registry = server.game_registry.with_tinymush(store);

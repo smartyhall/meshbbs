@@ -251,16 +251,17 @@ timeout_seconds = 5
 # Welcome message system (greets new nodes on the mesh)
 enabled = false
 
-# Welcome via private DM
-private_enabled = false
-private_template = "Welcome to {bbs_name}! This is a bulletin board system. Send me '^HELP' for commands."
+# Send public greeting via public channel
+public_greeting = true
 
-# Welcome via public channel
-public_enabled = false
-public_template = "📻 New station detected! Welcome to the mesh. Send '^HELP' to learn about this BBS."
+# Send private guide via DM
+private_guide = true
 
-# Cooldown between welcomes (minutes)
-rate_limit_minutes = 5
+# Minimum time between any welcomes (minutes) to prevent spam
+cooldown_minutes = 5
+
+# Maximum times to welcome the same node (prevents repeated welcomes)
+max_welcomes_per_node = 1
 EOF
     
     echo -e "${GREEN}Configuration created!${NC}"
