@@ -125,7 +125,8 @@ impl BackupManager {
     /// Create a new backup
     pub fn create_backup(&mut self, name: Option<String>, backup_type: BackupType) -> io::Result<BackupMetadata> {
         let timestamp = Utc::now();
-        let id = format!("backup_{}", timestamp.format("%Y%m%d_%H%M%S_%3f")); // Add milliseconds for uniqueness
+        // Use nanoseconds for uniqueness (prevents collisions in rapid succession)
+        let id = format!("backup_{}_{}", timestamp.format("%Y%m%d_%H%M%S"), timestamp.timestamp_subsec_nanos());
         let filename = format!("{}.tar.gz", id);
         let backup_file = self.backup_path.join(&filename);
         
