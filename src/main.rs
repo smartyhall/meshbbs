@@ -2,10 +2,17 @@
 //!
 //! Commands:
 //! - `start [--port <path>] [--daemon] [--pid-file <path>]` - run the BBS server with optional daemon mode
-//! - `init` - create a starter `config.toml` and default topics in `data/topics.json`
 //! - `status` - print current status and a brief summary
 //! - `smoketest --port <path> [-b <baud>] [--timeout <s>]` - probe device link
 //! - `sysop-passwd` - interactively set the sysop password (argon2 hashed)
+//!
+//! ## Installation
+//!
+//! Use the provided `install.sh` script for production deployments. It will:
+//! - Create all necessary directories
+//! - Generate configuration with prompted passwords
+//! - Set up systemd service
+//! - Configure permissions
 //!
 //! ## Daemon Mode (Linux/macOS)
 //!
@@ -23,7 +30,6 @@ use log::{info, warn};
 // Use the published library crate modules instead of redefining them here.
 use meshbbs::bbs::BbsServer;
 use meshbbs::config::Config;
-use meshbbs::storage::Storage;
 
 #[derive(Parser)]
 #[command(name = "meshbbs")]
@@ -58,8 +64,6 @@ enum Commands {
         #[arg(long, default_value = "/tmp/meshbbs.pid")]
         pid_file: String,
     },
-    /// Initialize a new BBS configuration
-    Init,
     /// Show BBS status and statistics
     Status,
     /// Run a serial smoke test: collect node & channel info
@@ -85,7 +89,6 @@ async fn main() -> Result<()> {
     // Load config early to configure logging (except for Init which writes default later)
     // Also skip early logging for daemon mode Start command - it will init after forking
     let pre_config = match cli.command {
-        Commands::Init => None,
         Commands::Start { daemon, .. } if daemon => {
             // Daemon mode: load config but don't initialize logging yet
             Config::load(&cli.config).await.ok()
@@ -97,9 +100,6 @@ async fn main() -> Result<()> {
     match &cli.command {
         Commands::Start { daemon, .. } if *daemon => {
             // Skip logging init - will happen after fork in child process
-        }
-        Commands::Init => {
-            // Init doesn't have config yet
         }
         _ => {
             // All other commands: initialize logging normally
@@ -205,40 +205,6 @@ async fn main() -> Result<()> {
 
             info!("BBS server starting...");
             bbs.run().await?;
-        }
-        Commands::Init => {
-            // Init command: logging initialized after config is created
-            init_logging(&None, cli.verbose);
-            info!("Initializing new BBS configuration");
-            // Start from defaults, but do NOT include message_topics in the TOML
-            let mut cfg = Config::default();
-            cfg.message_topics.clear();
-            let serialized = toml::to_string_pretty(&cfg)?;
-            tokio::fs::write(&cli.config, serialized).await?;
-            info!("Configuration file created at {}", cli.config);
-
-            // Create default topics in runtime JSON (data/topics.json)
-            let data_dir = cfg.storage.data_dir.clone();
-            let mut storage = Storage::new(&data_dir).await?;
-            let defaults = vec![
-                (
-                    "technical",
-                    "Technical",
-                    "Tech, hardware, and administrative discussions",
-                ),
-                ("general", "General", "General discussions"),
-                (
-                    "community",
-                    "Community",
-                    "Events, meet-ups, and community discussions",
-                ),
-            ];
-            for (id, name, desc) in defaults {
-                if !storage.topic_exists(id) {
-                    let _ = storage.create_topic(id, name, desc, 0, 0, "system").await;
-                }
-            }
-            info!("Initialized runtime topics at {}/topics.json", data_dir);
         }
         Commands::Status => {
             init_logging(&pre_config, cli.verbose);
