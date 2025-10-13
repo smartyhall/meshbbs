@@ -1404,12 +1404,14 @@ impl TinyMushProcessor {
         use crate::tmush::types::TutorialState;
         
         let mut tutorial_message = String::new();
+        let mut tutorial_advanced = false;
         if let TutorialState::InProgress { step } = &player.tutorial_state {
             // Check if this movement advances the tutorial
             if can_advance_from_location(step, destination_id) {
                 let current_step = step.clone();
                 match advance_tutorial_step(self.store(), &player.username, current_step) {
                     Ok(new_state) => {
+                        tutorial_advanced = true;
                         match new_state {
                             TutorialState::InProgress { step: new_step } => {
                                 tutorial_message = format!(
@@ -1435,6 +1437,14 @@ impl TinyMushProcessor {
                     get_tutorial_hint(step)
                 );
             }
+        }
+
+        // Reload player if tutorial advanced (to get updated state)
+        if tutorial_advanced {
+            player = match self.store().get_player(&player.username) {
+                Ok(p) => p,
+                Err(_) => player, // Fall back to old player if reload fails
+            };
         }
 
         // Show the new room
@@ -8161,12 +8171,8 @@ impl TinyMushProcessor {
                     response.push('\n');
                 }
                 
-                // Show tutorial hint if in progress
-                use crate::tmush::tutorial::get_tutorial_hint;
-                use crate::tmush::types::TutorialState;
-                if let TutorialState::InProgress { step } = &player.tutorial_state {
-                    response.push_str(&format!("\n💡 Tutorial: {}\n", get_tutorial_hint(step)));
-                }
+                // Note: Tutorial hints are managed by handle_move() to avoid duplication
+                // Tutorial progress is checked during movement and hint shown at end of response
                 
                 // Show other players (Phase 4 feature - placeholder for now)
                 // response.push_str("Players here: (none visible)\n");

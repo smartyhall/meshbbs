@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Game Mode UX**: Suppress BBS prompt when in TinyHack or TinyMUSH
+  - BBS prompt (e.g., `sysop (lvl10)>`) no longer shown during gameplay
+  - Games provide their own context and room descriptions
+  - Cleaner, more immersive game experience
+  - To exit game, use 'B' or 'QUIT' commands
+
+- **TinyMUSH Welcome Message**: Simplified tutorial welcome for better mesh radio compatibility
+  - Replaced box-drawing characters (╔═╗║╚) with simple asterisks
+  - Changed from 3-line bordered box to single line: `* Welcome to Old Towne Mesh! *`
+  - Reduces character count and improves readability over low-bandwidth links
+
+- **TinyMUSH Tutorial Messages**: Fixed duplicate tutorial hints after movement
+  - Tutorial hints were appearing twice (once in room description, once after)
+  - Now shown only once at the end of movement response
+  - Cleaner output, less confusion for new players
+
+- **TinyMUSH Tutorial Progression**: Fixed tutorial not advancing properly
+  - Tutorial step was not updating when moving to new locations
+  - Player object was stale after tutorial advancement in database
+  - Now reloads player after advancing tutorial step
+  - Mayor NPC now correctly recognizes when player has reached MeetTheMayor step
+  - Tutorial hints now accurately reflect current step
+
+- **TinyMUSH Tutorial Hints**: Improved clarity of step descriptions
+  - Step 1: "Try 'LOOK' or 'L' to see around, then go NORTH to City Hall"
+  - Step 2: "Find City Hall lobby. Use 'WHERE' to see your location"
+  - Step 3: "Go NORTH to Mayor's Office, then 'TALK MAYOR' to complete tutorial"
+  - Hints now match the actual room progression flow
+
 ## [1.0.101-beta] - 2025-10-12
 
 ### Added

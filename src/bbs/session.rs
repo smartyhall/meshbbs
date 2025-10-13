@@ -273,11 +273,12 @@ impl Session {
     ///
     /// ## Prompt Formats
     ///
-    /// All prompts end with `>`:
+    /// Most prompts end with `>`:
     /// - Unauthenticated: `"unauth>"`
     /// - Main/menu (logged in): `"username (lvl1)>"`
     /// - Reading messages/in topic: `"username@topic>"` (topic truncated to 20 chars)
     /// - Posting: `"post@topic>"` (falls back to `"post>"` if no topic)
+    /// - Games (TinyHack/TinyMUSH): `""` (no prompt - games provide their own context)
     pub fn build_prompt(&self) -> String {
         // Unauthenticated
         if !self.is_logged_in() {
@@ -314,13 +315,10 @@ impl Session {
                     self.current_topic.as_deref().unwrap_or("bbs")
                 )
             }
-            SessionState::TinyHack => {
-                // Keep prompt short in game mode
-                format!("{} (lvl{})>", self.display_name(), level)
-            }
-            SessionState::TinyMush => {
-                // Keep prompt short in game mode
-                format!("{} (lvl{})>", self.display_name(), level)
+            SessionState::TinyHack | SessionState::TinyMush => {
+                // Suppress BBS prompt in game mode - games provide their own context
+                // To exit game, user types 'B' or 'QUIT' which games recognize
+                String::new()
             }
             SessionState::MainMenu
             | SessionState::UserMenu

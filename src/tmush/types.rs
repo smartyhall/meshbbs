@@ -2404,9 +2404,7 @@ impl Default for WorldConfig {
             updated_by: "system".to_string(),
             
             // Branding
-            welcome_message: "╔════════════════════════════════════╗\n".to_string() +
-                "║   WELCOME TO OLD TOWNE MESH!     ║\n" +
-                "╚════════════════════════════════════╝\n\n" +
+            welcome_message: "* Welcome to Old Towne Mesh! *\n\n".to_string() +
                 "You've arrived at the Landing Gazebo.\n" +
                 "This tutorial will teach you the basics.\n\n" +
                 "📋 GETTING STARTED:\n" +
