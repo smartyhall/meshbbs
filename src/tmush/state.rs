@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 
 use crate::tmush::types::{
     AchievementCategory, AchievementRecord, AchievementTrigger, Direction, RoomFlag, RoomRecord,
-    ObjectRecord, ObjectOwner, ObjectTrigger, CurrencyAmount,
+    ObjectRecord, ObjectOwner, ObjectTrigger, CurrencyAmount, OBJECT_SCHEMA_VERSION,
 };
 
 /// Required landing location where new characters are staged before entering the world.
@@ -1058,7 +1058,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         clone_count: 0,
         created_by: "world".to_string(),
         ownership_history: vec![],
-        schema_version: 1,
+        schema_version: OBJECT_SCHEMA_VERSION,
     };
     healing_potion.actions.insert(
         ObjectTrigger::OnUse,
@@ -1086,7 +1086,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         clone_count: 0,
         created_by: "world".to_string(),
         ownership_history: vec![],
-        schema_version: 1,
+        schema_version: OBJECT_SCHEMA_VERSION,
     };
     ancient_key.actions.insert(
         ObjectTrigger::OnLook,
@@ -1118,7 +1118,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         clone_count: 0,
         created_by: "world".to_string(),
         ownership_history: vec![],
-        schema_version: 1,
+        schema_version: OBJECT_SCHEMA_VERSION,
     };
     mystery_box.actions.insert(
         ObjectTrigger::OnPoke,
@@ -1146,7 +1146,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         clone_count: 0,
         created_by: "world".to_string(),
         ownership_history: vec![],
-        schema_version: 1,
+        schema_version: OBJECT_SCHEMA_VERSION,
     };
     quest_clue.actions.insert(
         ObjectTrigger::OnLook,
@@ -1174,7 +1174,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         clone_count: 0,
         created_by: "world".to_string(),
         ownership_history: vec![],
-        schema_version: 1,
+        schema_version: OBJECT_SCHEMA_VERSION,
     };
     teleport_stone.actions.insert(
         ObjectTrigger::OnUse,
@@ -1202,7 +1202,7 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         clone_count: 0,
         created_by: "world".to_string(),
         ownership_history: vec![],
-        schema_version: 1,
+        schema_version: OBJECT_SCHEMA_VERSION,
     };
     singing_mushroom.actions.insert(
         ObjectTrigger::OnEnter,

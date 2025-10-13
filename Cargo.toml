@@ -91,10 +91,6 @@ tempfile = "3.10"
 name = "meshbbs"
 path = "src/main.rs"
 
-[[bin]]
-name = "migrate_messages"
-path = "scripts/migrate_messages.rs"
-
 [profile.release]
 incremental = false
 strip = "symbols"

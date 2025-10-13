@@ -8,6 +8,9 @@ pub use crate::tmush::migration::{
     CURRENT_PLAYER_SCHEMA_VERSION as PLAYER_SCHEMA_VERSION,
     CURRENT_ROOM_SCHEMA_VERSION as ROOM_SCHEMA_VERSION,
     CURRENT_OBJECT_SCHEMA_VERSION as OBJECT_SCHEMA_VERSION,
+    CURRENT_NPC_SCHEMA_VERSION as NPC_SCHEMA_VERSION,
+    CURRENT_QUEST_SCHEMA_VERSION as QUEST_SCHEMA_VERSION,
+    CURRENT_ACHIEVEMENT_SCHEMA_VERSION as ACHIEVEMENT_SCHEMA_VERSION,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -324,7 +327,7 @@ impl NpcRecord {
             dialog_tree: HashMap::new(),
             flags: Vec::new(),
             created_at: Utc::now(),
-            schema_version: 1,
+            schema_version: NPC_SCHEMA_VERSION,
         }
     }
 
@@ -654,7 +657,7 @@ impl CompanionRecord {
             inventory: Vec::new(),
             is_mounted: false,
             created_at: Utc::now(),
-            schema_version: 1,
+            schema_version: 1, // CompanionRecord doesn't have a schema version constant yet
         }
     }
 
@@ -1244,7 +1247,7 @@ impl QuestRecord {
             rewards: QuestRewards::default(),
             prerequisites: Vec::new(),
             created_at: Utc::now(),
-            schema_version: 1,
+            schema_version: QUEST_SCHEMA_VERSION,
         }
     }
 
@@ -1397,7 +1400,7 @@ impl AchievementRecord {
             trigger,
             title: None,
             hidden: false,
-            schema_version: 1,
+            schema_version: ACHIEVEMENT_SCHEMA_VERSION,
             created_at: Utc::now(),
         }
     }
