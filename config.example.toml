@@ -53,13 +53,6 @@ baud_rate = 115200
 # Channel to monitor (0 = primary channel)
 channel = 0
 
-# Identification beacon settings
-[meshtastic.ident]
-# Send identification beacon periodically
-enabled = true
-# Beacon interval in seconds (3600 = 1 hour)
-interval_seconds = 3600
-
 # Writer tuning (optional) - Defaults follow Meshtastic fairness rules
 # Minimum time between any text sends (ms). Values below 2000 clamped to 2000.
 min_send_gap_ms = 2000
@@ -72,6 +65,13 @@ post_dm_broadcast_gap_ms = 1200
 
 # Gap between consecutive reliable DMs (ms)
 dm_to_dm_gap_ms = 600
+
+# Identification beacon settings
+[ident_beacon]
+# Send identification beacon periodically
+enabled = true
+# Beacon frequency: "5min", "15min", "30min", "1hour" (default), "2hours", "4hours"
+frequency = "1hour"
 
 [storage]
 # Directory to store BBS data (use absolute path in production)

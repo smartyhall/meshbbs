@@ -172,11 +172,11 @@ serial_port = "$SERIAL_PORT"
 # Baud rate (usually 115200)
 baud_rate = 115200
 
-[meshtastic.ident]
+[ident_beacon]
 # Send identification beacon periodically
 enabled = true
-# Beacon interval in seconds (3600 = 1 hour)
-interval_seconds = 3600
+# Beacon frequency: "5min", "15min", "30min", "1hour", "2hours", "4hours"
+frequency = "1hour"
 
 [storage]
 # Data directory (absolute path)
