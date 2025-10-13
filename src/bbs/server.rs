@@ -1,6 +1,6 @@
-use anyhow::Result;
 #[cfg(feature = "meshtastic-proto")]
 use anyhow::anyhow;
+use anyhow::Result;
 #[cfg(feature = "meshtastic-proto")]
 use chrono::Utc;
 use log::{debug, info};
@@ -10,9 +10,10 @@ use std::collections::HashMap;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, Instant};
 
-use super::public::{PublicCommandParser, PublicState};
+use super::games::{self, GameDoorKind};
 #[cfg(feature = "meshtastic-proto")]
 use super::public::PublicCommand;
+use super::public::{PublicCommandParser, PublicState};
 #[cfg(feature = "meshtastic-proto")]
 use super::roles::{role_name, LEVEL_MODERATOR, LEVEL_USER};
 use super::session::Session;
@@ -20,9 +21,9 @@ use super::session::Session;
 use super::weather::WeatherService;
 use crate::config::Config;
 use crate::logutil::escape_log;
+use crate::meshtastic::MeshtasticDevice;
 #[cfg(feature = "meshtastic-proto")]
 use crate::meshtastic::TextEvent;
-use crate::meshtastic::MeshtasticDevice;
 #[cfg(feature = "meshtastic-proto")]
 use crate::meshtastic::{ControlMessage, MessagePriority, OutgoingMessage};
 use crate::storage::Storage;
@@ -124,6 +125,9 @@ pub struct BbsServer {
     weather_service: WeatherService,
     #[cfg(feature = "weather")]
     weather_last_poll: Instant, // track when we last attempted proactive weather refresh
+    housing_cleanup_last_check: Instant, // track when we last ran housing cleanup
+    housing_payment_last_check: Instant, // track when we last processed recurring payments
+    backup_scheduler: Option<crate::storage::backup_scheduler::BackupScheduler>, // automatic backup scheduler
     #[cfg(feature = "meshtastic-proto")]
     pending_direct: Vec<(u32, u32, String)>, // queue of (dest_node_id, channel, message) awaiting our node id
     #[cfg(feature = "meshtastic-proto")]
@@ -142,6 +146,8 @@ pub struct BbsServer {
     startup_welcome_queue: Vec<(tokio::time::Instant, crate::meshtastic::NodeDetectionEvent)>, // (when_to_send, event)
     #[cfg(feature = "meshtastic-proto")]
     startup_welcomes_queued: bool, // track if we've already queued startup welcomes
+    /// Game registry holding all door game resources
+    game_registry: crate::bbs::GameRegistry,
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
@@ -261,7 +267,7 @@ impl BbsServer {
     #[cfg(feature = "meshtastic-proto")]
     fn write_welcome_queue_status(&self) {
         use serde::Serialize;
-        
+
         #[derive(Serialize)]
         struct QueueEntry {
             node_id: String,
@@ -269,15 +275,16 @@ impl BbsServer {
             short_name: String,
             sends_in_seconds: i64,
         }
-        
+
         #[derive(Serialize)]
         struct QueueStatus {
             queue_length: usize,
             entries: Vec<QueueEntry>,
         }
-        
+
         let now = tokio::time::Instant::now();
-        let entries: Vec<QueueEntry> = self.startup_welcome_queue
+        let entries: Vec<QueueEntry> = self
+            .startup_welcome_queue
             .iter()
             .map(|(send_time, event)| {
                 let delay = send_time.saturating_duration_since(now);
@@ -289,20 +296,21 @@ impl BbsServer {
                 }
             })
             .collect();
-        
+
         let status = QueueStatus {
             queue_length: entries.len(),
             entries,
         };
-        
+
         let path = "data/welcome_queue.json";
         match serde_json::to_string_pretty(&status) {
-            Ok(json) => {
-                match std::fs::write(path, json) {
-                    Ok(_) => debug!("Wrote welcome queue status: {} entries", status.queue_length),
-                    Err(e) => warn!("Failed to write welcome queue status file: {}", e),
-                }
-            }
+            Ok(json) => match std::fs::write(path, json) {
+                Ok(_) => debug!(
+                    "Wrote welcome queue status: {} entries",
+                    status.queue_length
+                ),
+                Err(e) => warn!("Failed to write welcome queue status file: {}", e),
+            },
             Err(e) => warn!("Failed to serialize welcome queue status: {}", e),
         }
     }
@@ -449,6 +457,21 @@ impl BbsServer {
             weather_service: WeatherService::new(config.weather.clone()),
             #[cfg(feature = "weather")]
             weather_last_poll: Instant::now() - Duration::from_secs(301),
+            // Initialize housing cleanup timers to run immediately on first tick
+            housing_cleanup_last_check: Instant::now() - Duration::from_secs(86401), // More than 1 day ago
+            housing_payment_last_check: Instant::now() - Duration::from_secs(86401), // More than 1 day ago
+            // Initialize backup scheduler
+            backup_scheduler: {
+                use crate::storage::backup_scheduler::{BackupScheduler, BackupSchedulerConfig};
+                let scheduler_config = BackupSchedulerConfig::load()
+                    .unwrap_or_else(|e| {
+                        warn!("Failed to load backup scheduler config, using defaults: {}", e);
+                        BackupSchedulerConfig::default()
+                    });
+                info!("Backup scheduler initialized: enabled={}, frequency={:?}", 
+                      scheduler_config.enabled, scheduler_config.frequency);
+                Some(BackupScheduler::new(scheduler_config))
+            },
             #[cfg(feature = "meshtastic-proto")]
             pending_direct: Vec::new(),
             #[cfg(feature = "meshtastic-proto")]
@@ -463,7 +486,9 @@ impl BbsServer {
             last_ident_boundary_minute: None,
             #[cfg(feature = "meshtastic-proto")]
             welcome_state: if config.welcome.enabled {
-                Some(crate::bbs::welcome::WelcomeState::new(&config.storage.data_dir))
+                Some(crate::bbs::welcome::WelcomeState::new(
+                    &config.storage.data_dir,
+                ))
             } else {
                 None
             },
@@ -471,6 +496,7 @@ impl BbsServer {
             startup_welcome_queue: Vec::new(),
             #[cfg(feature = "meshtastic-proto")]
             startup_welcomes_queued: false,
+            game_registry: crate::bbs::GameRegistry::new(),
             test_messages: Vec::new(),
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
@@ -479,12 +505,33 @@ impl BbsServer {
         if !server.config.message_topics.is_empty() {
             Self::merge_toml_topics_to_runtime(&mut server.storage, &server.config).await?;
         }
-        // Announce enabled games at startup (TinyHack)
+        
+        // Initialize door game resources in the registry
+        if server.config.games.tinymush_enabled {
+            let db_path = server.config.games.tinymush_db_path
+                .as_deref()
+                .unwrap_or("data/tinymush");
+            
+            match crate::tmush::storage::TinyMushStore::open(db_path) {
+                Ok(store) => {
+                    info!("[games] TinyMUSH store initialized at: {}", db_path);
+                    server.game_registry = server.game_registry.with_tinymush(store);
+                }
+                Err(e) => {
+                    warn!("[games] TinyMUSH store initialization failed: {}", e);
+                }
+            }
+        }
+        
+        // Announce enabled games at startup
         if server.config.games.tinyhack_enabled {
             info!(
-                "[games] TinyHack enabled: DM door 'T' available; saves at {}/tinyhack",
+                "[games] TinyHack enabled: DM games menu (G -> 1) active; saves at {}/tinyhack",
                 server.storage.base_dir()
             );
+        }
+        if server.config.games.tinymush_enabled {
+            info!("[games] TinyMUSH enabled: available in Games menu");
         }
         Ok(server)
     }
@@ -596,7 +643,7 @@ impl BbsServer {
         if !self.config.welcome.enabled || self.welcome_state.is_none() {
             return Ok(());
         }
-        
+
         // Load node cache
         let cache_path = format!("{}/node_cache.json", self.config.storage.data_dir);
         let cache = match crate::meshtastic::NodeCache::load_from_file(&cache_path) {
@@ -606,64 +653,74 @@ impl BbsServer {
                 return Ok(());
             }
         };
-        
-        info!("Scanning {} cached nodes for startup welcomes", cache.nodes.len());
-        
+
+        info!(
+            "Scanning {} cached nodes for startup welcomes",
+            cache.nodes.len()
+        );
+
         // Get current time for age check (within last hour)
         let now = chrono::Utc::now();
         let one_hour_ago = now - chrono::Duration::hours(1);
-        
+
         // Collect nodes that need welcoming
         let mut to_welcome = Vec::new();
-        
+
         for (node_id, cached_node) in &cache.nodes {
             // Skip if not recent (last seen must be within 1 hour)
             if cached_node.last_seen < one_hour_ago {
                 continue;
             }
-            
+
             // Skip if not a default name
             if !crate::bbs::welcome::is_default_name(&cached_node.long_name) {
                 continue;
             }
-            
+
             // Check if already welcomed (use true since we'll queue these for staggered sending)
             let should_welcome = {
                 let state = self.welcome_state.as_ref().unwrap();
                 state.should_welcome(*node_id, &cached_node.long_name, &self.config.welcome, true)
             };
-            
+
             if should_welcome {
-                to_welcome.push((*node_id, cached_node.long_name.clone(), cached_node.short_name.clone()));
+                to_welcome.push((
+                    *node_id,
+                    cached_node.long_name.clone(),
+                    cached_node.short_name.clone(),
+                ));
             }
         }
-        
+
         if to_welcome.is_empty() {
             info!("No cached nodes need startup welcomes");
             return Ok(());
         }
-        
-        info!("Queuing {} startup welcomes (30s intervals)", to_welcome.len());
-        
+
+        info!(
+            "Queuing {} startup welcomes (30s intervals)",
+            to_welcome.len()
+        );
+
         // Queue the welcomes with 30-second stagger
         let base_time = tokio::time::Instant::now();
         for (delay_index, (node_id, long_name, short_name)) in to_welcome.into_iter().enumerate() {
             let delay_secs = delay_index as u64 * 30; // 0s, 30s, 60s, 90s...
             let send_time = base_time + tokio::time::Duration::from_secs(delay_secs);
-            
+
             let event = crate::meshtastic::NodeDetectionEvent {
                 node_id,
                 long_name,
                 short_name,
                 is_from_startup_queue: true, // Startup queue - skip rate limit
             };
-            
+
             self.startup_welcome_queue.push((send_time, event));
         }
-        
+
         // Write queue status to file for monitoring
         self.write_welcome_queue_status();
-        
+
         Ok(())
     }
 
@@ -811,6 +868,39 @@ impl BbsServer {
 
         Ok(())
     }
+
+    /// Check if it's time to create an automatic backup and create one if so.
+    ///
+    /// This method should be called periodically from the main event loop.
+    /// The scheduler determines if a backup is needed based on UTC time boundaries
+    /// and the configured frequency.
+    ///
+    /// # Behavior
+    /// - Respects automatic backup configuration (enabled/disabled, frequency)
+    /// - Scheduling occurs on UTC boundaries (hourly, 2h, 4h, 6h, 12h, daily)
+    /// - Automatically applies retention policy after creating backups
+    /// - Prevents duplicate backups within the same minute boundary
+    /// - Reloads configuration from disk periodically (respects in-game changes)
+    async fn check_and_backup(&mut self) -> Result<()> {
+        if let Some(ref mut scheduler) = self.backup_scheduler {
+            // Reload config from disk to pick up changes from /BACKUPCONFIG commands
+            let _ = scheduler.reload_config();
+            
+            match scheduler.check_and_backup() {
+                Ok(Some(backup_id)) => {
+                    info!("Automatic backup created: {}", backup_id);
+                }
+                Ok(None) => {
+                    // No backup needed at this time
+                }
+                Err(e) => {
+                    warn!("Failed to create automatic backup: {}", e);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 4. **Session Management**: Handles user session lifecycle and timeouts
     /// 5. **Weather Updates**: Provides proactive weather information (if enabled)
     /// 6. **Audit Logging**: Records security and administrative events
@@ -868,13 +958,14 @@ impl BbsServer {
 
         // Setup cross-platform signal handlers for graceful shutdown
         #[cfg(unix)]
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut sigterm =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
         #[cfg(unix)]
         let mut sighup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
-        
+
         #[cfg(windows)]
         let mut ctrl_break = tokio::signal::windows::ctrl_break()?;
-        
+
         #[cfg(not(any(unix, windows)))]
         let mut _dummy_signal = std::future::pending::<()>();
 
@@ -883,7 +974,7 @@ impl BbsServer {
         let mut periodic = tokio::time::interval(Duration::from_secs(1));
         #[cfg(feature = "meshtastic-proto")]
         periodic.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        
+
         // Fallback interval for non-meshtastic-proto builds
         #[cfg(not(feature = "meshtastic-proto"))]
         let mut interval = tokio::time::interval(Duration::from_secs(1));
@@ -914,31 +1005,53 @@ impl BbsServer {
                                 break;
                             }
                         }
-                        
+
                         // Update queue status file if we processed any welcomes
                         if queue_changed {
                             self.write_welcome_queue_status();
                         }
-                        
+
                         #[cfg(feature = "weather")]
                         if self.weather_last_poll.elapsed() >= Duration::from_secs(300) {
                             let _ = self.fetch_weather().await;
                             self.weather_last_poll = Instant::now();
                         }
+                        
+                        // Housing cleanup check (once per day: 86400 seconds)
+                        if self.housing_cleanup_last_check.elapsed() >= Duration::from_secs(86400) {
+                            if let Err(e) = self.check_housing_cleanup().await {
+                                warn!("Housing cleanup error: {}", e);
+                            }
+                            self.housing_cleanup_last_check = Instant::now();
+                        }
+                        
+                        // Housing recurring payments (once per day: 86400 seconds)
+                        if self.housing_payment_last_check.elapsed() >= Duration::from_secs(86400) {
+                            if let Err(e) = self.process_housing_payments().await {
+                                warn!("Housing payment processing error: {}", e);
+                            }
+                            self.housing_payment_last_check = Instant::now();
+                        }
+                        
                         if self.node_cache_last_cleanup.elapsed() >= Duration::from_secs(3600) {
                             self.node_cache_last_cleanup = Instant::now();
                         }
                         if let Err(e) = self.check_and_send_ident().await {
                             debug!("Ident beacon error: {}", e);
                         }
+                        
+                        // Check if automatic backup is needed
+                        if let Err(e) = self.check_and_backup().await {
+                            debug!("Backup scheduler error: {}", e);
+                        }
                     },
 
                     // Receive our node id from reader (so ident shows actual ID)
                     node_id = async { if let Some(ref mut rx) = self.node_id_rx { rx.recv().await } else { std::future::pending().await } } => {
-                        if let Some(id) = node_id { 
-                            self.our_node_id = Some(id); 
+                        if let Some(id) = node_id {
+                            self.our_node_id = Some(id);
                             debug!("Server received our node ID: {}", id);
-                            
+
                             // Queue startup welcomes now that we have our node ID
                             if !self.startup_welcomes_queued {
                                 self.startup_welcomes_queued = true;
@@ -991,7 +1104,7 @@ impl BbsServer {
                         info!("Received SIGINT (Ctrl+C), initiating graceful shutdown...");
                         break;
                     }
-                    
+
                     _ = async {
                         #[cfg(unix)]
                         {
@@ -1005,7 +1118,7 @@ impl BbsServer {
                         info!("Received SIGTERM, initiating graceful shutdown...");
                         break;
                     }
-                    
+
                     _ = async {
                         #[cfg(unix)]
                         {
@@ -1019,7 +1132,7 @@ impl BbsServer {
                         info!("Received SIGHUP, initiating graceful shutdown...");
                         break;
                     }
-                    
+
                     _ = async {
                         #[cfg(windows)]
                         {
@@ -1059,7 +1172,7 @@ impl BbsServer {
                         info!("Received SIGINT (Ctrl+C), initiating graceful shutdown...");
                         break;
                     }
-                    
+
                     _ = async {
                         #[cfg(unix)]
                         {
@@ -1073,7 +1186,7 @@ impl BbsServer {
                         info!("Received SIGTERM, initiating graceful shutdown...");
                         break;
                     }
-                    
+
                     _ = async {
                         #[cfg(unix)]
                         {
@@ -1087,7 +1200,7 @@ impl BbsServer {
                         info!("Received SIGHUP, initiating graceful shutdown...");
                         break;
                     }
-                    
+
                     _ = async {
                         #[cfg(windows)]
                         {
@@ -1278,13 +1391,28 @@ impl BbsServer {
         }
     }
 
-    fn format_main_menu(tinyhack_enabled: bool) -> String {
+    fn format_main_menu(games_config: &crate::config::GamesConfig) -> String {
         let mut line = String::from("Main Menu:\n[M]essages ");
-        if tinyhack_enabled {
-            line.push_str("[T]inyhack ");
+        if games::has_enabled_doors(games_config) {
+            line.push_str("[G]ames ");
         }
         line.push_str("[P]references [Q]uit\n");
         line
+    }
+
+    fn format_hint_line(
+        games_config: &crate::config::GamesConfig,
+        include_topic_digits: bool,
+    ) -> String {
+        let mut hint = String::from("Hint: M=messages ");
+        if include_topic_digits {
+            hint.push_str("1-9=select ");
+        }
+        if games::has_enabled_doors(games_config) {
+            hint.push_str("G=games ");
+        }
+        hint.push_str("H=help\n");
+        hint
     }
 
     /// Ensure sysop user exists / synchronized with config (extracted for testability)
@@ -1340,6 +1468,202 @@ impl BbsServer {
             .update_user_level(username, lvl, "test")
             .await
             .map(|_| ())
+    }
+    /// Test helper to create a TinyMUSH player WITH admin level in one atomic operation.
+    /// 
+    /// This helper must be called BEFORE entering TinyMUSH with "G1". It creates the player
+    /// record directly in the database with admin privileges, avoiding the Sled caching issue
+    /// where different handles see stale data.
+    /// 
+    /// # Arguments
+    /// * `node_key` - The session node key
+    /// * `level` - Admin level (1=Moderator, 2=Admin, 3=Sysop)
+    /// 
+    /// # Returns
+    /// * `Ok(())` if player was created successfully
+    /// * `Err` if the session wasn't found or creation failed
+    #[allow(dead_code)]
+    pub async fn test_tmush_create_player_with_admin(&mut self, node_key: &str, level: u8) -> Result<()> {
+        use crate::tmush::types::PlayerRecord;
+        
+        let session = self.sessions.get(node_key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
+        let username = session.display_name();
+        
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Create player with admin level in one atomic operation using transaction
+        let result = store.primary_tree().transaction(|tx_tree| {
+            let key = format!("players:{}", username.to_ascii_lowercase());
+            
+            // Check if player already exists
+            if tx_tree.get(key.as_bytes())?.is_some() {
+                return Err(sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Player {} already exists", username)
+                ));
+            }
+            
+            // Create new player with admin privileges
+            let mut player = PlayerRecord::new(
+                &username,
+                &username,
+                crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+            );
+            player.grant_admin(level);
+            player.touch();
+            
+            // Serialize and insert
+            let player_bytes = bincode::serialize(&player)
+                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Failed to serialize player: {}", e)
+                ))?;
+            
+            tx_tree.insert(key.as_bytes(), player_bytes.as_slice())?;
+            
+            Ok(())
+        });
+        
+        result.map_err(|e| anyhow::anyhow!("Transaction failed: {:?}", e))?;
+        
+        // Flush the entire database to ensure cross-handle visibility
+        store.db().flush()?;
+        
+        // VERIFY: Read back the player to confirm admin was set
+        let verify_player = store.get_player(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to verify player creation: {}", e))?;
+        if !verify_player.is_admin() {
+            return Err(anyhow::anyhow!("Player created but admin flag not set! Level={:?}", verify_player.admin_level));
+        }
+        eprintln!("✓ Verified player {} has admin level {:?}", username, verify_player.admin_level);
+        
+        Ok(())
+    }
+
+    /// Test helper to grant admin privileges using Sled transaction for atomicity.
+    /// 
+    /// This uses a transaction to ensure the write is immediately visible to all
+    /// other handles/processes reading the same database, avoiding cache issues.
+    #[allow(dead_code)]
+    pub async fn test_tmush_grant_admin(&mut self, username: &str, level: u8) -> Result<()> {
+        use crate::tmush::types::PlayerRecord;
+        
+        // Use the shared store from game_registry instead of opening a new connection
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Use Tree transaction for atomic read-modify-write
+        let result = store.primary_tree().transaction(|tx_tree| {
+            // Construct the key (same as TinyMushStore::players_key)
+            let key = format!("players:{}", username.to_ascii_lowercase());
+            
+            // Read current player record
+            let player_bytes = tx_tree.get(key.as_bytes())?
+                .ok_or(sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Player not found: {}", username)
+                ))?;
+            
+            // Deserialize
+            let mut player: PlayerRecord = bincode::deserialize(&player_bytes)
+                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Failed to deserialize player: {}", e)
+                ))?;
+            
+            // Modify
+            player.grant_admin(level);
+            player.touch();
+            
+            // Serialize
+            let new_bytes = bincode::serialize(&player)
+                .map_err(|e| sled::transaction::ConflictableTransactionError::Abort(
+                    anyhow::anyhow!("Failed to serialize player: {}", e)
+                ))?;
+            
+            // Write back atomically
+            tx_tree.insert(key.as_bytes(), new_bytes.as_slice())?;
+            
+            Ok(())
+        });
+        
+        result.map_err(|e| anyhow::anyhow!("Transaction failed: {:?}", e))?;
+        
+        // Flush the entire database to ensure cross-handle visibility
+        store.db().flush()?;
+        
+        Ok(())
+    }
+    
+    /// Test helper to create a TinyMUSH player WITH admin level in one operation.
+    /// This avoids Sled caching issues that occur when creating and then modifying a player.
+    #[allow(dead_code)]
+    pub async fn test_tmush_create_admin_player(&mut self, node_key: &str, level: u8) -> Result<()> {
+        use crate::tmush::types::PlayerRecord;
+        
+        let session = self.sessions.get(node_key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
+        let username = session.display_name();
+        
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Check if player already exists
+        if store.get_player(&username).is_ok() {
+            return Err(anyhow::anyhow!("Player {} already exists", username));
+        }
+        
+        // Create player with admin level in one operation
+        let mut player = PlayerRecord::new(
+            &username,
+            &username,
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+        );
+        player.grant_admin(level);
+        
+        store.put_player(player)
+            .map_err(|e| anyhow::anyhow!("Failed to create admin player: {}", e))?;
+        
+        Ok(())
+    }    /// Test helper to force TinyMUSH player record creation.
+    /// 
+    /// Call this IMMEDIATELY after route_test_text_direct("G2") to directly
+    /// create a TinyMUSH player record. This bypasses lazy initialization
+    /// so subsequent operations (like test_tmush_grant_admin) can find it.
+    /// 
+    /// # Arguments
+    /// * `node_key` - The session node key
+    /// 
+    /// # Returns
+    /// * `Ok(())` if player record was created successfully
+    /// * `Err` if the session wasn't found or creation failed
+    #[allow(dead_code)]
+    pub async fn test_tmush_ensure_player_exists(&mut self, node_key: &str) -> Result<()> {
+        use crate::tmush::types::PlayerRecord;
+        
+        // Get the username from the session
+        let session = self.sessions.get(node_key)
+            .ok_or_else(|| anyhow::anyhow!("Session not found: {}", node_key))?;
+        let username = session.display_name();
+        
+        // Get TinyMUSH store from game registry (shared cache)
+        let store = self.game_registry.get_tinymush_store()
+            .ok_or_else(|| anyhow::anyhow!("TinyMUSH store not available in game registry"))?;
+        
+        // Check if player already exists
+        if store.get_player(&username).is_ok() {
+            return Ok(()); // Player already exists, nothing to do
+        }
+        
+        // Create new player at landing location (gazebo)
+        let player = PlayerRecord::new(
+            &username,
+            &username, // Use username as display name
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+        );
+        
+        store.put_player(player)
+            .map_err(|e| anyhow::anyhow!("Failed to create player: {}", e))?;
+        
+        Ok(())
     }
     #[allow(dead_code)]
     pub async fn test_create_topic(
@@ -1446,10 +1770,29 @@ impl BbsServer {
         Ok(())
     }
 
+    #[allow(dead_code)]
+    async fn process_help_text(
+        &mut self,
+        session: &mut crate::bbs::session::Session,
+        storage: &mut crate::storage::Storage,
+        config: &crate::config::Config,
+    ) -> Result<String> {
+        // Process help text via command processor and append one-time shortcuts hint
+        let mut help_text = session.process_command("H", storage, config, &self.game_registry).await?;
+        if !session.help_seen {
+            session.help_seen = true;
+            help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
+        }
+        Ok(help_text)
+    }
+
     #[cfg(feature = "meshtastic-proto")]
-    async fn handle_node_detection(&mut self, event: crate::meshtastic::NodeDetectionEvent) -> Result<()> {
+    async fn handle_node_detection(
+        &mut self,
+        event: crate::meshtastic::NodeDetectionEvent,
+    ) -> Result<()> {
         use crate::bbs::welcome;
-        
+
         // Check if welcome system is enabled
         if !self.config.welcome.enabled {
             return Ok(());
@@ -1458,37 +1801,37 @@ impl BbsServer {
         if self.welcome_state.is_none() {
             return Ok(());
         }
-        
+
         // Check if should welcome this node (immutable borrow)
         // Skip rate limit for startup queue items
         let should_welcome = {
             let state = self.welcome_state.as_ref().unwrap();
             state.should_welcome(
-                event.node_id, 
-                &event.long_name, 
+                event.node_id,
+                &event.long_name,
                 &self.config.welcome,
-                event.is_from_startup_queue
+                event.is_from_startup_queue,
             )
         };
-        
+
         if !should_welcome {
             return Ok(());
         }
-        
+
         info!(
             "Welcome system triggered for node 0x{:08X} ({})",
             event.node_id, event.long_name
         );
-        
+
         // Get values we need from self before any mut borrows
         let primary_channel = self.primary_channel();
-        
+
         // Generate fun call sign suggestion with emoji
         let (suggested_callsign, emoji) = welcome::generate_callsign();
-        
+
         // Strategy: PING the node first to verify reachability
         // Only send welcome messages if ping succeeds
-        
+
         // Send ping to node
         let ping_success = if let Some(writer_tx) = &self.writer_control_tx {
             let (response_tx, response_rx) = tokio::sync::oneshot::channel();
@@ -1497,7 +1840,7 @@ impl BbsServer {
                 channel: primary_channel,
                 response_tx,
             };
-            
+
             if writer_tx.send(ping_msg).is_ok() {
                 // Wait for ping response with timeout (2 minutes for slow mesh routing)
                 match tokio::time::timeout(std::time::Duration::from_secs(120), response_rx).await {
@@ -1506,48 +1849,61 @@ impl BbsServer {
                         true
                     }
                     Ok(Ok(false)) => {
-                        info!("Ping failed for node 0x{:08X}, skipping welcome", event.node_id);
+                        info!(
+                            "Ping failed for node 0x{:08X}, skipping welcome",
+                            event.node_id
+                        );
                         false
                     }
                     Ok(Err(_)) => {
-                        warn!("Ping response channel closed for node 0x{:08X}", event.node_id);
+                        warn!(
+                            "Ping response channel closed for node 0x{:08X}",
+                            event.node_id
+                        );
                         false
                     }
                     Err(_) => {
-                        warn!("Ping timeout for node 0x{:08X}, skipping welcome", event.node_id);
+                        warn!(
+                            "Ping timeout for node 0x{:08X}, skipping welcome",
+                            event.node_id
+                        );
                         false
                     }
                 }
             } else {
-                warn!("Failed to send ping command for node 0x{:08X}", event.node_id);
+                warn!(
+                    "Failed to send ping command for node 0x{:08X}",
+                    event.node_id
+                );
                 false
             }
         } else {
             warn!("No writer control channel available for ping");
             false
         };
-        
+
         // Only proceed if ping succeeded
         if !ping_success {
             return Ok(());
         }
-        
+
         // Only proceed if ping succeeded
         if !ping_success {
             return Ok(());
         }
-        
+
         // Node is reachable! Send welcome messages
         // Send private guide if enabled
         if self.config.welcome.private_guide {
             let cmd_prefix = self.public_parser.primary_prefix_char();
-            let guide = welcome::private_guide(&event.long_name, &suggested_callsign, &emoji, cmd_prefix);
-            
+            let guide =
+                welcome::private_guide(&event.long_name, &suggested_callsign, &emoji, cmd_prefix);
+
             // Send via scheduler as a reliable DM
             if let Some(scheduler) = &self.scheduler {
-                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
-                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
-                
+                use crate::bbs::dispatch::{MessageCategory, MessageEnvelope, Priority};
+                use crate::meshtastic::{MessagePriority, OutgoingKind, OutgoingMessage};
+
                 // Chunk the guide if needed - use 200 byte limit to leave room for protocol overhead
                 let chunks = self.chunk_utf8(&guide, 200);
                 for (idx, chunk) in chunks.iter().enumerate() {
@@ -1561,29 +1917,29 @@ impl BbsServer {
                         kind: OutgoingKind::Normal,
                         request_ack: true,
                     };
-                    let envelope = MessageEnvelope::new(
-                        MessageCategory::System,
-                        Priority::Normal,
-                        delay,
-                        msg,
-                    );
-                    let _ = scheduler.enqueue(envelope);
+                    let envelope =
+                        MessageEnvelope::new(MessageCategory::System, Priority::Normal, delay, msg);
+                    scheduler.enqueue(envelope);
                 }
             }
         }
-        
+
         // Send public greeting if enabled
         // Delay it to allow private guide to complete first and avoid rate limiting
         if self.config.welcome.public_greeting {
             let greeting = welcome::public_greeting(&event.long_name);
             if let Some(scheduler) = &self.scheduler {
-                use crate::meshtastic::{MessagePriority, OutgoingMessage, OutgoingKind};
-                use crate::bbs::dispatch::{MessageEnvelope, MessageCategory, Priority};
-                
+                use crate::bbs::dispatch::{MessageCategory, MessageEnvelope, Priority};
+                use crate::meshtastic::{MessagePriority, OutgoingKind, OutgoingMessage};
+
                 // If private_guide is enabled, delay public greeting to avoid rate limit conflicts
                 // With 2 chunks at 5-second spacing, wait 11 seconds (last chunk at 5s + 6s buffer)
-                let delay_secs = if self.config.welcome.private_guide { 11 } else { 0 };
-                
+                let delay_secs = if self.config.welcome.private_guide {
+                    11
+                } else {
+                    0
+                };
+
                 // Chunk public greeting too
                 let chunks = self.chunk_utf8(&greeting, 200);
                 for (idx, chunk) in chunks.iter().enumerate() {
@@ -1602,21 +1958,22 @@ impl BbsServer {
                         std::time::Duration::from_secs(chunk_delay),
                         msg,
                     );
-                    let _ = scheduler.enqueue(envelope);
+                    scheduler.enqueue(envelope);
                 }
             }
         }
-        
+
         // Record that we welcomed this node
         if let Some(welcome_state) = &mut self.welcome_state {
             welcome_state.record_welcome(event.node_id, &event.long_name);
         }
-        
+
         Ok(())
     }
 
     #[cfg(feature = "meshtastic-proto")]
     #[cfg_attr(test, allow(dead_code))]
+    #[allow(clippy::ifs_same_cond)] // Help condition legitimately appears in both DM and broadcast paths
     pub async fn route_text_event(&mut self, ev: TextEvent) -> Result<()> {
         // Trace-log every text event for debugging purposes
         trace!(
@@ -1663,12 +2020,11 @@ impl BbsServer {
                                 let _ = self.storage.record_user_login(&username).await; // update last_login
                                 let summary = Self::format_unread_line(unread);
                                 let hint = if unread == 0 {
-                                    "Hint: M=messages H=help\n"
+                                    Self::format_hint_line(&self.config.games, false)
                                 } else {
-                                    ""
+                                    String::new()
                                 };
-                                let menu =
-                                    Self::format_main_menu(self.config.games.tinyhack_enabled);
+                                let menu = Self::format_main_menu(&self.config.games);
                                 let _ = self
                                     .send_session_message(
                                         &node_key,
@@ -1691,8 +2047,8 @@ impl BbsServer {
                                 .create_or_update_user(&username, &node_key)
                                 .await?;
                             let summary = Self::format_unread_line(0);
-                            let hint = "Hint: M=messages H=help\n";
-                            let menu = Self::format_main_menu(self.config.games.tinyhack_enabled);
+                            let hint = Self::format_hint_line(&self.config.games, false);
+                            let menu = Self::format_main_menu(&self.config.games);
                             let _ = self
                                 .send_session_message(
                                     &node_key,
@@ -1764,8 +2120,8 @@ impl BbsServer {
                                     session.unread_since = Some(Utc::now());
                                 }
                                 let summary = Self::format_unread_line(0);
-                                let hint = "Hint: M=messages 1-9=select H=help\n";
-                                let menu = Self::format_main_menu(self.config.games.tinyhack_enabled);
+                                let hint = Self::format_hint_line(&self.config.games, true);
+                                let menu = Self::format_main_menu(&self.config.games);
                                 let full_welcome = format!(
                                     "Registered as {u}.\n{summary}{hint}{menu}",
                                     u = user,
@@ -1831,16 +2187,13 @@ impl BbsServer {
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
-                    // Defer compact help text to command processor, then append one-time shortcuts hint server-side
-                    let mut help_text = session
-                        .process_command("H", &mut self.storage, &self.config)
-                        .await?;
+                    // Process help command and send response
+                    let mut help_text = session.process_command("H", &mut self.storage, &self.config, &self.game_registry).await?;
                     if !session.help_seen {
                         session.help_seen = true;
                         help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
                     }
-                    self.send_session_message(&node_key, &help_text, true)
-                        .await?;
+                    self.send_session_message(&node_key, &help_text, true).await?;
                 } else if upper.starts_with("LOGIN ") {
                     // Enforce max_users only if this session is not yet logged in
                     if !session.is_logged_in()
@@ -1911,10 +2264,12 @@ impl BbsServer {
                                                 let summary = Self::format_unread_line(0); // first login after setting password shows no unread
 
                                                 // Check if this is the first login after registration and show follow-up welcome
-                                                let hint = "Hint: M=messages H=help\n";
-                                                let menu = Self::format_main_menu(
-                                                    self.config.games.tinyhack_enabled,
+                                                let hint = Self::format_hint_line(
+                                                    &self.config.games,
+                                                    false,
                                                 );
+                                                let menu =
+                                                    Self::format_main_menu(&self.config.games);
                                                 let login_msg = format!("Password set. Welcome, {} you are now logged in.\n{}{}{}", updated.username, summary, hint, menu);
                                                 if updated.welcome_shown_on_registration
                                                     && !updated.welcome_shown_on_first_login
@@ -1975,13 +2330,15 @@ impl BbsServer {
 
                                                 // Check if this is the first login after registration and show follow-up welcome
                                                 let hint = if unread == 0 {
-                                                    "Hint: M=messages H=help\n"
+                                                    Self::format_hint_line(
+                                                        &self.config.games,
+                                                        false,
+                                                    )
                                                 } else {
-                                                    ""
+                                                    String::new()
                                                 };
-                                                let menu = Self::format_main_menu(
-                                                    self.config.games.tinyhack_enabled,
-                                                );
+                                                let menu =
+                                                    Self::format_main_menu(&self.config.games);
                                                 let login_msg = format!(
                                                     "Welcome, {} you are now logged in.\n{}{}{}",
                                                     updated2.username, summary, hint, menu
@@ -2569,6 +2926,7 @@ impl BbsServer {
                                 super::session::SessionState::UserChangePassNew => "Pass Update",
                                 super::session::SessionState::UserSetPassNew => "Pass Set",
                                 super::session::SessionState::TinyHack => "TinyHack",
+                                super::session::SessionState::TinyMush => "TinyMUSH",
                                 super::session::SessionState::Disconnected => "Disconnected",
                             };
                             response.push_str(&format!(
@@ -2662,16 +3020,13 @@ impl BbsServer {
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
                 {
-                    // Use abbreviated help via command processor (ensures consistent text) + one-time shortcuts hint
-                    let mut help_text = session
-                        .process_command("H", &mut self.storage, &self.config)
-                        .await?;
+                    // Process help command and send response (inlined to avoid borrowing conflicts)
+                    let mut help_text = session.process_command("H", &mut self.storage, &self.config, &self.game_registry).await?;
                     if !session.help_seen {
                         session.help_seen = true;
                         help_text.push_str("Shortcuts: M=areas U=user Q=quit\n");
                     }
-                    self.send_session_message(&node_key, &help_text, true)
-                        .await?;
+                    self.send_session_message(&node_key, &help_text, true).await?;
                     return Ok(());
                 } else {
                     let redact = ["REGISTER ", "LOGIN ", "SETPASS ", "CHPASS "];
@@ -2682,7 +3037,7 @@ impl BbsServer {
                     };
                     trace!("Session {} generic command '{}'", node_key, log_snippet);
                     let response = session
-                        .process_command(&raw_content, &mut self.storage, &self.config)
+                        .process_command(&raw_content, &mut self.storage, &self.config, &self.game_registry)
                         .await?;
                     if !response.is_empty() {
                         deferred_reply = Some(response);
@@ -2746,18 +3101,23 @@ impl BbsServer {
         } else {
             // Public channel event: parse lightweight commands
             self.public_state.prune_expired();
-            
+
             // Check if this is a node with default name that should be welcomed
             // This catches nodes that chat publicly without us having seen their NODEINFO
             let node_id = ev.source;
             // Look up node name from cache first (before any mutable borrows)
             let long_name_opt = self.lookup_long_name_from_cache(node_id);
-            
+
             if let Some(ref mut welcome_state) = self.welcome_state {
                 if let Some(long_name) = long_name_opt {
                     if crate::bbs::welcome::is_default_name(&long_name) {
                         // Check if we should welcome this node (real-time detection - apply rate limit)
-                        if welcome_state.should_welcome(node_id, &long_name, &self.config.welcome, false) {
+                        if welcome_state.should_welcome(
+                            node_id,
+                            &long_name,
+                            &self.config.welcome,
+                            false,
+                        ) {
                             debug!(
                                 "Detected unwelcomed default-named node 0x{:08X} ({}) via public message, triggering welcome",
                                 node_id, long_name
@@ -2776,7 +3136,7 @@ impl BbsServer {
                     }
                 }
             }
-            
+
             let cmd = self.public_parser.parse(&ev.content);
             trace!(
                 "Public command parse result for node {} => {:?}",
@@ -2981,7 +3341,11 @@ impl BbsServer {
                     // Check if public LOGIN is allowed by configuration
                     if !self.config.bbs.allow_public_login {
                         // Silently ignore public LOGIN when disabled - no reply to avoid spam/enumeration
-                        trace!("Public LOGIN ignored (disabled by config): user={}, node={}", username, node_key);
+                        trace!(
+                            "Public LOGIN ignored (disabled by config): user={}, node={}",
+                            username,
+                            node_key
+                        );
                     } else if self.public_state.should_reply(&node_key) {
                         self.public_state.set_pending(&node_key, username.clone());
                         let reply = format!("Login pending for '{}'. Open a direct message to this node and say HI or LOGIN <name> again to complete.", username);
@@ -3399,7 +3763,7 @@ impl BbsServer {
                 return Ok(());
             } else if upper == "H" || upper == "?" {
                 let mut help_text = session
-                    .process_command("H", &mut self.storage, &self.config)
+                    .process_command("H", &mut self.storage, &self.config, &self.game_registry)
                     .await?;
                 if !session.help_seen {
                     session.help_seen = true;
@@ -3437,8 +3801,8 @@ impl BbsServer {
                                 s2.unread_since = Some(prev);
                             }
                         }
-                        let hint = "Hint: M=messages H=help\n";
-                        let menu = Self::format_main_menu(self.config.games.tinyhack_enabled);
+                        let hint = Self::format_hint_line(&self.config.games, false);
+                        let menu = Self::format_main_menu(&self.config.games);
                         deferred_reply = Some(format!(
                             "Welcome, {} you are now logged in.\n{}{}{}",
                             user,
@@ -3448,25 +3812,55 @@ impl BbsServer {
                         ));
                     }
                 }
-            } else if (upper == "T" || upper == "TINYHACK") && self.config.games.tinyhack_enabled {
-                // Test-path TinyHack start: send welcome and then the screen on every entry (separate messages)
-                session.state = super::session::SessionState::TinyHack;
-                let username = session.display_name();
-                let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(
-                    &self.storage.base_dir(),
-                    &username,
-                );
-                session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
-                self.send_session_message(node_key, crate::bbs::tinyhack::welcome_message(), true)
-                    .await?;
-                self.send_session_message(node_key, &screen, true).await?;
-                return Ok(());
             } else {
-                let response = session
-                    .process_command(&raw_content, &mut self.storage, &self.config)
-                    .await?;
-                if !response.is_empty() {
-                    deferred_reply = Some(response);
+                let game_doors = games::enabled_doors(&self.config.games);
+                if upper == "G" || upper == "GAMES" {
+                    let msg = games::format_games_menu(&game_doors);
+                    deferred_reply = Some(msg);
+                } else if let Some(door) = games::resolve_games_command(&upper, &game_doors) {
+                    match door.kind {
+                        GameDoorKind::TinyHack => {
+                            session.state = super::session::SessionState::TinyHack;
+                            let username = session.display_name();
+                            let (gs, screen, _is_new) = crate::bbs::tinyhack::load_or_new_with_flag(
+                                self.storage.base_dir(),
+                                &username,
+                            );
+                            session.filter_text =
+                                Some(serde_json::to_string(&gs).unwrap_or_default());
+                            self.send_session_message(
+                                node_key,
+                                crate::bbs::tinyhack::welcome_message(),
+                                true,
+                            )
+                            .await?;
+                            self.send_session_message(node_key, &screen, true).await?;
+                            return Ok(());
+                        }
+                        GameDoorKind::TinyMush => {
+                            // Handle TinyMUSH entry like production code does
+                            session.state = super::session::SessionState::TinyMush;
+                            session.current_game_slug = Some(door.slug.to_string());
+                            let _username = session.display_name();
+                            
+                            // Initialize TinyMUSH and send welcome using shared store from game registry
+                            if let Some(store) = self.game_registry.get_tinymush_store() {
+                                let mut processor = crate::tmush::commands::TinyMushProcessor::new(store.clone());
+                                let welcome = processor.initialize_player(session, &mut self.storage, &self.config).await?;
+                                self.send_session_message(node_key, &welcome, true).await?;
+                            } else {
+                                self.send_session_message(node_key, "TinyMUSH is not available", true).await?;
+                            }
+                            return Ok(());
+                        }
+                    }
+                } else {
+                    let response = session
+                        .process_command(&raw_content, &mut self.storage, &self.config, &self.game_registry)
+                        .await?;
+                    if !response.is_empty() {
+                        deferred_reply = Some(response);
+                    }
                 }
             }
         }
@@ -3494,6 +3888,96 @@ impl BbsServer {
         None
     }
 
+    /// Check for abandoned housing and process cleanup
+    async fn check_housing_cleanup(&mut self) -> Result<()> {
+        use crate::tmush::housing_cleanup::{check_and_cleanup_housing, CleanupConfig, CleanupStats};
+        
+        info!("Running daily housing cleanup check");
+        
+        // Get TinyMUSH store from game registry
+        let Some(tmush_store) = self.game_registry.get_tinymush_store() else {
+            debug!("TinyMUSH not available, skipping housing cleanup");
+            return Ok(());
+        };
+        
+        // Get world config for notifications
+        let world_config = tmush_store.get_world_config()?;
+        
+        // Create notification callback that sends DMs to online users
+        let sessions = self.sessions.clone();
+        let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
+            // Check if user is online
+            if let Some(_session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
+                // User is online - notification would be sent here
+                // For now, just log it since we don't have direct access to send_message
+                info!("Housing notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
+            }
+        });
+        
+        let config = CleanupConfig::default();
+        let mut stats = CleanupStats::default();
+        
+        check_and_cleanup_housing(
+            &tmush_store,
+            &self.storage,
+            &config,
+            &mut stats,
+            &world_config,
+            Some(notification_fn),
+        ).await?;
+        
+        info!(
+            "Housing cleanup complete: {} checks, {} marked inactive, {} warnings, {} reclaim boxes deleted",
+            stats.checks_performed,
+            stats.items_moved_to_reclaim,
+            stats.warnings_issued,
+            stats.reclaim_boxes_deleted
+        );
+        
+        Ok(())
+    }
+
+    /// Process recurring housing payments
+    async fn process_housing_payments(&mut self) -> Result<()> {
+        use crate::tmush::housing_cleanup::process_recurring_payments;
+        
+        info!("Processing daily housing recurring payments");
+        
+        // Get TinyMUSH store from game registry
+        let Some(tmush_store) = self.game_registry.get_tinymush_store() else {
+            debug!("TinyMUSH not available, skipping housing payments");
+            return Ok(());
+        };
+        
+        // Get world config for notifications
+        let world_config = tmush_store.get_world_config()?;
+        
+        // Create notification callback that sends DMs to online users
+        let sessions = self.sessions.clone();
+        let notification_fn = std::sync::Arc::new(move |username: &str, housing_name: &str, message: &str| {
+            // Check if user is online
+            if let Some(_session) = sessions.values().find(|s| s.username.as_deref() == Some(username)) {
+                // User is online - notification would be sent here
+                // For now, just log it since we don't have direct access to send_message
+                info!("Housing payment notification for {}: {} - {}", username, housing_name, message.lines().next().unwrap_or(""));
+            }
+        });
+        
+        let (processed, failed) = process_recurring_payments(
+            &tmush_store,
+            &self.storage,
+            &world_config,
+            Some(notification_fn),
+        ).await?;
+        
+        info!(
+            "Housing payments complete: {} successful, {} failed",
+            processed, failed
+        );
+        
+        Ok(())
+    }
+
     /// Show BBS status and statistics
     pub async fn show_status(&self) -> Result<()> {
         println!("=== Meshbbs Status ===");
@@ -3517,7 +4001,7 @@ impl BbsServer {
     }
 
     /// Gracefully shutdown the BBS server
-    /// 
+    ///
     /// Performs a clean shutdown by:
     /// - Notifying all active sessions
     /// - Closing sessions and flushing user state

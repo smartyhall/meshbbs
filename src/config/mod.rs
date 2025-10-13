@@ -191,9 +191,15 @@ pub struct LoggingConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct GamesConfig {
-    /// Enable the TinyHack mini-game in the main menu (adds \[T]inyHack)
+    /// Enable the TinyHack mini-game in the Games submenu.
     #[serde(default)]
     pub tinyhack_enabled: bool,
+    /// Surface the upcoming TinyMUSH experience in the Games submenu.
+    #[serde(default)]
+    pub tinymush_enabled: bool,
+    /// Optional override for TinyMUSH Sled database path; defaults to `<data_dir>/tinymush`.
+    #[serde(default)]
+    pub tinymush_db_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

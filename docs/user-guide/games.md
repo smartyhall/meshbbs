@@ -74,9 +74,10 @@ TinyHack is an optional, compact ASCII roguelike playable via DM sessions. It re
 ```toml
 [games]
 tinyhack_enabled = true
+# tinymush_enabled = false # optional preview entry
 ```
 
-- Enter via main menu: press `T` (shown as [T]inyHack when enabled)
+- Enter via the Games submenu: press `G` to list games, then `G1` (TinyHack)
 - Controls: `N,S,E,W` move; `A` attack; `U P` drink potion; `U B` use bomb; `C F` cast Fireball; `T` take loot; `O` open locked door (needs a key); `R` rest; `I` inspect; `?` help; `B` back to BBS menu
 - Onboarding: New players see a brief introduction the first time they enter (size‑aware to fit a single frame). Existing saves skip the intro.
 - Help: Press `?` for a concise, multi‑line help screen with full command names and short descriptions.
@@ -87,7 +88,7 @@ tinyhack_enabled = true
 
 ### TinyHack Quickstart
 
-- Enter the game from the main menu with `T`.
+- Enter the game from the main menu with `G1` (Games ➜ TinyHack).
 - Goal: Find the Stairs and escape the dungeon.
 - Movement: `N,S,E,W`.
 - Combat: `A` attack (crits possible); `U P` drink a potion; `U B` throw a bomb (6 dmg); `C F` cast Fireball (5 dmg).

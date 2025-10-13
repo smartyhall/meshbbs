@@ -76,4 +76,5 @@ pub mod meshtastic;
 pub mod metrics; // new metrics module (Phase 3 scaffold)
 pub mod protobuf; // always declare; internal stubs handle feature gating
 pub mod storage;
+pub mod tmush;
 pub mod validation;

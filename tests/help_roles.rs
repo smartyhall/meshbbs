@@ -1,4 +1,5 @@
 use meshbbs::config::Config;
+mod common;
 use meshbbs::storage::Storage;
 
 // These tests focus on the CommandProcessor HELP output based on session.user_level & login state.
@@ -10,8 +11,9 @@ async fn help_guest_vs_user() {
                                  // Create a session manually (simulate DM) & process HELP while not logged in.
     let mut session = meshbbs::bbs::session::Session::new("s1".into(), "node1".into());
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
+    let registry = common::empty_game_registry();
     let guest = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "H", &mut storage, &cfg)
+        .process(&mut session, "H", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -26,7 +28,7 @@ async fn help_guest_vs_user() {
     // Simulate login with level 1
     session.login("alice".into(), 1).await.unwrap();
     let user_help = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut session, "H", &mut storage, &cfg)
+        .process(&mut session, "H", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -43,12 +45,13 @@ async fn help_guest_vs_user() {
 async fn help_moderator_and_sysop() {
     let cfg = Config::default();
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
+    let registry = common::empty_game_registry();
 
     // Moderator session
     let mut mod_session = meshbbs::bbs::session::Session::new("s2".into(), "node2".into());
     mod_session.login("mod".into(), 5).await.unwrap();
     let mod_help = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut mod_session, "H", &mut storage, &cfg)
+        .process(&mut mod_session, "H", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -64,7 +67,7 @@ async fn help_moderator_and_sysop() {
     let mut sys_session = meshbbs::bbs::session::Session::new("s3".into(), "node3".into());
     sys_session.login("root".into(), 10).await.unwrap();
     let sys_help = meshbbs::bbs::commands::CommandProcessor::new()
-        .process(&mut sys_session, "H", &mut storage, &cfg)
+        .process(&mut sys_session, "H", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(sys_help.contains("ADM:"), "sysop help missing ADM section");

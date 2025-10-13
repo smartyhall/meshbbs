@@ -155,7 +155,7 @@ impl GameState {
 }
 
 fn d6(rng: &mut StdRng) -> i32 {
-    (rng.gen_range(1..=6)) as i32
+    rng.gen_range(1..=6)
 }
 
 fn choose<'a>(rng: &mut StdRng, opts: &[&'a str]) -> &'a str {
@@ -195,6 +195,7 @@ fn write_json_atomic(path: &Path, content: &str) -> std::io::Result<()> {
     // Take an exclusive lock on the target path (create if missing)
     let lock_file = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .read(true)
         .write(true)
         .open(path)?;
@@ -361,7 +362,7 @@ fn place_world(rng: &mut StdRng, w: usize, h: usize, map: &mut [Room]) {
             {
                 continue;
             }
-            let d = ((x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs()) as i32;
+            let d = (x as i32 - sx as i32).abs() + (y as i32 - sy as i32).abs();
             let mk = if d <= 2 {
                 if rng.gen_bool(0.4) {
                     Some(MonsterKind::Rat)
@@ -642,7 +643,7 @@ pub fn render(gs: &GameState) -> String {
 pub fn render_map(gs: &GameState) -> String {
     // Ensure visited vector is initialized (backward compatibility)
     let has_visited = !gs.visited.is_empty();
-    
+
     let mut msg = String::new();
     // Compact status line
     msg.push_str(&format!(
@@ -654,14 +655,14 @@ pub fn render_map(gs: &GameState) -> String {
         gs.player.keys,
         gs.player.potions
     ));
-    
+
     // Build 6x6 grid
     for y in 0..gs.h {
         for x in 0..gs.w {
             let idx = gs.idx(x, y);
             let is_player = gs.player.x == x && gs.player.y == y;
             let is_visited = has_visited && idx < gs.visited.len() && gs.visited[idx];
-            
+
             if is_player {
                 msg.push('@');
             } else if !is_visited {
@@ -718,7 +719,7 @@ pub fn render_map(gs: &GameState) -> String {
                 };
                 msg.push(symbol);
             }
-            
+
             // Add space between columns except last
             if x < gs.w - 1 {
                 msg.push(' ');
@@ -726,12 +727,12 @@ pub fn render_map(gs: &GameState) -> String {
         }
         msg.push('\n');
     }
-    
+
     // Compact legend - only show symbols currently on map
     msg.push_str("@=You #=Fog .=Clear\n");
     msg.push_str("M=Mon X=Dead C=Chest\n");
     msg.push_str("D=Door V=Vendor S=Exit\n");
-    
+
     msg
 }
 
@@ -1049,21 +1050,19 @@ fn do_pick_lock(gs: &mut GameState, rng: &mut StdRng) -> String {
         gs.player.gold += 2;
         gs.player.xp += 1;
         "You finesse the tumblers-click. The door yields (+2g, +1 XP).\n".into()
-    } else {
-        if rng.gen_bool(0.5) {
-            let dmg = rng.gen_range(1..=3);
-            gs.player.hp -= dmg;
-            if gs.player.hp <= 0 {
-                return death_text(gs);
-            }
-            format!("A needle trap snaps! You take {}.\n", dmg)
-        } else {
-            let (mhp, _matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
-            let r = gs.room_mut(x, y);
-            r.kind = RoomKind::Monster(MonsterKind::Rat);
-            r.mon_hp = Some(mhp);
-            "Your clumsy attempt draws a rat.\n".into()
+    } else if rng.gen_bool(0.5) {
+        let dmg = rng.gen_range(1..=3);
+        gs.player.hp -= dmg;
+        if gs.player.hp <= 0 {
+            return death_text(gs);
         }
+        format!("A needle trap snaps! You take {}.\n", dmg)
+    } else {
+        let (mhp, _matk, _mdef, _mxp) = monster_stats(MonsterKind::Rat);
+        let r = gs.room_mut(x, y);
+        r.kind = RoomKind::Monster(MonsterKind::Rat);
+        r.mon_hp = Some(mhp);
+        "Your clumsy attempt draws a rat.\n".into()
     }
 }
 
@@ -1083,13 +1082,13 @@ fn do_move(gs: &mut GameState, dir: char) -> String {
     }
     gs.player.x = nx;
     gs.player.y = ny;
-    
+
     // Mark new room as visited
     let idx = gs.idx(nx, ny);
     if !gs.visited.is_empty() && idx < gs.visited.len() {
         gs.visited[idx] = true;
     }
-    
+
     String::new()
 }
 

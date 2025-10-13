@@ -1,7 +1,8 @@
 use crate::logutil::escape_log;
+use crate::metrics;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use log::debug;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 
 use super::commands::CommandProcessor;
@@ -85,6 +86,7 @@ pub struct Session {
     pub login_time: DateTime<Utc>,
     pub last_activity: DateTime<Utc>,
     pub state: SessionState,
+    pub current_game_slug: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -110,6 +112,8 @@ pub enum SessionState {
     UserSetPassNew,
     /// TinyHack mini-game play loop
     TinyHack,
+    /// TinyMUSH multi-user shared world game
+    TinyMush,
     Disconnected,
 }
 
@@ -137,6 +141,7 @@ impl Session {
             login_time: now,
             last_activity: now,
             state: SessionState::Connected,
+            current_game_slug: None,
         }
     }
 
@@ -146,6 +151,7 @@ impl Session {
         command: &str,
         storage: &mut Storage,
         config: &crate::config::Config,
+        game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
         self.update_activity();
 
@@ -156,7 +162,7 @@ impl Session {
         );
 
         let processor = CommandProcessor::new();
-        let response = processor.process(self, command, storage, config).await?;
+        let response = processor.process(self, command, storage, config, game_registry).await?;
 
         Ok(response)
     }
@@ -172,12 +178,29 @@ impl Session {
         self.username = Some(username);
         self.user_level = user_level;
         self.state = SessionState::MainMenu;
+        self.current_game_slug = None;
 
         Ok(())
     }
 
     /// Log out the user
     pub async fn logout(&mut self) -> Result<()> {
+        let user_for_log = self.display_name();
+        if let Some(slug) = self.current_game_slug.take() {
+            let counters = metrics::record_game_exit(&slug);
+            info!(
+                target: "meshbbs::games",
+                "game.exit slug={} session={} user={} node={} reason=logout active={} exits={} entries={} peak={}",
+                slug,
+                escape_log(&self.id),
+                escape_log(&user_for_log),
+                escape_log(&self.node_id),
+                counters.currently_active,
+                counters.exits,
+                counters.entries,
+                counters.concurrent_peak
+            );
+        }
         // Logging handled in server
         self.username = None;
         self.user_level = 0;
@@ -292,6 +315,10 @@ impl Session {
                 )
             }
             SessionState::TinyHack => {
+                // Keep prompt short in game mode
+                format!("{} (lvl{})>", self.display_name(), level)
+            }
+            SessionState::TinyMush => {
                 // Keep prompt short in game mode
                 format!("{} (lvl{})>", self.display_name(), level)
             }

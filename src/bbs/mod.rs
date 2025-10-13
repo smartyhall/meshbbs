@@ -67,15 +67,18 @@ pub mod commands;
 pub mod dispatch;
 pub mod eightball;
 pub mod fortune;
+pub mod games;
 pub mod public;
 pub mod roles;
 pub mod server;
 pub mod session;
+pub mod game_registry;
 pub mod slotmachine;
 pub mod tinyhack;
 pub mod weather;
 pub mod welcome;
 
+pub use game_registry::GameRegistry;
 pub use server::BbsServer;
 
 // Optional re-exports for downstream crates when feature enabled

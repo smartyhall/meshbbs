@@ -22,12 +22,15 @@
 use anyhow::Result;
 // use log::{debug}; // retained for future detailed command tracing
 use crate::logutil::escape_log;
+use crate::metrics;
 use log::{error, info, warn};
 
+use super::games::{self, GameDoorKind};
 use super::roles::LEVEL_MODERATOR;
 use super::session::{Session, SessionState};
 use crate::config::Config;
 use crate::storage::{ReplyEntry, Storage};
+use crate::tmush::commands::TinyMushProcessor;
 use crate::validation::{sanitize_message_content, validate_user_name};
 
 /// UI rendering helpers for compact, 230-byte-safe outputs
@@ -113,8 +116,8 @@ impl CommandProcessor {
     /// Render the top-level main menu based on enabled modules
     fn render_main_menu(&self, _session: &Session, config: &Config) -> String {
         let mut line = String::from("Main Menu:\n[M]essages ");
-        if config.games.tinyhack_enabled {
-            line.push_str("[T]inyhack ");
+        if games::has_enabled_doors(&config.games) {
+            line.push_str("[G]ames ");
         }
         line.push_str("[P]references [Q]uit\n");
         line
@@ -208,6 +211,9 @@ impl CommandProcessor {
             SessionState::TinyHack => {
                 parts.push("TinyHack".into());
             }
+            SessionState::TinyMush => {
+                parts.push("TinyMUSH".into());
+            }
             SessionState::ReadingMessages => {
                 parts.push("Topics".into());
                 if let Some(t) = &session.current_topic {
@@ -234,13 +240,25 @@ impl CommandProcessor {
         command: &str,
         storage: &mut Storage,
         config: &Config,
+        game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
         let raw = command.trim();
         let cmd_upper = raw.to_uppercase();
-        if cmd_upper == "WHERE" || cmd_upper == "W" {
-            let here = self.where_am_i(session, config);
-            return Ok(format!("[BBS] You are at: {}\n", here));
+        
+        match session.state {
+            // Game states - let door games handle their own commands including WHERE
+            SessionState::TinyHack | SessionState::TinyMush => {
+                // Commands handled in game-specific branches below
+            }
+            // BBS states - handle WHERE command for navigation breadcrumbs
+            _ => {
+                if cmd_upper == "WHERE" || cmd_upper == "W" {
+                    let here = self.where_am_i(session, config);
+                    return Ok(format!("[BBS] You are at: {}\n", here));
+                }
+            }
         }
+        
         match session.state {
             SessionState::Connected => {
                 self.handle_initial_connection(session, &cmd_upper, storage, config)
@@ -251,7 +269,7 @@ impl CommandProcessor {
                     .await
             }
             SessionState::MainMenu => {
-                self.handle_main_menu(session, &cmd_upper, storage, config)
+                self.handle_main_menu(session, &cmd_upper, storage, config, game_registry)
                     .await
             }
             SessionState::TinyHack => {
@@ -262,16 +280,77 @@ impl CommandProcessor {
                     || cmd_upper == "Q"
                     || cmd_upper == "QUIT"
                 {
+                    let slug = session
+                        .current_game_slug
+                        .clone()
+                        .unwrap_or_else(|| "tinyhack".to_string());
+                    let exit_counts = metrics::record_game_exit(&slug);
+                    let user = session.display_name();
+                    info!(
+                        target: "meshbbs::games",
+                        "game.exit slug={} session={} user={} node={} reason=command command={} active={} exits={} entries={} peak={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&user),
+                        escape_log(&session.node_id),
+                        escape_log(cmd_upper.as_str()),
+                        exit_counts.currently_active,
+                        exit_counts.exits,
+                        exit_counts.entries,
+                        exit_counts.concurrent_peak
+                    );
+                    session.current_game_slug = None;
                     session.state = SessionState::MainMenu;
                     return Ok(self.render_main_menu(session, config));
                 }
                 let username = session.display_name();
                 // Load or use prior state from disk; forgiving of missing/malformed
                 let (gs0, _) =
-                    crate::bbs::tinyhack::load_or_new_and_render(&storage.base_dir(), &username);
+                    crate::bbs::tinyhack::load_or_new_and_render(storage.base_dir(), &username);
                 let screen =
-                    crate::bbs::tinyhack::apply_and_save(&storage.base_dir(), &username, gs0, raw);
+                    crate::bbs::tinyhack::apply_and_save(storage.base_dir(), &username, gs0, raw);
                 Ok(screen)
+            }
+            SessionState::TinyMush => {
+                // TinyMUSH game loop: 'B', 'BACK', 'MENU', 'Q', or 'QUIT' to return to main menu
+                if cmd_upper == "B"
+                    || cmd_upper == "BACK"
+                    || cmd_upper == "MENU"
+                    || cmd_upper == "Q"
+                    || cmd_upper == "QUIT"
+                {
+                    let slug = session
+                        .current_game_slug
+                        .clone()
+                        .unwrap_or_else(|| "tinymush".to_string());
+                    let exit_counts = metrics::record_game_exit(&slug);
+                    let user = session.display_name();
+                    info!(
+                        target: "meshbbs::games",
+                        "game.exit slug={} session={} user={} node={} reason=command command={} active={} exits={} entries={} peak={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&user),
+                        escape_log(&session.node_id),
+                        escape_log(cmd_upper.as_str()),
+                        exit_counts.currently_active,
+                        exit_counts.exits,
+                        exit_counts.entries,
+                        exit_counts.concurrent_peak
+                    );
+                    session.current_game_slug = None;
+                    session.state = SessionState::MainMenu;
+                    return Ok(self.render_main_menu(session, config));
+                }
+                
+                // Forward all other commands to TinyMUSH command processor
+                // Use the shared store to avoid multi-handle caching issues
+                if let Some(store) = game_registry.get_tinymush_store() {
+                    let mut processor = TinyMushProcessor::new(store.clone());
+                    processor.process_command(session, raw, storage, config).await
+                } else {
+                    Ok("TinyMUSH is not available".to_string())
+                }
             }
             SessionState::Topics => {
                 self.handle_topics(session, raw, &cmd_upper, storage, config)
@@ -403,7 +482,72 @@ impl CommandProcessor {
         cmd: &str,
         storage: &mut Storage,
         config: &Config,
+        game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
+        let game_doors = games::enabled_doors(&config.games);
+        if cmd == "G" || cmd == "GAMES" {
+            if game_doors.is_empty() {
+                return Ok("No games are currently enabled.\n".to_string());
+            }
+            return Ok(games::format_games_menu(&game_doors));
+        }
+
+        if let Some(door) = games::resolve_games_command(cmd, &game_doors) {
+            match door.kind {
+                GameDoorKind::TinyHack => {
+                    let slug = door.slug;
+                    session.state = SessionState::TinyHack;
+                    session.current_game_slug = Some(slug.to_string());
+                    let username = session.display_name();
+                    let entry_counts = metrics::record_game_entry(slug);
+                    info!(
+                        target: "meshbbs::games",
+                        "game.entry slug={} session={} user={} node={} command={} active={} peak={} entries={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&username),
+                        escape_log(&session.node_id),
+                        escape_log(cmd),
+                        entry_counts.currently_active,
+                        entry_counts.concurrent_peak,
+                        entry_counts.entries
+                    );
+                    let (gs, screen, _is_new) =
+                        crate::bbs::tinyhack::load_or_new_with_flag(storage.base_dir(), &username);
+                    session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
+                    return Ok(screen);
+                }
+                GameDoorKind::TinyMush => {
+                    let slug = door.slug;
+                    session.state = SessionState::TinyMush;
+                    session.current_game_slug = Some(slug.to_string());
+                    let username = session.display_name();
+                    let entry_counts = metrics::record_game_entry(slug);
+                    info!(
+                        target: "meshbbs::games",
+                        "game.entry slug={} session={} user={} node={} command={} active={} peak={} entries={}",
+                        slug,
+                        escape_log(&session.id),
+                        escape_log(&username),
+                        escape_log(&session.node_id),
+                        escape_log(cmd),
+                        entry_counts.currently_active,
+                        entry_counts.concurrent_peak,
+                        entry_counts.entries
+                    );
+                    
+                    // Initialize TinyMUSH for the user and return welcome screen
+                    // Use the shared store from game registry
+                    if let Some(store) = game_registry.get_tinymush_store() {
+                        let mut processor = TinyMushProcessor::new(store.clone());
+                        return processor.initialize_player(session, storage, config).await;
+                    } else {
+                        return Ok("TinyMUSH is not available".to_string());
+                    }
+                }
+            }
+        }
+
         match cmd {
             "M" => {
                 // New compact Topics UI (paged, ≤5 items)
@@ -419,17 +563,6 @@ impl CommandProcessor {
                 session.logout().await?;
                 Ok("Goodbye!".to_string())
             }
-            "T" if config.games.tinyhack_enabled => {
-                // Enter TinyHack loop and render current snapshot (server may send separate welcome)
-                session.state = SessionState::TinyHack;
-                let username = session.display_name();
-                let (gs, screen, _is_new) =
-                    crate::bbs::tinyhack::load_or_new_with_flag(&storage.base_dir(), &username);
-                // Cache minimal blob in session filter_text to avoid adding new fields; serialize small state id
-                // We will reload from disk on each turn for simplicity and resilience.
-                session.filter_text = Some(serde_json::to_string(&gs).unwrap_or_default());
-                Ok(screen)
-            }
             "H" | "?" => {
                 // Build compact contextual help to fit within 230 bytes
                 let mut out = String::new();
@@ -439,6 +572,9 @@ impl CommandProcessor {
                 }
                 out.push_str("ACCT: P then [C]hange/[N]ew pass | [L]ogout\n");
                 out.push_str("MSG: M topics; digits pick; +/- next; F <txt> filter\n");
+                if !game_doors.is_empty() {
+                    out.push_str("GAME: G list; G# launch\n");
+                }
                 if session.user_level >= 5 {
                     out.push_str(
                         "MOD: D<n> delete | P<n> pin | R<n> rename | K lock | DL [p] log\n",
@@ -890,7 +1026,9 @@ impl CommandProcessor {
         config: &Config,
     ) -> Result<String> {
         match upper {
-            "H" | "?" => return Ok("Subtopics: 1-9 pick, U up, L more, M topics, B back, Q quit\n".into()),
+            "H" | "?" => {
+                return Ok("Subtopics: 1-9 pick, U up, L more, M topics, B back, Q quit\n".into())
+            }
             "M" => {
                 session.state = SessionState::Topics;
                 session.list_page = 1;

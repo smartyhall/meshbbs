@@ -49,11 +49,11 @@ enum Commands {
         /// Meshtastic device port (e.g., /dev/ttyUSB0)
         #[arg(short, long)]
         port: Option<String>,
-        
+
         /// Run as a background daemon (Unix only)
         #[arg(short, long)]
         daemon: bool,
-        
+
         /// PID file location (for daemon mode)
         #[arg(long, default_value = "/tmp/meshbbs.pid")]
         pid_file: String,
@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
         }
         _ => Config::load(&cli.config).await.ok(),
     };
-    
+
     // Initialize logging for non-daemon commands
     match &cli.command {
         Commands::Start { daemon, .. } if *daemon => {
@@ -106,9 +106,13 @@ async fn main() -> Result<()> {
             init_logging(&pre_config, cli.verbose);
         }
     }
-    
+
     match cli.command {
-        Commands::Start { port, daemon, pid_file } => {
+        Commands::Start {
+            port,
+            daemon,
+            pid_file,
+        } => {
             // Handle daemon mode FIRST - before loading config or doing anything else
             #[cfg(all(unix, feature = "daemon"))]
             if daemon {
@@ -119,11 +123,11 @@ async fn main() -> Result<()> {
                 // Now we're in the child process - initialize logging
                 init_logging(&Some(config.clone()), cli.verbose);
                 info!("Starting Meshbbs v{}", env!("CARGO_PKG_VERSION"));
-                
+
                 // Continue with normal startup
                 let configured_port = config.meshtastic.port.clone();
                 let mut bbs = BbsServer::new(config).await?;
-                
+
                 // Determine which port to use
                 let chosen_port = match port {
                     Some(cli_port) => Some(cli_port),
@@ -135,7 +139,7 @@ async fn main() -> Result<()> {
                         }
                     }
                 };
-                
+
                 if let Some(port_path) = chosen_port {
                     match bbs.connect_device(&port_path).await {
                         Ok(_) => info!("Connected to Meshtastic device on {}", port_path),
@@ -149,12 +153,12 @@ async fn main() -> Result<()> {
                 } else {
                     info!("No --port specified and no configured device port set; starting without device.");
                 }
-                
+
                 info!("BBS server starting...");
                 bbs.run().await?;
                 return Ok(());
             }
-            
+
             #[cfg(not(all(unix, feature = "daemon")))]
             if daemon {
                 let _ = pid_file; // Suppress unused warning
@@ -162,12 +166,12 @@ async fn main() -> Result<()> {
                 eprintln!("Compile with: cargo build --features daemon");
                 std::process::exit(1);
             }
-            
+
             // Non-daemon mode: normal startup
             let config = pre_config.unwrap_or(Config::load(&cli.config).await?);
             init_logging(&Some(config.clone()), cli.verbose);
             info!("Starting Meshbbs v{}", env!("CARGO_PKG_VERSION"));
-            
+
             // Capture configured port before moving config into server
             let configured_port = config.meshtastic.port.clone();
             let mut bbs = BbsServer::new(config).await?;
@@ -364,20 +368,20 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
             {
                 let mutex = std::sync::Arc::new(std::sync::Mutex::new(f));
                 let write_mutex = mutex.clone();
-                
+
                 // Check if stdout is a terminal (TTY) - if so, write to both file and console
                 // In daemon mode, stdout is redirected so this will be false
                 let is_tty = atty::is(atty::Stream::Stdout);
-                
+
                 builder.format(move |fmt, record| {
                     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
                     let line = format!("{} [{}] {}", ts, record.level(), record.args());
-                    
+
                     // Always write to log file
                     if let Ok(mut guard) = write_mutex.lock() {
                         let _ = writeln!(guard, "{}", line);
                     }
-                    
+
                     // Write to security log if needed
                     if record.target() == "security" {
                         if let Some(ref sec_path) = security_path {
@@ -390,7 +394,7 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
                             }
                         }
                     }
-                    
+
                     // If stdout is a TTY (foreground mode), also write to console
                     if is_tty {
                         writeln!(fmt, "{}", line)
@@ -431,38 +435,38 @@ fn init_logging(config: &Option<Config>, verbosity: u8) {
 }
 
 /// Daemonize the process (Unix only)
-/// 
+///
 /// Forks the process, writes PID file, redirects I/O to log files,
 /// and detaches from the controlling terminal.
 #[cfg(all(unix, feature = "daemon"))]
 fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
     use std::fs::OpenOptions;
     use std::process::Command;
-    
+
     // Determine log file path
-    let log_path = config.logging.file
-        .as_ref()
-        .map(|s| s.as_str())
+    let log_path = config
+        .logging
+        .file.as_deref()
         .unwrap_or("meshbbs.log");
-    
+
     // Spawn ourselves as a background process
     let current_exe = std::env::current_exe()?;
     let mut args: Vec<String> = std::env::args().collect();
-    
+
     // Remove the --daemon flag to prevent infinite loop
     if let Some(pos) = args.iter().position(|arg| arg == "--daemon" || arg == "-d") {
         args.remove(pos);
     }
-    
+
     // Skip the program name (args[0])
     let child_args = &args[1..];
-    
+
     // Open log file for stdout/stderr
     let log_file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(log_path)?;
-    
+
     // Spawn child process
     let child = Command::new(&current_exe)
         .args(child_args)
@@ -470,10 +474,10 @@ fn daemonize_process(config: &Config, pid_file: &str) -> Result<()> {
         .stdout(log_file.try_clone()?)
         .stderr(log_file)
         .spawn()?;
-    
+
     // Write PID file
     std::fs::write(pid_file, format!("{}", child.id()))?;
-    
+
     // Parent process exits here - child continues as daemon
     std::process::exit(0);
 }

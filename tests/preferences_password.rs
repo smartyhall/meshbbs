@@ -1,4 +1,5 @@
 use meshbbs::bbs::commands::CommandProcessor;
+mod common;
 use meshbbs::bbs::session::{Session, SessionState};
 use meshbbs::config::Config;
 use meshbbs::storage::Storage;
@@ -17,6 +18,7 @@ async fn password_change_flow_requires_current_password_and_updates_storage() {
     let tmp = tempdir().unwrap();
     let cfg = config_for_temp_data_dir(tmp.path());
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
+    let registry = common::empty_game_registry();
     storage
         .register_user("alice", "OldPass123", Some("node-pass-change"))
         .await
@@ -28,7 +30,7 @@ async fn password_change_flow_requires_current_password_and_updates_storage() {
     let processor = CommandProcessor::new();
 
     let menu = processor
-        .process(&mut session, "P", &mut storage, &cfg)
+        .process(&mut session, "P", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -42,7 +44,7 @@ async fn password_change_flow_requires_current_password_and_updates_storage() {
     assert_eq!(session.state, SessionState::UserMenu);
 
     let prompt = processor
-        .process(&mut session, "C", &mut storage, &cfg)
+        .process(&mut session, "C", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert_eq!(prompt, "Enter current password (or '.' to cancel):\n");
@@ -53,7 +55,7 @@ async fn password_change_flow_requires_current_password_and_updates_storage() {
     );
 
     let next_prompt = processor
-        .process(&mut session, "OldPass123", &mut storage, &cfg)
+        .process(&mut session, "OldPass123", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert_eq!(
@@ -64,7 +66,7 @@ async fn password_change_flow_requires_current_password_and_updates_storage() {
     assert_eq!(session.pending_input.as_deref(), Some("OldPass123"));
 
     let retry_same = processor
-        .process(&mut session, "OldPass123", &mut storage, &cfg)
+        .process(&mut session, "OldPass123", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert_eq!(
@@ -74,7 +76,7 @@ async fn password_change_flow_requires_current_password_and_updates_storage() {
     assert_eq!(session.state, SessionState::UserChangePassNew);
 
     let completion = processor
-        .process(&mut session, "NewPass987", &mut storage, &cfg)
+        .process(&mut session, "NewPass987", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -109,6 +111,7 @@ async fn passwordless_user_sets_password_and_menu_updates() {
     let tmp = tempdir().unwrap();
     let cfg = config_for_temp_data_dir(tmp.path());
     let mut storage = Storage::new(&cfg.storage.data_dir).await.unwrap();
+    let registry = common::empty_game_registry();
     storage
         .create_or_update_user("legacy", "node-passless")
         .await
@@ -129,7 +132,7 @@ async fn passwordless_user_sets_password_and_menu_updates() {
     let processor = CommandProcessor::new();
 
     let menu = processor
-        .process(&mut session, "P", &mut storage, &cfg)
+        .process(&mut session, "P", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(
@@ -143,7 +146,7 @@ async fn passwordless_user_sets_password_and_menu_updates() {
     assert_eq!(session.state, SessionState::UserMenu);
 
     let prompt = processor
-        .process(&mut session, "N", &mut storage, &cfg)
+        .process(&mut session, "N", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert_eq!(
@@ -153,7 +156,7 @@ async fn passwordless_user_sets_password_and_menu_updates() {
     assert_eq!(session.state, SessionState::UserSetPassNew);
 
     let short = processor
-        .process(&mut session, "short", &mut storage, &cfg)
+        .process(&mut session, "short", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert_eq!(
@@ -163,7 +166,7 @@ async fn passwordless_user_sets_password_and_menu_updates() {
     assert_eq!(session.state, SessionState::UserSetPassNew);
 
     let completion = processor
-        .process(&mut session, "StrongPass8", &mut storage, &cfg)
+        .process(&mut session, "StrongPass8", &mut storage, &cfg, &registry)
         .await
         .unwrap();
     assert!(

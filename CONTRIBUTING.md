@@ -164,6 +164,14 @@ Fixes #(issue number)
 - Update README.md for user-facing changes
 - Maintain inline code comments for complex logic
 
+### TinyMUSH Development
+
+- Follow the phased implementation plan in `docs/development/TINYMUSH_IMPLEMENTATION_PLAN.md`
+- Reference the detailed design in `docs/development/MUD_MUSH_DESIGN.md`
+- All TinyMUSH features must respect the 200-byte message limit
+- Update the TODO.md checklist as phases are completed
+- **Critical**: Fix all compiler warnings before committing - no warnings allowed in builds or tests
+
 ## Communication
 
 - Use GitHub Issues for bug reports and feature requests
