@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 
 use chrono::Utc;
 use sled::IVec;
@@ -9,7 +11,7 @@ use crate::tmush::state::canonical_world_seed;
 use crate::tmush::types::{
     BulletinBoard, BulletinMessage, CompanionRecord, CurrencyAmount, CurrencyTransaction,
     HousingInstance, HousingTemplate, MailMessage, MailStatus, NpcRecord, ObjectOwner,
-    ObjectRecord, PlayerRecord, QuestRecord, RoomOwner, RoomRecord, TradeSession,
+    ObjectRecord, PlayerRecord, QuestRecord, RoomFlag, RoomOwner, RoomRecord, TradeSession,
     TransactionReason, WorldConfig, BULLETIN_SCHEMA_VERSION, MAIL_SCHEMA_VERSION,
     OBJECT_SCHEMA_VERSION, PLAYER_SCHEMA_VERSION, ROOM_SCHEMA_VERSION,
 };
@@ -112,6 +114,10 @@ pub struct TinyMushStore {
     housing_guests: sled::Tree,     // guest:{username}:{instance_id} → ""
     player_trades: sled::Tree,      // ptrade:{username} → session_id
     template_instances: sled::Tree, // tpl:{template_id}:{instance_id} → ""
+
+    // In-memory instanced room cache (not persisted across restarts)
+    instanced_rooms: Arc<RwLock<HashMap<String, RoomRecord>>>,
+    landing_instances: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl TinyMushStore {
@@ -189,6 +195,8 @@ impl TinyMushStore {
             housing_guests,
             player_trades,
             template_instances,
+            instanced_rooms: Arc::new(RwLock::new(HashMap::new())),
+            landing_instances: Arc::new(RwLock::new(HashMap::new())),
         };
 
         if seed_world {
@@ -391,6 +399,12 @@ impl TinyMushStore {
 
     /// Insert or update a room record.
     pub fn put_room(&self, mut room: RoomRecord) -> Result<(), TinyMushError> {
+        if crate::tmush::state::is_personal_landing(&room.id) {
+            let mut rooms = self.instanced_rooms.write().unwrap();
+            rooms.insert(room.id.clone(), room);
+            return Ok(());
+        }
+
         room.schema_version = ROOM_SCHEMA_VERSION;
         let key = Self::room_key(&room);
         let bytes = Self::serialize(&room)?;
@@ -400,6 +414,20 @@ impl TinyMushStore {
     }
 
     pub fn get_room(&self, room_id: &str) -> Result<RoomRecord, TinyMushError> {
+        if let Some(room) = self
+            .instanced_rooms
+            .read()
+            .unwrap()
+            .get(room_id)
+            .cloned()
+        {
+            return Ok(room);
+        }
+
+        self.get_world_room(room_id)
+    }
+
+    pub fn get_world_room(&self, room_id: &str) -> Result<RoomRecord, TinyMushError> {
         let key = format!("rooms:world:{}", room_id).into_bytes();
         let Some(bytes) = self.primary.get(&key)? else {
             return Err(TinyMushError::NotFound(format!("room: {}", room_id)));
@@ -413,6 +441,127 @@ impl TinyMushStore {
             });
         }
         Ok(record)
+    }
+
+    /// Ensure a per-player landing gazebo instance exists and return its room ID.
+    pub fn ensure_personal_landing_room(
+        &self,
+        username: &str,
+    ) -> Result<String, TinyMushError> {
+        let username_key = username.to_ascii_lowercase();
+
+        // Return existing instance if present and still cached
+        if let Some(room_id) = self
+            .landing_instances
+            .read()
+            .unwrap()
+            .get(&username_key)
+            .cloned()
+        {
+            if self
+                .instanced_rooms
+                .read()
+                .unwrap()
+                .contains_key(&room_id)
+            {
+                return Ok(room_id);
+            }
+        }
+
+        // Create a fresh instance from the world template
+        let mut template = self.get_world_room(crate::tmush::state::REQUIRED_LANDING_LOCATION_ID)?;
+        let instance_id = crate::tmush::state::generate_landing_instance_id(username);
+        template.id = instance_id.clone();
+        if !template.flags.contains(&RoomFlag::Instanced) {
+            template.flags.push(RoomFlag::Instanced);
+        }
+
+        {
+            let mut rooms = self.instanced_rooms.write().unwrap();
+            rooms.insert(instance_id.clone(), template);
+        }
+
+        {
+            let mut mapping = self.landing_instances.write().unwrap();
+            mapping.insert(username_key, instance_id.clone());
+        }
+
+        Ok(instance_id)
+    }
+
+    /// Return the active landing instance room id for a player, if one exists.
+    pub fn landing_instance_for_player(&self, username: &str) -> Option<String> {
+        let username_key = username.to_ascii_lowercase();
+        self.landing_instances
+            .read()
+            .unwrap()
+            .get(&username_key)
+            .cloned()
+    }
+
+    /// Remove a player's landing instance if it matches the provided room id.
+    pub fn clear_landing_instance_with_id(&self, username: &str, room_id: &str) {
+        let username_key = username.to_ascii_lowercase();
+        let removed = {
+            let mut mapping = self.landing_instances.write().unwrap();
+            match mapping.get(&username_key) {
+                Some(current) if current == room_id => {
+                    mapping.remove(&username_key);
+                    true
+                }
+                _ => false,
+            }
+        };
+
+        if removed {
+            self.instanced_rooms
+                .write()
+                .unwrap()
+                .remove(room_id);
+        }
+    }
+
+    /// Remove any landing instance currently associated with the player.
+    pub fn clear_landing_instance_for_player(&self, username: &str) {
+        let username_key = username.to_ascii_lowercase();
+        let room_id = {
+            let mut mapping = self.landing_instances.write().unwrap();
+            mapping.remove(&username_key)
+        };
+
+        if let Some(room_id) = room_id {
+            self.instanced_rooms
+                .write()
+                .unwrap()
+                .remove(&room_id);
+        }
+    }
+
+    /// Resolve a room destination for a player, cloning the landing gazebo when required.
+    pub fn resolve_destination_for_player(
+        &self,
+        username: &str,
+        room_id: &str,
+    ) -> Result<String, TinyMushError> {
+        if crate::tmush::state::is_landing_template(room_id) {
+            self.ensure_personal_landing_room(username)
+        } else {
+            Ok(room_id.to_string())
+        }
+    }
+
+    /// Cleanup landing instance if player left the gazebo.
+    pub fn cleanup_landing_instance_after_move(
+        &self,
+        username: &str,
+        previous_room_id: &str,
+        current_room_id: &str,
+    ) {
+        if crate::tmush::state::is_personal_landing(previous_room_id)
+            && !crate::tmush::state::is_any_landing_room(current_room_id)
+        {
+            self.clear_landing_instance_with_id(username, previous_room_id);
+        }
     }
 
     /// Insert or update an object definition.

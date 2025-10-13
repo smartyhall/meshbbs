@@ -35,8 +35,9 @@ pub fn start_tutorial(
         ));
     }
 
-    if player.current_room != crate::tmush::state::REQUIRED_LANDING_LOCATION_ID {
-        player.current_room = crate::tmush::state::REQUIRED_LANDING_LOCATION_ID.to_string();
+    let landing_room = store.ensure_personal_landing_room(username)?;
+    if player.current_room != landing_room {
+        player.current_room = landing_room;
     }
 
     player.tutorial_state = TutorialState::InProgress {
@@ -99,7 +100,7 @@ pub fn can_advance_from_location(step: &TutorialStep, current_room: &str) -> boo
     match step {
         TutorialStep::WelcomeAtGazebo => {
             // Can advance when they leave gazebo
-            current_room != "gazebo_landing"
+            !crate::tmush::state::is_any_landing_room(current_room)
         }
         TutorialStep::NavigateToCityHall => {
             // Can advance when they reach city hall lobby
@@ -141,8 +142,9 @@ pub fn restart_tutorial(
 ) -> Result<TutorialState, TinyMushError> {
     let mut player = store.get_player(username)?;
 
-    if player.current_room != crate::tmush::state::REQUIRED_LANDING_LOCATION_ID {
-        player.current_room = crate::tmush::state::REQUIRED_LANDING_LOCATION_ID.to_string();
+    let landing_room = store.ensure_personal_landing_room(username)?;
+    if player.current_room != landing_room {
+        player.current_room = landing_room;
     }
 
     player.tutorial_state = TutorialState::InProgress {
@@ -264,13 +266,21 @@ mod tests {
     }
 
     fn create_test_player(store: &TinyMushStore, username: &str) {
-        let player = PlayerRecord::new(username, username, "gazebo_landing");
+        let player = PlayerRecord::new(
+            username,
+            username,
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+        );
         store.put_player(player).unwrap();
     }
 
     #[test]
     fn test_should_auto_start_tutorial() {
-        let player = PlayerRecord::new("alice", "alice", "gazebo_landing");
+        let player = PlayerRecord::new(
+            "alice",
+            "alice",
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+        );
         assert!(should_auto_start_tutorial(&player));
 
         let (store, _temp) = setup_test_store();
@@ -301,6 +311,7 @@ mod tests {
                 step: TutorialStep::WelcomeAtGazebo
             }
         ));
+        assert!(crate::tmush::state::is_personal_landing(&player.current_room));
     }
 
     #[test]
@@ -337,7 +348,12 @@ mod tests {
     fn test_can_advance_from_location() {
         assert!(!can_advance_from_location(
             &TutorialStep::WelcomeAtGazebo,
-            "gazebo_landing"
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID
+        ));
+        let personal_id = crate::tmush::state::generate_landing_instance_id("tester");
+        assert!(!can_advance_from_location(
+            &TutorialStep::WelcomeAtGazebo,
+            &personal_id
         ));
         assert!(can_advance_from_location(
             &TutorialStep::WelcomeAtGazebo,
@@ -401,7 +417,11 @@ mod tests {
         let (store, _temp) = setup_test_store();
 
         // Create player with MultiTier currency system
-        let mut player = PlayerRecord::new("alice", "alice", "gazebo_landing");
+        let mut player = PlayerRecord::new(
+            "alice",
+            "alice",
+            crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+        );
         player.currency = CurrencyAmount::MultiTier { base_units: 0 };
         store.put_player(player).unwrap();
 

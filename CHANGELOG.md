@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.106] - 2025-10-13
+
+### Added
+- **Personal landing gazebo instances**: `TinyMushStore::ensure_personal_landing_room` now clones the landing template into per-player rooms that live exclusively in memory, giving each newcomer a private staging area.
+
+### Changed
+- **Movement & teleport resolution**: All movement paths (cardinal exits, teleport commands, tutorial warps) resolve landing template references to the caller's active instance and persist the new location before dispatching triggers.
+- **Provisioning helpers**: Admin seeding, guest creation, and TinyMUSH initialization utilities guarantee every player record points at its personalized landing room.
+
+### Fixed
+- **Gazebo cleanup**: Leaving an instanced landing now clears its cache entry so temporary rooms vanish once players step into the wider world.
+
 ## [1.0.105-beta] - 2025-10-13
 
 ### Changed

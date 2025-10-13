@@ -92,7 +92,7 @@ async fn test_initialize_player_begins_in_gazebo() {
     );
 
     let player = store.get_player("gazebo_new").unwrap();
-    assert_eq!(player.current_room, REQUIRED_LANDING_LOCATION_ID);
+    assert!(meshbbs::tmush::state::is_personal_landing(&player.current_room));
     assert!(matches!(
         player.tutorial_state,
         TutorialState::InProgress {
@@ -141,11 +141,53 @@ async fn test_initialize_player_relocates_step_one_players() {
     );
 
     let player = store.get_player("wanderer").unwrap();
-    assert_eq!(player.current_room, REQUIRED_LANDING_LOCATION_ID);
+    assert!(meshbbs::tmush::state::is_personal_landing(&player.current_room));
     assert!(matches!(
         player.tutorial_state,
         TutorialState::InProgress {
             step: TutorialStep::WelcomeAtGazebo
         }
     ));
+}
+
+#[tokio::test]
+async fn test_players_receive_unique_landing_instances() {
+    let temp_dir = TempDir::new().unwrap();
+    let tinymush_path = temp_dir.path().join("tinymush_unique");
+    let store = TinyMushStore::open(&tinymush_path).unwrap();
+    let mut processor = TinyMushProcessor::new(store.clone());
+
+    let mut config = Config::default();
+    config.games.tinymush_enabled = true;
+    config.games.tinymush_db_path = Some(tinymush_path.to_string_lossy().into_owned());
+    let storage_dir = temp_dir.path().join("storage");
+    config.storage.data_dir = storage_dir.to_string_lossy().into_owned();
+
+    let mut storage = Storage::new(&config.storage.data_dir)
+        .await
+        .expect("storage");
+
+    let mut session_alice = Session::new("session_a".into(), "node".into());
+    session_alice.username = Some("AliceUser".into());
+    session_alice.user_level = 1;
+
+    let mut session_bob = Session::new("session_b".into(), "node".into());
+    session_bob.username = Some("BobUser".into());
+    session_bob.user_level = 1;
+
+    processor
+        .initialize_player(&mut session_alice, &mut storage, &config)
+        .await
+        .expect("alice init");
+    processor
+        .initialize_player(&mut session_bob, &mut storage, &config)
+        .await
+        .expect("bob init");
+
+    let alice = store.get_player("AliceUser").unwrap();
+    let bob = store.get_player("BobUser").unwrap();
+
+    assert!(meshbbs::tmush::state::is_personal_landing(&alice.current_room));
+    assert!(meshbbs::tmush::state::is_personal_landing(&bob.current_room));
+    assert_ne!(alice.current_room, bob.current_room);
 }

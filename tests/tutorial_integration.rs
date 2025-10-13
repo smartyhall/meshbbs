@@ -58,14 +58,17 @@ fn seed_tutorial_npcs(store: &TinyMushStore) {
 #[test]
 fn test_complete_tutorial_flow() {
     let (store, _temp) = setup_test_store();
-    create_test_player(&store, "alice", "gazebo_landing");
+    create_test_player(
+        &store,
+        "alice",
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+    );
     seed_tutorial_npcs(&store);
 
-    let _player = store.get_player("alice").unwrap();
-
     // Step 0: Verify auto-start detection
-    assert!(should_auto_start_tutorial(&_player));
-    assert!(matches!(_player.tutorial_state, TutorialState::NotStarted));
+    let mut player = store.get_player("alice").unwrap();
+    assert!(should_auto_start_tutorial(&player));
+    assert!(matches!(player.tutorial_state, TutorialState::NotStarted));
 
     // Step 1: Start tutorial
     let state = start_tutorial(&store, "alice").unwrap();
@@ -77,14 +80,15 @@ fn test_complete_tutorial_flow() {
     ));
 
     // Step 2: Check can't advance until leaving gazebo
-    let _player = store.get_player("alice").unwrap();
+    player = store.get_player("alice").unwrap();
+    assert!(meshbbs::tmush::state::is_personal_landing(&player.current_room));
     assert!(!can_advance_from_location(
         &TutorialStep::WelcomeAtGazebo,
-        "gazebo_landing"
+        &player.current_room
     ));
 
     // Step 3: Move to town square, can now advance
-    let mut player = store.get_player("alice").unwrap();
+    player = store.get_player("alice").unwrap();
     player.current_room = "town_square".to_string();
     store.put_player(player).unwrap();
 
@@ -154,7 +158,11 @@ fn test_complete_tutorial_flow() {
 #[test]
 fn test_tutorial_skip_flow() {
     let (store, _temp) = setup_test_store();
-    create_test_player(&store, "bob", "gazebo_landing");
+    create_test_player(
+        &store,
+        "bob",
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+    );
 
     // Start tutorial
     start_tutorial(&store, "bob").unwrap();
@@ -178,7 +186,11 @@ fn test_tutorial_skip_flow() {
 #[test]
 fn test_tutorial_restart_flow() {
     let (store, _temp) = setup_test_store();
-    create_test_player(&store, "charlie", "gazebo_landing");
+    create_test_player(
+        &store,
+        "charlie",
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+    );
 
     // Start and progress tutorial
     start_tutorial(&store, "charlie").unwrap();
@@ -230,7 +242,9 @@ fn test_npc_persistence_and_queries() {
     assert_eq!(npcs_in_office[0].id, "mayor_thompson");
 
     // Query NPCs in empty room
-    let npcs_in_gazebo = store.get_npcs_in_room("gazebo_landing").unwrap();
+    let npcs_in_gazebo = store
+        .get_npcs_in_room(meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID)
+        .unwrap();
     assert_eq!(npcs_in_gazebo.len(), 0);
 }
 
@@ -283,7 +297,11 @@ fn test_tutorial_rewards_decimal_currency() {
     let (store, _temp) = setup_test_store();
 
     // Create player with Decimal currency system
-    let mut player = PlayerRecord::new("dave", "dave", "gazebo_landing");
+    let mut player = PlayerRecord::new(
+        "dave",
+        "dave",
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+    );
     player.currency = CurrencyAmount::Decimal { minor_units: 0 };
     store.put_player(player).unwrap();
 
@@ -309,7 +327,11 @@ fn test_tutorial_rewards_decimal_currency() {
 #[test]
 fn test_tutorial_cannot_double_reward() {
     let (store, _temp) = setup_test_store();
-    create_test_player(&store, "eve", "gazebo_landing");
+    create_test_player(
+        &store,
+        "eve",
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID,
+    );
 
     // Complete tutorial
     start_tutorial(&store, "eve").unwrap();
@@ -349,7 +371,12 @@ fn test_location_based_progression_validation() {
     // WelcomeAtGazebo: can only advance when leaving gazebo
     assert!(!can_advance_from_location(
         &TutorialStep::WelcomeAtGazebo,
-        "gazebo_landing"
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID
+    ));
+    let personal_id = meshbbs::tmush::state::generate_landing_instance_id("integration");
+    assert!(!can_advance_from_location(
+        &TutorialStep::WelcomeAtGazebo,
+        &personal_id
     ));
     assert!(can_advance_from_location(
         &TutorialStep::WelcomeAtGazebo,
@@ -363,7 +390,7 @@ fn test_location_based_progression_validation() {
     // NavigateToCityHall: can only advance at city hall lobby
     assert!(!can_advance_from_location(
         &TutorialStep::NavigateToCityHall,
-        "gazebo_landing"
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID
     ));
     assert!(!can_advance_from_location(
         &TutorialStep::NavigateToCityHall,
@@ -381,7 +408,7 @@ fn test_location_based_progression_validation() {
     // MeetTheMayor: can only advance at mayor's office
     assert!(!can_advance_from_location(
         &TutorialStep::MeetTheMayor,
-        "gazebo_landing"
+        meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID
     ));
     assert!(!can_advance_from_location(
         &TutorialStep::MeetTheMayor,

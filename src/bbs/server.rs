@@ -1550,10 +1550,21 @@ impl BbsServer {
         // Flush the entire database to ensure cross-handle visibility
         store.db().flush()?;
 
-        // VERIFY: Read back the player to confirm admin was set
-        let verify_player = store
+        // Ensure landing instance exists and update player record if needed
+        let landing_id = store
+            .ensure_personal_landing_room(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to provision landing gazebo: {}", e))?;
+
+        let mut verify_player = store
             .get_player(&username)
             .map_err(|e| anyhow::anyhow!("Failed to verify player creation: {}", e))?;
+        if verify_player.current_room != landing_id {
+            verify_player.current_room = landing_id;
+            store.put_player(verify_player.clone()).map_err(|e| {
+                anyhow::anyhow!("Failed to update player landing room: {}", e)
+            })?;
+        }
+
         if !verify_player.is_admin() {
             return Err(anyhow::anyhow!(
                 "Player created but admin flag not set! Level={:?}",
@@ -1667,6 +1678,19 @@ impl BbsServer {
             .put_player(player)
             .map_err(|e| anyhow::anyhow!("Failed to create admin player: {}", e))?;
 
+        let landing_id = store
+            .ensure_personal_landing_room(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to provision landing gazebo: {}", e))?;
+        let mut verify_player = store.get_player(&username).map_err(|e| {
+            anyhow::anyhow!("Failed to verify admin player creation: {}", e)
+        })?;
+        if verify_player.current_room != landing_id {
+            verify_player.current_room = landing_id;
+            store.put_player(verify_player).map_err(|e| {
+                anyhow::anyhow!("Failed to update player landing room: {}", e)
+            })?;
+        }
+
         Ok(())
     }
     /// Test helper to force TinyMUSH player record creation.
@@ -1713,6 +1737,19 @@ impl BbsServer {
         store
             .put_player(player)
             .map_err(|e| anyhow::anyhow!("Failed to create player: {}", e))?;
+
+        let landing_id = store
+            .ensure_personal_landing_room(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to provision landing gazebo: {}", e))?;
+        let mut verify_player = store.get_player(&username).map_err(|e| {
+            anyhow::anyhow!("Failed to verify player creation: {}", e)
+        })?;
+        if verify_player.current_room != landing_id {
+            verify_player.current_room = landing_id;
+            store.put_player(verify_player).map_err(|e| {
+                anyhow::anyhow!("Failed to update player landing room: {}", e)
+            })?;
+        }
 
         Ok(())
     }

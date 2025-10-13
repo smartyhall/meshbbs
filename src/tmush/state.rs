@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 use crate::tmush::types::{
     AchievementCategory, AchievementRecord, AchievementTrigger, CurrencyAmount, Direction,
@@ -10,6 +11,44 @@ pub const REQUIRED_LANDING_LOCATION_ID: &str = "gazebo_landing";
 
 /// Required starting location where new characters enter after creation completes.
 pub const REQUIRED_START_LOCATION_ID: &str = "town_square";
+
+/// Prefix applied to per-player landing gazebo instances.
+pub const LANDING_INSTANCE_PREFIX: &str = "gazebo_landing::";
+
+/// Generate a unique landing gazebo instance identifier for a player.
+pub fn generate_landing_instance_id(username: &str) -> String {
+    let slug: String = username
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!(
+        "{}{}:{}",
+        LANDING_INSTANCE_PREFIX,
+        slug,
+        Uuid::new_v4()
+    )
+}
+
+/// Returns true if the provided room id is the canonical landing gazebo template.
+pub fn is_landing_template(room_id: &str) -> bool {
+    room_id == REQUIRED_LANDING_LOCATION_ID
+}
+
+/// Returns true if the provided room id represents a per-player landing gazebo instance.
+pub fn is_personal_landing(room_id: &str) -> bool {
+    room_id.starts_with(LANDING_INSTANCE_PREFIX)
+}
+
+/// Returns true if the room id corresponds to any landing gazebo (template or instance).
+pub fn is_any_landing_room(room_id: &str) -> bool {
+    is_landing_template(room_id) || is_personal_landing(room_id)
+}
 
 /// Old Towne Mesh sample world locations that ship as a reference implementation.
 ///

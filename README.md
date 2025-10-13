@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-   [![Version](https://img.shields.io/badge/version-1.0.105--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.106-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,11 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
+
+- **1.0.106 (2025-10-13): Personal TinyMUSH Landings** 🪂
+   - **Per-Player Gazebos**: Landing rooms are now cloned per player, ensuring isolated onboarding spaces that clean up automatically once you leave.
+   - **Movement Awareness**: Travel commands, teleportation, and tutorial advancement all resolve to the right personal instance, preventing players from colliding in shared staging areas.
+   - **Provisioning Safety Nets**: Admin, guest, and helper utilities guarantee that every freshly minted TinyMUSH character starts in their personalized gazebo.
 
 - **1.0.105-beta (2025-10-13): TinyMUSH Overhaul & Installer Layout Update** 🧱
    - **Installer**: Binary now installs to `/opt/meshbbs/bin/meshbbs` with helper scripts in `/opt/meshbbs/scripts/`, aligning with systemd expectations and keeping runtime assets isolated.

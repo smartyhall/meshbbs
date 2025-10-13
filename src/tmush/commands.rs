@@ -14,7 +14,7 @@ use crate::metrics;
 use crate::storage::Storage;
 use crate::tmush::inventory::format_inventory_compact;
 use crate::tmush::room_manager::RoomManager;
-use crate::tmush::state::{canonical_world_seed, REQUIRED_LANDING_LOCATION_ID};
+use crate::tmush::state::canonical_world_seed;
 use crate::tmush::trigger::{
     execute_on_look, execute_on_poke, execute_on_use, execute_room_on_enter,
 };
@@ -345,10 +345,22 @@ impl TinyMushProcessor {
                 }
         );
 
-        if should_be_at_landing && player.current_room != REQUIRED_LANDING_LOCATION_ID {
-            player.current_room = REQUIRED_LANDING_LOCATION_ID.to_string();
-            if let Err(e) = self.store().put_player(player.clone()) {
-                return Ok(format!("Player initialization failed: {}", e));
+        if should_be_at_landing {
+            match self
+                .store()
+                .ensure_personal_landing_room(&player.username)
+            {
+                Ok(landing_id) => {
+                    if player.current_room != landing_id {
+                        player.current_room = landing_id.clone();
+                        if let Err(e) = self.store().put_player(player.clone()) {
+                            return Ok(format!("Player initialization failed: {}", e));
+                        }
+                    }
+                }
+                Err(e) => {
+                    return Ok(format!("Player initialization failed: {}", e));
+                }
             }
         }
 
@@ -1473,8 +1485,11 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // Get room manager
-        let room_manager = self.get_room_manager().await?;
+    // Get room manager
+    let room_manager = self.get_room_manager().await?;
+
+    // Track previous location for instance cleanup
+    let previous_room_id = player.current_room.clone();
 
         // Get current room
         let current_room = match room_manager.get_room(&player.current_room) {
@@ -1501,16 +1516,26 @@ impl TinyMushProcessor {
             Direction::Southwest => TmushDirection::Southwest,
         };
 
-        let destination_id = match current_room.exits.get(&tmush_direction) {
-            Some(dest) => dest,
+        let mut destination_id = match current_room.exits.get(&tmush_direction) {
+            Some(dest) => dest.clone(),
             None => {
                 let dir_str = format!("{:?}", direction).to_lowercase();
                 return Ok(format!("You can't go {} from here.", dir_str));
             }
         };
 
+        destination_id = match self
+            .store()
+            .resolve_destination_for_player(&player.username, &destination_id)
+        {
+            Ok(room_id) => room_id,
+            Err(e) => {
+                return Ok(format!("Movement failed: {}", e));
+            }
+        };
+
         // Use room manager to move player (includes capacity and permission checks)
-        match room_manager.move_player_to_room(&mut player, destination_id) {
+        match room_manager.move_player_to_room(&mut player, &destination_id) {
             Ok(true) => {
                 // Movement successful
                 debug!(
@@ -1536,8 +1561,14 @@ impl TinyMushProcessor {
             return Ok(format!("Movement failed to save: {}", e));
         }
 
+        self.store().cleanup_landing_instance_after_move(
+            &player.username,
+            &previous_room_id,
+            &player.current_room,
+        );
+
         // Execute OnEnter triggers for all objects in the new room
-        let enter_messages = execute_room_on_enter(&player.username, destination_id, self.store());
+    let enter_messages = execute_room_on_enter(&player.username, &destination_id, self.store());
 
         // Check for tutorial progression after movement
         use crate::tmush::tutorial::{
@@ -1549,7 +1580,7 @@ impl TinyMushProcessor {
         let mut tutorial_advanced = false;
         if let TutorialState::InProgress { step } = &player.tutorial_state {
             // Check if this movement advances the tutorial
-            if can_advance_from_location(step, destination_id) {
+            if can_advance_from_location(step, &destination_id) {
                 let current_step = step.clone();
                 match advance_tutorial_step(self.store(), &player.username, current_step) {
                     Ok(new_state) => {
@@ -3485,12 +3516,31 @@ impl TinyMushProcessor {
                     let mut player = self.store().get_player(player_name)?;
 
                     // Check if room exists (get_room returns Result<RoomRecord>)
-                    if self.store().get_room(room_id).is_ok() {
-                        player.current_room = room_id.clone();
-                        self.store().put_player(player)?;
-                        messages.push(format!("🌀 You have been teleported to {}!", room_id));
-                    } else {
-                        messages.push(format!("❌ Location '{}' not found.", room_id));
+                    match self
+                        .store()
+                        .resolve_destination_for_player(player_name, room_id)
+                    {
+                        Ok(resolved_room) => {
+                            if self.store().get_room(&resolved_room).is_ok() {
+                                player.current_room = resolved_room.clone();
+                                self.store().put_player(player)?;
+                                messages.push(format!(
+                                    "🌀 You have been teleported to {}!",
+                                    resolved_room
+                                ));
+                            } else {
+                                messages.push(format!(
+                                    "❌ Location '{}' not found.",
+                                    room_id
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            messages.push(format!(
+                                "❌ Unable to reach '{}': {}",
+                                room_id, e
+                            ));
+                        }
                     }
                 }
 
@@ -8263,6 +8313,13 @@ impl TinyMushProcessor {
             );
         }
 
+        if let Ok(player) = self.get_or_create_player(session).await {
+            if crate::tmush::state::is_any_landing_room(&player.current_room) {
+                self.store()
+                    .clear_landing_instance_for_player(&player.username);
+            }
+        }
+
         // Return to main menu
         session.state = SessionState::MainMenu;
         Ok("Leaving TinyMUSH...\n\nReturning to main menu.".to_string())
@@ -8473,11 +8530,8 @@ impl TinyMushProcessor {
                     format!("Guest_{}", &session.id[..8])
                 };
 
-                let player = PlayerRecord::new(
-                    &username,
-                    &display_name,
-                    crate::tmush::state::REQUIRED_LANDING_LOCATION_ID,
-                );
+                let landing_id = self.store().ensure_personal_landing_room(&username)?;
+                let player = PlayerRecord::new(&username, &display_name, &landing_id);
                 self.store().put_player(player.clone())?;
                 Ok(player)
             }
