@@ -7,24 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **TinyMUSH Admin Synchronization**: Admin account now automatically uses BBS sysop username
-  - TinyMUSH admin account is created using the `sysop` username from `config.toml`
-  - Eliminates orphaned "admin" account that was previously unreachable
-  - BBS sysop automatically receives TinyMUSH admin level 3 (Sysop) on first login
-  - Breaking change: Existing TinyMUSH databases with "admin" account unaffected, but new installs will use configured sysop name
-  - See `docs/administration/tinymush-admin-setup.md` for complete guide
-
-### Fixed
-- **Critical Config Bug**: Welcome section field names in `config.example.toml` and `install.sh`
-  - **Wrong field names** that would cause config parsing to use defaults instead of user settings
-  - Fixed `private_enabled` → `private_guide`
-  - Fixed `public_enabled` → `public_greeting`
-  - Fixed `rate_limit_minutes` → `cooldown_minutes`
-  - Removed non-existent `private_template` and `public_template` fields
-  - Added missing `max_welcomes_per_node` field
-  - **Impact**: Users who configured welcome messages would have had their settings silently ignored
-
 ## [1.0.101-beta] - 2025-10-12
 
 ### Added
@@ -38,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - More descriptive name for device connectivity testing
   - Verifies Meshtastic device communication over serial
   - Updated documentation to reflect new command name
+
+- **TinyMUSH Admin Synchronization**: Admin account now automatically uses BBS sysop username
+  - TinyMUSH admin account is created using the `sysop` username from `config.toml`
+  - Eliminates orphaned "admin" account that was previously unreachable
+  - BBS sysop automatically receives TinyMUSH admin level 3 (Sysop) on first login
+  - Breaking change: Existing TinyMUSH databases with "admin" account unaffected, but new installs will use configured sysop name
+  - See `docs/administration/tinymush-admin-setup.md` for complete guide
 
 ### Fixed
 - **Schema Alignment**: Corrected 6 demo trigger objects from schema v1 to v2
@@ -59,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now uses correct `hash-password` command instead of non-existent `--hash-password`
   - Properly generates Argon2 password hash during installation
   - Prevents `REPLACE_WITH_HASHED_PASSWORD` placeholder in config
+
+- **Critical Config Bug**: Welcome section field names in `config.example.toml` and `install.sh`
+  - **Wrong field names** that would cause config parsing to use defaults instead of user settings
+  - Fixed `private_enabled` → `private_guide`
+  - Fixed `public_enabled` → `public_greeting`
+  - Fixed `rate_limit_minutes` → `cooldown_minutes`
+  - Removed non-existent `private_template` and `public_template` fields
+  - Added missing `max_welcomes_per_node` field
+  - **Impact**: Users who configured welcome messages would have had their settings silently ignored
 
 ### Deprecated
 - **CLI Command Removed**: `meshbbs init` command has been fully removed
