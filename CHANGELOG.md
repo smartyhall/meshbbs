@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.110-beta] - 2025-10-13
+
+### Fixed
+- **Tutorial Completion Flow**: Tutorial now requires explicit TALK interaction with Mayor Thompson to complete
+  - Previously, tutorial auto-completed upon entering Mayor's Office room
+  - Final tutorial step now shows hint to talk to the mayor instead of auto-advancing
+  - Players must use `TALK MAYOR` command to complete the tutorial and receive rewards
+- **Mayor Thompson Dialog**: Mayor Thompson's dialog tree is now accessible after tutorial completion
+  - Removed blocking condition that prevented post-tutorial conversations
+  - Mayor now offers branching dialog options for completed players
+- **Borrow Checker Error**: Fixed compilation error in movement handler
+  - Restructured destination resolution to occur before acquiring room manager
+  - Eliminated mutable/immutable borrow conflict in `handle_move` function
+- **Test Suite**: Fixed world_config test assertion to match actual default welcome message
+  - Updated test to check for "Welcome to Old Towne Mesh" (mixed case) instead of all uppercase
+
+### Changed
+- **Code Quality**: Improved code formatting and readability across multiple files
+  - Cleaned up formatting in commands.rs, storage.rs, state.rs, and server.rs
+  - Better indentation and line breaks for complex method chains
+
+### Added
+- **Integration Tests**: Added comprehensive tests for tutorial completion behavior
+  - Test for Mayor dialog availability after tutorial completion
+  - Test verifying TALK requirement for final tutorial step
+  - Ensures tutorial cannot be bypassed by simple room navigation
+
 ## [1.0.106] - 2025-10-13
 
 ### Added

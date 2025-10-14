@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.106-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.110--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,12 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
+
+- **1.0.110-beta (2025-10-13): Tutorial Completion & Mayor Dialog Fix** 🎓
+   - **Tutorial Flow**: Final tutorial step now requires explicit TALK interaction with Mayor Thompson—no more auto-completion just by entering the room
+   - **Mayor Accessibility**: Mayor Thompson's dialog tree is now accessible after tutorial completion, offering branching conversations and lore
+   - **Borrow Checker Fix**: Resolved compilation error in movement handler by restructuring destination resolution
+   - **Test Coverage**: Added comprehensive integration tests for tutorial completion and Mayor dialog behavior
 
 - **1.0.106 (2025-10-13): Personal TinyMUSH Landings** 🪂
    - **Per-Player Gazebos**: Landing rooms are now cloned per player, ensuring isolated onboarding spaces that clean up automatically once you leave.
