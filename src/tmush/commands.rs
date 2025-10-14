@@ -419,6 +419,28 @@ impl TinyMushProcessor {
         _storage: &mut Storage,
         config: &Config,
     ) -> Result<String> {
+        // Check if this is dialog input before parsing as a command
+        // If player has an active dialog and enters a number or dialog keyword,
+        // route it to the dialog handler
+        if let Ok(username) = session.username.as_deref().ok_or("no username") {
+            let trimmed = command.trim().to_uppercase();
+            
+            // Check if input looks like dialog navigation
+            let is_dialog_input = trimmed.parse::<usize>().is_ok() 
+                || trimmed == "EXIT" 
+                || trimmed == "QUIT" 
+                || trimmed == "BYE" 
+                || trimmed == "BACK";
+            
+            if is_dialog_input {
+                // Check if player has any active dialog sessions
+                if let Ok(Some((npc_id, _))) = self.get_active_dialog_session(username) {
+                    // Route to dialog handler with the NPC
+                    return self.handle_talk(session, npc_id, Some(trimmed), config).await;
+                }
+            }
+        }
+        
         let parsed_command = self.parse_command(command);
         debug!(
             "TinyMUSH command parsed: session={} command={:?}",
@@ -2760,6 +2782,14 @@ impl TinyMushProcessor {
                 unknown
             )),
         }
+    }
+
+    /// Check if player has an active dialog session and return (npc_id, dialog_session)
+    fn get_active_dialog_session(
+        &self,
+        username: &str,
+    ) -> Result<Option<(String, crate::tmush::types::DialogSession)>, TinyMushError> {
+        self.store().get_active_dialog_for_player(username)
     }
 
     /// Handle TALK command - interact with NPCs

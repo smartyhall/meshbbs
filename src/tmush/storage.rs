@@ -1016,6 +1016,28 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Get the first active dialog session for a player (returns NPC ID and session)
+    pub fn get_active_dialog_for_player(
+        &self,
+        player_id: &str,
+    ) -> Result<Option<(String, crate::tmush::types::DialogSession)>, TinyMushError> {
+        let prefix = format!("dialog_session:{}:", player_id).into_bytes();
+        
+        for item in self.npcs.scan_prefix(&prefix) {
+            let (key, value) = item?;
+            let session: crate::tmush::types::DialogSession = Self::deserialize(value)?;
+            
+            // Extract NPC ID from key: dialog_session:{player_id}:{npc_id}
+            if let Ok(key_str) = std::str::from_utf8(&key) {
+                if let Some(npc_id) = key_str.strip_prefix(&format!("dialog_session:{}:", player_id)) {
+                    return Ok(Some((npc_id.to_string(), session)));
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+
     pub fn seed_world_if_needed(&self) -> Result<usize, TinyMushError> {
         if self
             .primary
