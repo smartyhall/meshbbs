@@ -203,9 +203,10 @@ async fn test_talk_guard_warning_topic() {
         .await
         .unwrap();
 
-    // Move to Town Square, then to North Gate (Guard's location)
+    // Move to Town Square, then to Museum, then to North Gate (Guard's location)
     server.route_test_text_direct(&node_key, "N").await.unwrap();
-    server.route_test_text_direct(&node_key, "W").await.unwrap();
+    server.route_test_text_direct(&node_key, "E").await.unwrap();
+    server.route_test_text_direct(&node_key, "S").await.unwrap();
 
     // Test Guard's warning topic
     let before = server.test_messages().len();

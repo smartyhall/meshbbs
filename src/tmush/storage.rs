@@ -214,6 +214,11 @@ impl TinyMushStore {
             // Seed example trigger objects for Phase 9 testing
             store.seed_example_trigger_objects()?;
 
+            // Seed content objects, NPCs, and quests
+            store.seed_content_objects_if_needed()?;
+            store.seed_content_npcs_if_needed()?;
+            store.seed_content_quests_if_needed()?;
+
             // Seed initial admin account using provided username
             // This should typically match the BBS sysop username from config
             store.seed_admin_if_needed(&admin_username)?;
@@ -1098,6 +1103,97 @@ impl TinyMushStore {
                 }
             }
             self.put_room(museum)?;
+        }
+
+        Ok(inserted)
+    }
+
+    /// Seed content objects (rumor board, carved symbols, materials, etc.)
+    /// Returns the number of new objects inserted.
+    pub fn seed_content_objects_if_needed(&self) -> Result<usize, TinyMushError> {
+        // Check if content objects already exist
+        if self.get_object("rumor_board").is_ok() {
+            return Ok(0); // Already seeded
+        }
+
+        let now = Utc::now();
+        let objects = crate::tmush::state::create_content_objects(now);
+        let mut inserted = 0usize;
+
+        // Define the object -> room mappings based on design document
+        let object_locations = vec![
+            ("rumor_board", "relay_tavern"),
+            ("diagnostic_panel", "repeater_tower"),
+            ("northern_array", "repeater_upper"),
+            ("carved_symbol_tower", "repeater_tower"),
+            ("carved_symbol_grove", "ancient_grove"),
+            ("carved_symbol_tunnel", "maintenance_tunnels"),
+            ("carved_symbol_workshop", "workshop_district"),
+            ("crafting_bench", "workshop_district"),
+            ("copper_wire", "workshop_district"),
+            ("circuit_board", "maintenance_tunnels"),
+            ("antenna_rod", "repeater_tower"),
+            ("crystal_shard", "ancient_grove"),
+            ("signal_capacitor", "relay_tavern"),
+        ];
+
+        // Store all objects and place them in their designated rooms
+        for object in objects {
+            let object_id = object.id.clone();
+            self.put_object(object)?;
+            inserted += 1;
+
+            // Find this object's designated room
+            if let Some((_, room_id)) = object_locations.iter().find(|(obj_id, _)| *obj_id == object_id) {
+                if let Ok(mut room) = self.get_room(room_id) {
+                    if !room.items.contains(&object_id) {
+                        room.items.push(object_id.clone());
+                        self.put_room(room)?;
+                    }
+                }
+            }
+        }
+
+        Ok(inserted)
+    }
+
+    /// Seed content NPCs (Old Graybeard, Barkeep Mira, Old Elm, Tinker Brass)
+    /// Returns the number of new NPCs inserted.
+    pub fn seed_content_npcs_if_needed(&self) -> Result<usize, TinyMushError> {
+        // Check if content NPCs already exist
+        if self.get_npc("old_graybeard").is_ok() {
+            return Ok(0); // Already seeded
+        }
+
+        let now = Utc::now();
+        let npcs = crate::tmush::state::create_content_npcs(now);
+        let mut inserted = 0usize;
+
+        // Store all NPCs
+        for npc in npcs {
+            self.put_npc(npc)?;
+            inserted += 1;
+        }
+
+        Ok(inserted)
+    }
+
+    /// Seed content quests (tower diagnostics, grove mystery, tunnel salvage, first craft)
+    /// Returns the number of new quests inserted.
+    pub fn seed_content_quests_if_needed(&self) -> Result<usize, TinyMushError> {
+        // Check if content quests already exist
+        if self.get_quest("tower_diagnostics").is_ok() {
+            return Ok(0); // Already seeded
+        }
+
+        let now = Utc::now();
+        let quests = crate::tmush::state::create_content_quests(now);
+        let mut inserted = 0usize;
+
+        // Store all quests
+        for quest in quests {
+            self.put_quest(quest)?;
+            inserted += 1;
         }
 
         Ok(inserted)
@@ -3829,7 +3925,7 @@ mod tests {
         let count = store.seed_quests_if_needed().expect("seed check");
         assert_eq!(count, 0, "should not reseed when quests already exist");
         let quest_ids = store.list_quest_ids().expect("list quests");
-        assert_eq!(quest_ids.len(), 3, "should still have 3 quests");
+        assert_eq!(quest_ids.len(), 7, "should still have 7 quests (3 starter + 4 content)");
     }
 
     #[test]

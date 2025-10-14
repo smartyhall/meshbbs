@@ -28,12 +28,12 @@ fn quest_lifecycle_complete_flow() {
     let (store, _temp) = setup_test_store();
     create_test_player(&store, "alice");
 
-    // Verify all 3 starter quests exist in the store
+    // Verify all 7 quests exist in the store (3 starter + 4 content)
     let all_quest_ids = store.list_quest_ids().expect("list quests");
     assert_eq!(
         all_quest_ids.len(),
-        3,
-        "should have 3 starter quests in store"
+        7,
+        "should have 7 quests in store (3 starter + 4 content)"
     );
 
     // Only welcome_towne should be available initially (others have prerequisites)
