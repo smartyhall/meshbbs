@@ -9190,6 +9190,27 @@ Obvious exits: (too dark to see clearly)".to_string()
                     response.push('\n');
                 }
 
+                // Show NPCs in room
+                if let Ok(npcs) = self.store().get_npcs_in_room(&player.current_room) {
+                    if !npcs.is_empty() {
+                        response.push('\n');
+                        for npc in &npcs {
+                            response.push_str(&format!("🧑 {} is here.\n", npc.name));
+                        }
+                    }
+                }
+
+                // Show objects in room
+                if !room.items.is_empty() {
+                    response.push('\n');
+                    response.push_str("Objects here:\n");
+                    for object_id in &room.items {
+                        if let Ok(object) = self.store().get_object(object_id) {
+                            response.push_str(&format!("  📦 {}\n", object.name));
+                        }
+                    }
+                }
+
                 // Note: Tutorial hints are managed by handle_move() to avoid duplication
                 // Tutorial progress is checked during movement and hint shown at end of response
 
