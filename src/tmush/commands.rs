@@ -14,7 +14,6 @@ use crate::metrics;
 use crate::storage::Storage;
 use crate::tmush::inventory::format_inventory_compact;
 use crate::tmush::room_manager::RoomManager;
-use crate::tmush::state::canonical_world_seed;
 use crate::tmush::trigger::{
     execute_on_look, execute_on_poke, execute_on_use, execute_room_on_enter,
 };
@@ -1757,7 +1756,7 @@ impl TinyMushProcessor {
     }
 
     /// Handle MAP command - show overview of the game world
-    async fn handle_map(&mut self, session: &Session, config: &Config) -> Result<String> {
+    async fn handle_map(&mut self, session: &Session, _config: &Config) -> Result<String> {
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
@@ -1766,55 +1765,31 @@ impl TinyMushProcessor {
         let current_room_id = &player.current_room;
         let room_manager = self.get_room_manager().await?;
 
-        // Build map display showing all rooms and their connections
+        let current_room = match room_manager.get_room(current_room_id) {
+            Ok(room) => room,
+            Err(_) => return Ok("You can't see a map from here.".to_string()),
+        };
+
         let mut response = String::new();
-        response.push_str("=== Map of Old Towne Mesh ===\n\n");
+        response.push_str(&format!("=== Local Area: {} ===\n\n", current_room.name));
 
-        // Display current location prominently
-        if let Ok(current_room) = room_manager.get_room(current_room_id) {
-            response.push_str(&format!("Current Location: {}\n\n", current_room.name));
-        }
-
-        // Show all rooms with connections
-        response.push_str("Area Overview:\n");
-
-        // Get all rooms from canonical seed data and fetch via room manager
-        let seed_rooms = canonical_world_seed(chrono::Utc::now());
-        let mut rooms_with_ids: Vec<(String, crate::tmush::types::RoomRecord)> = Vec::new();
-
-        for room in seed_rooms {
-            if let Ok(stored_room) = room_manager.get_room(&room.id) {
-                rooms_with_ids.push((room.id.clone(), stored_room));
+        if current_room.exits.is_empty() {
+            response.push_str("There are no visible exits from here.\n");
+        } else {
+            response.push_str("You can see paths leading:\n");
+            
+            // Sort exits for consistent display
+            let mut exits: Vec<_> = current_room.exits.iter().collect();
+            exits.sort_by_key(|(direction, _)| format!("{:?}", direction));
+            
+            for (direction, destination_id) in exits {
+                if let Ok(dest_room) = room_manager.get_room(destination_id) {
+                    response.push_str(&format!("  {:?} → {}\n", direction, dest_room.name));
+                } else {
+                    response.push_str(&format!("  {:?} → somewhere...\n", direction));
+                }
             }
         }
-
-        // Sort for consistent display
-        rooms_with_ids.sort_by(|(a, _), (b, _)| a.cmp(b));
-
-        for (room_id, room) in rooms_with_ids {
-            let marker = if &room_id == current_room_id {
-                "➤"
-            } else {
-                " "
-            };
-
-            response.push_str(&format!("{} {} - {}\n", marker, room.name, room.short_desc));
-
-            // Show exits
-            if !room.exits.is_empty() {
-                let mut exits: Vec<_> = room
-                    .exits
-                    .keys()
-                    .map(|d| format!("{:?}", d).to_lowercase())
-                    .collect();
-                exits.sort();
-                response.push_str(&format!("    Exits: {}\n", exits.join(", ")));
-            }
-            response.push('\n');
-        }
-
-        response.push_str("Use LOOK to examine your current room in detail.\n");
-        response.push_str("Use movement commands (north, south, east, west, etc.) to travel.\n");
 
         Ok(response)
     }
