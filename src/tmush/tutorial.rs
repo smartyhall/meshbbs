@@ -311,7 +311,9 @@ mod tests {
                 step: TutorialStep::WelcomeAtGazebo
             }
         ));
-        assert!(crate::tmush::state::is_personal_landing(&player.current_room));
+        assert!(crate::tmush::state::is_personal_landing(
+            &player.current_room
+        ));
     }
 
     #[test]

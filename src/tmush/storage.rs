@@ -414,13 +414,7 @@ impl TinyMushStore {
     }
 
     pub fn get_room(&self, room_id: &str) -> Result<RoomRecord, TinyMushError> {
-        if let Some(room) = self
-            .instanced_rooms
-            .read()
-            .unwrap()
-            .get(room_id)
-            .cloned()
-        {
+        if let Some(room) = self.instanced_rooms.read().unwrap().get(room_id).cloned() {
             return Ok(room);
         }
 
@@ -444,10 +438,7 @@ impl TinyMushStore {
     }
 
     /// Ensure a per-player landing gazebo instance exists and return its room ID.
-    pub fn ensure_personal_landing_room(
-        &self,
-        username: &str,
-    ) -> Result<String, TinyMushError> {
+    pub fn ensure_personal_landing_room(&self, username: &str) -> Result<String, TinyMushError> {
         let username_key = username.to_ascii_lowercase();
 
         // Return existing instance if present and still cached
@@ -458,18 +449,14 @@ impl TinyMushStore {
             .get(&username_key)
             .cloned()
         {
-            if self
-                .instanced_rooms
-                .read()
-                .unwrap()
-                .contains_key(&room_id)
-            {
+            if self.instanced_rooms.read().unwrap().contains_key(&room_id) {
                 return Ok(room_id);
             }
         }
 
         // Create a fresh instance from the world template
-        let mut template = self.get_world_room(crate::tmush::state::REQUIRED_LANDING_LOCATION_ID)?;
+        let mut template =
+            self.get_world_room(crate::tmush::state::REQUIRED_LANDING_LOCATION_ID)?;
         let instance_id = crate::tmush::state::generate_landing_instance_id(username);
         template.id = instance_id.clone();
         if !template.flags.contains(&RoomFlag::Instanced) {
@@ -514,10 +501,7 @@ impl TinyMushStore {
         };
 
         if removed {
-            self.instanced_rooms
-                .write()
-                .unwrap()
-                .remove(room_id);
+            self.instanced_rooms.write().unwrap().remove(room_id);
         }
     }
 
@@ -530,10 +514,7 @@ impl TinyMushStore {
         };
 
         if let Some(room_id) = room_id {
-            self.instanced_rooms
-                .write()
-                .unwrap()
-                .remove(&room_id);
+            self.instanced_rooms.write().unwrap().remove(&room_id);
         }
     }
 

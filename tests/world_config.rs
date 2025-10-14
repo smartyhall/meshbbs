@@ -12,7 +12,7 @@ fn test_get_default_world_config() {
     let config = store.get_world_config().unwrap();
 
     assert_eq!(config.world_name, "Old Towne Mesh");
-    assert!(config.welcome_message.contains("WELCOME TO OLD TOWNE MESH"));
+    assert!(config.welcome_message.contains("Welcome to Old Towne Mesh"));
     assert!(config.motd.contains("Welcome to Old Towne Mesh"));
 }
 

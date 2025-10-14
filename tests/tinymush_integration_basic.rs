@@ -1,12 +1,12 @@
 //! Integration tests for TinyMUSH functionality validation.
 //! Basic tests to ensure TinyMUSH module is properly integrated.
 
-use meshbbs::bbs::session::Session;
+use chrono::Utc;
+use meshbbs::bbs::session::{Session, SessionState};
 use meshbbs::config::Config;
 use meshbbs::storage::Storage;
 use meshbbs::tmush::commands::TinyMushProcessor;
 use meshbbs::tmush::should_route_to_tinymush;
-use meshbbs::tmush::state::REQUIRED_LANDING_LOCATION_ID;
 use meshbbs::tmush::storage::TinyMushStore;
 use meshbbs::tmush::types::{PlayerRecord, TutorialState, TutorialStep};
 use tempfile::TempDir;
@@ -92,7 +92,9 @@ async fn test_initialize_player_begins_in_gazebo() {
     );
 
     let player = store.get_player("gazebo_new").unwrap();
-    assert!(meshbbs::tmush::state::is_personal_landing(&player.current_room));
+    assert!(meshbbs::tmush::state::is_personal_landing(
+        &player.current_room
+    ));
     assert!(matches!(
         player.tutorial_state,
         TutorialState::InProgress {
@@ -141,7 +143,9 @@ async fn test_initialize_player_relocates_step_one_players() {
     );
 
     let player = store.get_player("wanderer").unwrap();
-    assert!(meshbbs::tmush::state::is_personal_landing(&player.current_room));
+    assert!(meshbbs::tmush::state::is_personal_landing(
+        &player.current_room
+    ));
     assert!(matches!(
         player.tutorial_state,
         TutorialState::InProgress {
@@ -187,7 +191,122 @@ async fn test_players_receive_unique_landing_instances() {
     let alice = store.get_player("AliceUser").unwrap();
     let bob = store.get_player("BobUser").unwrap();
 
-    assert!(meshbbs::tmush::state::is_personal_landing(&alice.current_room));
-    assert!(meshbbs::tmush::state::is_personal_landing(&bob.current_room));
+    assert!(meshbbs::tmush::state::is_personal_landing(
+        &alice.current_room
+    ));
+    assert!(meshbbs::tmush::state::is_personal_landing(
+        &bob.current_room
+    ));
     assert_ne!(alice.current_room, bob.current_room);
+}
+
+#[tokio::test]
+async fn test_mayor_dialog_available_after_tutorial_completion() {
+    let temp_dir = TempDir::new().unwrap();
+    let tinymush_path = temp_dir.path().join("tinymush_dialog");
+    let store = TinyMushStore::open(&tinymush_path).unwrap();
+    let mut processor = TinyMushProcessor::new(store.clone());
+
+    // Ensure dialog tree is present for mayor
+    meshbbs::tmush::state::seed_npc_dialogues_if_needed(&store).unwrap();
+
+    let mut config = Config::default();
+    config.games.tinymush_enabled = true;
+    config.games.tinymush_db_path = Some(tinymush_path.to_string_lossy().into_owned());
+    let storage_dir = temp_dir.path().join("storage");
+    config.storage.data_dir = storage_dir.to_string_lossy().into_owned();
+
+    let mut storage = Storage::new(&config.storage.data_dir)
+        .await
+        .expect("storage");
+
+    let mut player = PlayerRecord::new("CompletedUser", "CompletedUser", "mayor_office");
+    player.tutorial_state = TutorialState::Completed {
+        completed_at: Utc::now(),
+    };
+    store.put_player(player).unwrap();
+
+    let mut session = Session::new("CompletedUser".into(), "CompletedUser".into());
+    session.username = Some("CompletedUser".into());
+    session.user_level = 1;
+    session.state = SessionState::TinyMush;
+    session.current_game_slug = Some("tinymush".into());
+
+    let response = processor
+        .process_command(&mut session, "TALK MAYOR", &mut storage, &config)
+        .await
+        .expect("talk response");
+
+    assert!(
+        response.contains("Mayor Thompson"),
+        "expected mayor greeting, got: {}",
+        response
+    );
+    assert!(
+        response
+            .to_lowercase()
+            .contains("tell me about the tutorial"),
+        "expected branching dialog options, got: {}",
+        response
+    );
+}
+
+#[tokio::test]
+async fn test_tutorial_requires_talking_to_mayor() {
+    let temp_dir = TempDir::new().unwrap();
+    let tinymush_path = temp_dir.path().join("tinymush_meet_mayor");
+    let store = TinyMushStore::open(&tinymush_path).unwrap();
+    let mut processor = TinyMushProcessor::new(store.clone());
+
+    meshbbs::tmush::state::seed_npc_dialogues_if_needed(&store).unwrap();
+
+    let mut config = Config::default();
+    config.games.tinymush_enabled = true;
+    config.games.tinymush_db_path = Some(tinymush_path.to_string_lossy().into_owned());
+    let storage_dir = temp_dir.path().join("storage");
+    config.storage.data_dir = storage_dir.to_string_lossy().into_owned();
+
+    let mut storage = Storage::new(&config.storage.data_dir)
+        .await
+        .expect("storage");
+
+    let mut player = PlayerRecord::new("Trailblazer", "Trailblazer", "city_hall_lobby");
+    player.tutorial_state = TutorialState::InProgress {
+        step: TutorialStep::MeetTheMayor,
+    };
+    store.put_player(player).unwrap();
+
+    let mut session = Session::new("Trailblazer".into(), "Trailblazer".into());
+    session.username = Some("Trailblazer".into());
+    session.user_level = 1;
+    session.state = SessionState::TinyMush;
+    session.current_game_slug = Some("tinymush".into());
+
+    let move_response = processor
+        .process_command(&mut session, "NORTH", &mut storage, &config)
+        .await
+        .expect("move north");
+
+    assert!(move_response.contains("Mayor's Office"));
+
+    let player_after_move = store.get_player("Trailblazer").unwrap();
+    assert!(matches!(
+        player_after_move.tutorial_state,
+        TutorialState::InProgress {
+            step: TutorialStep::MeetTheMayor
+        }
+    ));
+
+    let talk_response = processor
+        .process_command(&mut session, "TALK MAYOR THOMPSON", &mut storage, &config)
+        .await
+        .expect("talk mayor");
+
+    assert!(talk_response.contains("Tutorial Complete"));
+
+    let completed_player = store.get_player("Trailblazer").unwrap();
+    assert!(matches!(
+        completed_player.tutorial_state,
+        TutorialState::Completed { .. }
+    ));
 }

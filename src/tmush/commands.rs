@@ -346,10 +346,7 @@ impl TinyMushProcessor {
         );
 
         if should_be_at_landing {
-            match self
-                .store()
-                .ensure_personal_landing_room(&player.username)
-            {
+            match self.store().ensure_personal_landing_room(&player.username) {
                 Ok(landing_id) => {
                     if player.current_room != landing_id {
                         player.current_room = landing_id.clone();
@@ -1485,54 +1482,56 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-    // Get room manager
-    let room_manager = self.get_room_manager().await?;
+        // Track previous location for instance cleanup
+        let previous_room_id = player.current_room.clone();
 
-    // Track previous location for instance cleanup
-    let previous_room_id = player.current_room.clone();
+        // Resolve destination before getting room manager (avoids borrow conflict)
+        let destination_id = {
+            let current_room = match self.store().get_room(&player.current_room) {
+                Ok(room) => room,
+                Err(_) => {
+                    return Ok(format!(
+                        "You seem to be lost! Your current location '{}' doesn't exist.\nType WHERE for help.",
+                        player.current_room
+                    ));
+                }
+            };
 
-        // Get current room
-        let current_room = match room_manager.get_room(&player.current_room) {
-            Ok(room) => room,
-            Err(_) => {
-                return Ok(format!(
-                    "You seem to be lost! Your current location '{}' doesn't exist.\nType WHERE for help.",
-                    player.current_room
-                ));
+            // Check if exit exists in that direction
+            let tmush_direction = match direction {
+                Direction::North => TmushDirection::North,
+                Direction::South => TmushDirection::South,
+                Direction::East => TmushDirection::East,
+                Direction::West => TmushDirection::West,
+                Direction::Up => TmushDirection::Up,
+                Direction::Down => TmushDirection::Down,
+                Direction::Northeast => TmushDirection::Northeast,
+                Direction::Northwest => TmushDirection::Northwest,
+                Direction::Southeast => TmushDirection::Southeast,
+                Direction::Southwest => TmushDirection::Southwest,
+            };
+
+            let dest_id = match current_room.exits.get(&tmush_direction) {
+                Some(dest) => dest.clone(),
+                None => {
+                    let dir_str = format!("{:?}", direction).to_lowercase();
+                    return Ok(format!("You can't go {} from here.", dir_str));
+                }
+            };
+
+            match self
+                .store()
+                .resolve_destination_for_player(&player.username, &dest_id)
+            {
+                Ok(room_id) => room_id,
+                Err(e) => {
+                    return Ok(format!("Movement failed: {}", e));
+                }
             }
         };
 
-        // Check if exit exists in that direction
-        let tmush_direction = match direction {
-            Direction::North => TmushDirection::North,
-            Direction::South => TmushDirection::South,
-            Direction::East => TmushDirection::East,
-            Direction::West => TmushDirection::West,
-            Direction::Up => TmushDirection::Up,
-            Direction::Down => TmushDirection::Down,
-            Direction::Northeast => TmushDirection::Northeast,
-            Direction::Northwest => TmushDirection::Northwest,
-            Direction::Southeast => TmushDirection::Southeast,
-            Direction::Southwest => TmushDirection::Southwest,
-        };
-
-        let mut destination_id = match current_room.exits.get(&tmush_direction) {
-            Some(dest) => dest.clone(),
-            None => {
-                let dir_str = format!("{:?}", direction).to_lowercase();
-                return Ok(format!("You can't go {} from here.", dir_str));
-            }
-        };
-
-        destination_id = match self
-            .store()
-            .resolve_destination_for_player(&player.username, &destination_id)
-        {
-            Ok(room_id) => room_id,
-            Err(e) => {
-                return Ok(format!("Movement failed: {}", e));
-            }
-        };
+        // Get room manager after resolving destination
+        let room_manager = self.get_room_manager().await?;
 
         // Use room manager to move player (includes capacity and permission checks)
         match room_manager.move_player_to_room(&mut player, &destination_id) {
@@ -1568,19 +1567,22 @@ impl TinyMushProcessor {
         );
 
         // Execute OnEnter triggers for all objects in the new room
-    let enter_messages = execute_room_on_enter(&player.username, &destination_id, self.store());
+        let enter_messages = execute_room_on_enter(&player.username, &destination_id, self.store());
 
         // Check for tutorial progression after movement
         use crate::tmush::tutorial::{
             advance_tutorial_step, can_advance_from_location, get_tutorial_hint,
         };
-        use crate::tmush::types::TutorialState;
+        use crate::tmush::types::{TutorialState, TutorialStep};
 
         let mut tutorial_message = String::new();
         let mut tutorial_advanced = false;
         if let TutorialState::InProgress { step } = &player.tutorial_state {
-            // Check if this movement advances the tutorial
-            if can_advance_from_location(step, &destination_id) {
+            let reached_target = can_advance_from_location(step, &destination_id);
+            if reached_target && matches!(step, TutorialStep::MeetTheMayor) {
+                // Final step requires speaking with the mayor
+                tutorial_message = format!("\n💡 Tutorial: {}\n", get_tutorial_hint(step));
+            } else if reached_target {
                 let current_step = step.clone();
                 match advance_tutorial_step(self.store(), &player.username, current_step) {
                     Ok(new_state) => {
@@ -2937,11 +2939,8 @@ impl TinyMushProcessor {
 
         // Tutorial-specific NPC dialogs
         if npc.id == "mayor_thompson" {
-            // Check if player is at MeetTheMayor step
-            match &player.tutorial_state {
-                TutorialState::InProgress { step }
-                    if matches!(step, TutorialStep::MeetTheMayor) =>
-                {
+            if let TutorialState::InProgress { step } = &player.tutorial_state {
+                if matches!(step, TutorialStep::MeetTheMayor) {
                     // Complete tutorial and give rewards
                     if let Err(e) =
                         advance_tutorial_step(self.store(), &username, TutorialStep::MeetTheMayor)
@@ -2962,18 +2961,6 @@ impl TinyMushProcessor {
                         "Mayor Thompson:\n'Welcome, citizen! Here's a starter purse and town map. \
                         Good luck in Old Towne Mesh!'\n\n\
                         [Tutorial Complete! Rewards granted.]"
-                            .to_string(),
-                    );
-                }
-                TutorialState::Completed { .. } => {
-                    return Ok(
-                        "Mayor Thompson: 'You've already completed the tutorial. Welcome back!'"
-                            .to_string(),
-                    );
-                }
-                _ => {
-                    return Ok(
-                        "Mayor Thompson: 'Come back when you're ready for the tutorial.'"
                             .to_string(),
                     );
                 }
@@ -3529,17 +3516,11 @@ impl TinyMushProcessor {
                                     resolved_room
                                 ));
                             } else {
-                                messages.push(format!(
-                                    "❌ Location '{}' not found.",
-                                    room_id
-                                ));
+                                messages.push(format!("❌ Location '{}' not found.", room_id));
                             }
                         }
                         Err(e) => {
-                            messages.push(format!(
-                                "❌ Unable to reach '{}': {}",
-                                room_id, e
-                            ));
+                            messages.push(format!("❌ Unable to reach '{}': {}", room_id, e));
                         }
                     }
                 }

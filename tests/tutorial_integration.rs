@@ -81,7 +81,9 @@ fn test_complete_tutorial_flow() {
 
     // Step 2: Check can't advance until leaving gazebo
     player = store.get_player("alice").unwrap();
-    assert!(meshbbs::tmush::state::is_personal_landing(&player.current_room));
+    assert!(meshbbs::tmush::state::is_personal_landing(
+        &player.current_room
+    ));
     assert!(!can_advance_from_location(
         &TutorialStep::WelcomeAtGazebo,
         &player.current_room

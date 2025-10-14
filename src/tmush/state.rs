@@ -27,12 +27,7 @@ pub fn generate_landing_instance_id(username: &str) -> String {
             }
         })
         .collect();
-    format!(
-        "{}{}:{}",
-        LANDING_INSTANCE_PREFIX,
-        slug,
-        Uuid::new_v4()
-    )
+    format!("{}{}:{}", LANDING_INSTANCE_PREFIX, slug, Uuid::new_v4())
 }
 
 /// Returns true if the provided room id is the canonical landing gazebo template.

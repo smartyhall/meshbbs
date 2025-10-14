@@ -1560,9 +1560,9 @@ impl BbsServer {
             .map_err(|e| anyhow::anyhow!("Failed to verify player creation: {}", e))?;
         if verify_player.current_room != landing_id {
             verify_player.current_room = landing_id;
-            store.put_player(verify_player.clone()).map_err(|e| {
-                anyhow::anyhow!("Failed to update player landing room: {}", e)
-            })?;
+            store
+                .put_player(verify_player.clone())
+                .map_err(|e| anyhow::anyhow!("Failed to update player landing room: {}", e))?;
         }
 
         if !verify_player.is_admin() {
@@ -1681,14 +1681,14 @@ impl BbsServer {
         let landing_id = store
             .ensure_personal_landing_room(&username)
             .map_err(|e| anyhow::anyhow!("Failed to provision landing gazebo: {}", e))?;
-        let mut verify_player = store.get_player(&username).map_err(|e| {
-            anyhow::anyhow!("Failed to verify admin player creation: {}", e)
-        })?;
+        let mut verify_player = store
+            .get_player(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to verify admin player creation: {}", e))?;
         if verify_player.current_room != landing_id {
             verify_player.current_room = landing_id;
-            store.put_player(verify_player).map_err(|e| {
-                anyhow::anyhow!("Failed to update player landing room: {}", e)
-            })?;
+            store
+                .put_player(verify_player)
+                .map_err(|e| anyhow::anyhow!("Failed to update player landing room: {}", e))?;
         }
 
         Ok(())
@@ -1741,14 +1741,14 @@ impl BbsServer {
         let landing_id = store
             .ensure_personal_landing_room(&username)
             .map_err(|e| anyhow::anyhow!("Failed to provision landing gazebo: {}", e))?;
-        let mut verify_player = store.get_player(&username).map_err(|e| {
-            anyhow::anyhow!("Failed to verify player creation: {}", e)
-        })?;
+        let mut verify_player = store
+            .get_player(&username)
+            .map_err(|e| anyhow::anyhow!("Failed to verify player creation: {}", e))?;
         if verify_player.current_room != landing_id {
             verify_player.current_room = landing_id;
-            store.put_player(verify_player).map_err(|e| {
-                anyhow::anyhow!("Failed to update player landing room: {}", e)
-            })?;
+            store
+                .put_player(verify_player)
+                .map_err(|e| anyhow::anyhow!("Failed to update player landing room: {}", e))?;
         }
 
         Ok(())
