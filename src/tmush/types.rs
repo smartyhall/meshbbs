@@ -1526,6 +1526,10 @@ pub struct PlayerRecord {
     /// Total objects owned by this player (quota enforcement)
     #[serde(default)]
     pub total_objects_owned: u32,
+    /// Sequence of examined carved symbols for grove mystery puzzle (Phase 4.2)
+    /// Stores object IDs in order examined: ["carved_symbol_oak", "carved_symbol_elm", ...]
+    #[serde(default)]
+    pub examined_symbol_sequence: Vec<String>,
     pub schema_version: u8,
 }
 
@@ -1565,6 +1569,7 @@ impl PlayerRecord {
             clone_quota: 20,
             last_clone_time: 0,
             total_objects_owned: 0,
+            examined_symbol_sequence: Vec::new(),
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }

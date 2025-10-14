@@ -2060,7 +2060,7 @@ impl TinyMushProcessor {
 
         let target = target.to_uppercase();
 
-        let player = match self.get_or_create_player(session).await {
+        let mut player = match self.get_or_create_player(session).await {
             Ok(p) => p,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
@@ -2069,6 +2069,12 @@ impl TinyMushProcessor {
         if let Some(object) = self.find_object_by_name(&target, &player.inventory) {
             let quantity = get_item_quantity(&player, &object.id);
             let examination = format_item_examination(&object, quantity);
+            
+            // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+            if object.id.starts_with("carved_symbol_") {
+                self.track_symbol_examination(&mut player, &object.id).await?;
+            }
+            
             return Ok(examination.join("\n"));
         }
 
@@ -2080,6 +2086,12 @@ impl TinyMushProcessor {
 
         if let Some(object) = self.find_object_by_name(&target, &room.items) {
             let examination = format_item_examination(&object, 1);
+            
+            // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+            if object.id.starts_with("carved_symbol_") {
+                self.track_symbol_examination(&mut player, &object.id).await?;
+            }
+            
             return Ok(examination.join("\n"));
         }
 
@@ -2087,6 +2099,80 @@ impl TinyMushProcessor {
             "You don't see '{}' here.\nType LOOK to see the room, or INVENTORY to check what you're carrying.",
             target
         ))
+    }
+
+    /// Track examination of carved symbols for grove mystery puzzle (Phase 4.2)
+    /// Updates player's examined_symbol_sequence and checks quest progress
+    async fn track_symbol_examination(
+        &mut self,
+        player: &mut crate::tmush::types::PlayerRecord,
+        symbol_id: &str,
+    ) -> Result<()> {
+        use crate::tmush::quest::update_quest_objective;
+        use crate::tmush::types::{ObjectiveType, QuestState};
+
+        // Add symbol to sequence if not already the last one examined
+        if player.examined_symbol_sequence.last() != Some(&symbol_id.to_string()) {
+            player.examined_symbol_sequence.push(symbol_id.to_string());
+            player.touch();
+            self.store().put_player(player.clone())?;
+        }
+
+        // Check if player has grove_mystery quest active
+        let has_grove_quest = player.quests.iter().any(|q| {
+            q.quest_id == "grove_mystery" && matches!(q.state, QuestState::Active { .. })
+        });
+
+        if !has_grove_quest {
+            return Ok(());
+        }
+
+        // Correct sequence: oak -> elm -> willow -> ash
+        let correct_sequence = vec![
+            "carved_symbols_oak",
+            "carved_symbols_elm",
+            "carved_symbols_willow",
+            "carved_symbols_ash",
+        ];
+
+        // Check each position in the sequence
+        for (idx, expected) in correct_sequence.iter().enumerate() {
+            if player.examined_symbol_sequence.len() > idx
+                && &player.examined_symbol_sequence[idx] == expected
+            {
+                // Update corresponding quest objective using UseItem type
+                let objective = ObjectiveType::UseItem {
+                    item_id: expected.to_string(),
+                    target: "examine".to_string(),
+                };
+
+                // Update quest objective
+                let _ = update_quest_objective(
+                    self.store(),
+                    &player.username,
+                    "grove_mystery",
+                    &objective,
+                    1,
+                );
+            }
+        }
+
+        // If sequence is wrong, reset it
+        if player.examined_symbol_sequence.len() >= correct_sequence.len() {
+            let is_correct = player.examined_symbol_sequence[..correct_sequence.len()]
+                .iter()
+                .zip(correct_sequence.iter())
+                .all(|(a, b)| a == b);
+
+            if !is_correct {
+                // Wrong sequence - reset
+                player.examined_symbol_sequence.clear();
+                player.touch();
+                self.store().put_player(player.clone())?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Handle USE command - use/activate an object with trigger execution
