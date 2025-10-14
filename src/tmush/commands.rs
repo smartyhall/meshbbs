@@ -2783,11 +2783,12 @@ impl TinyMushProcessor {
         use crate::tmush::tutorial::{advance_tutorial_step, distribute_tutorial_rewards};
         use crate::tmush::types::{DialogSession, TutorialState, TutorialStep};
 
-        let username = session.node_id.to_string();
         let player = match self.get_or_create_player(session).await {
             Ok(player) => player,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
+
+        let username = player.username.clone();
 
         // Get NPCs in current room
         let npcs = self.store().get_npcs_in_room(&player.current_room)?;

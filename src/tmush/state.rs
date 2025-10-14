@@ -96,7 +96,6 @@ quietly while townsfolk trade stories about far-off packet relays.",
     .with_exit(Direction::East, "mesh_museum")
     .with_exit(Direction::West, "north_gate")
     .with_exit(Direction::South, "south_market")
-    .with_exit(Direction::Down, REQUIRED_LANDING_LOCATION_ID)
     .with_capacity(25)
     .with_flag(RoomFlag::Safe)
     .with_flag(RoomFlag::Indoor);
