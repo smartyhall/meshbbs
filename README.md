@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.110--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.115--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,17 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
+
+- **1.0.115-beta (2025-10-14): Phase 4 & Phase 5 Content Complete** 🎮✨
+   - **Phase 4 Quests**: Four new epic quests with 87,000+ currency and 1,950 XP rewards
+     * The Cipher: Symbol sequence puzzle (Phase 4.2)
+     * Into the Depths: Dark cavern exploration with light sources (Phase 4.3)
+     * Master Artisan: Advanced crafting chain (Phase 4.4)
+     * The Lost Artifact: Epic quest combining all Phase 4 mechanics
+   - **World Expansion**: 7 new locations (Cipher Chamber, Deep Caverns, Forgotten Ruins, etc.)
+   - **Phase 5 Reputation System**: 6 factions, 7 reputation levels, quest integration
+   - **Documentation**: Quest solutions guide, world map with 23 locations, dark navigation technical docs
+   - **Testing**: 9 new integration tests, all 246 tests passing
 
 - **1.0.110-beta (2025-10-13): Tutorial Completion & Mayor Dialog Fix** 🎓
    - **Tutorial Flow**: Final tutorial step now requires explicit TALK interaction with Mayor Thompson—no more auto-completion just by entering the room
