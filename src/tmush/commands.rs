@@ -2059,20 +2059,35 @@ impl TinyMushProcessor {
         target: String,
         _config: &Config,
     ) -> Result<String> {
+        use crate::tmush::inventory::{format_item_examination, get_item_quantity};
+
         let target = target.to_uppercase();
 
-        // Try to find the object in player's inventory first
-        let _player = match self.get_or_create_player(session).await {
+        let player = match self.get_or_create_player(session).await {
             Ok(p) => p,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // Search inventory by object name
-        // TODO: Implement object name -> ID lookup, then use format_item_examination
+        // First, try to find object in player's inventory
+        if let Some(object) = self.find_object_by_name(&target, &player.inventory) {
+            let quantity = get_item_quantity(&player, &object.id);
+            let examination = format_item_examination(&object, quantity);
+            return Ok(examination.join("\n"));
+        }
+
+        // Then try to find object in current room
+        let room = match self.store().get_room(&player.current_room) {
+            Ok(r) => r,
+            Err(_) => return Ok("Error: Cannot access current room.".to_string()),
+        };
+
+        if let Some(object) = self.find_object_by_name(&target, &room.items) {
+            let examination = format_item_examination(&object, 1);
+            return Ok(examination.join("\n"));
+        }
 
         Ok(format!(
-            "You try to examine '{}' but object lookup by name isn't implemented yet.\n\
-             This command will display detailed information about objects in your inventory or the current room.",
+            "You don't see '{}' here.\nType LOOK to see the room, or INVENTORY to check what you're carrying.",
             target
         ))
     }
