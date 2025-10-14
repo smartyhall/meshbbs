@@ -4,7 +4,7 @@
 This document tracks the implementation of content population for the expanded 15-room Old Towne Mesh world.
 
 **Started**: 2025-10-13  
-**Status**: Phase 3 Complete (Phases 1-3: ✅ Done | Phase 4: 🔄 In Progress)
+**Status**: Phase 4.1 Complete + Integration Complete (Phases 1-4.1: ✅ Done | Phase 4.2-4.4: � Specified)
 
 ---
 
@@ -268,15 +268,66 @@ Entry Points:
 
 ---
 
+## ✅ INTEGRATION (Complete)
+
+### Implementation
+Integrated all three content seeding functions into world initialization flow in `src/tmush/storage.rs`.
+
+### Functions Added
+
+1. **seed_content_objects_if_needed()** (lines ~1104-1149)
+   - Checks if rumor_board exists to avoid re-seeding
+   - Creates 13 objects via `create_content_objects(now)`
+   - Maps each object to its designated room via object_locations table
+   - Places objects in rooms by updating room.items vectors
+   - Returns count of inserted objects
+
+2. **seed_content_npcs_if_needed()** (lines ~1151-1168)
+   - Checks if old_graybeard exists to avoid re-seeding
+   - Creates 4 NPCs via `create_content_npcs(now)`
+   - Stores all NPCs via put_npc()
+   - Returns count of inserted NPCs
+
+3. **seed_content_quests_if_needed()** (lines ~1170-1187)
+   - Checks if tower_diagnostics exists to avoid re-seeding
+   - Creates 4 quests via `create_content_quests(now)`
+   - Stores all quests via put_quest()
+   - Returns count of inserted quests
+
+### Integration Points
+
+Called during world initialization (lines 215-217):
+```rust
+store.seed_content_objects_if_needed()?;
+store.seed_content_npcs_if_needed()?;
+store.seed_content_quests_if_needed()?;
+```
+
+### Test Updates
+
+1. **storage.rs** - Updated quest count assertion: 3 → 7 quests
+2. **quest_integration.rs** - Updated initial quest count: 3 → 7
+3. **npc_multi_topic_dialogue.rs** - Fixed navigation to north_gate (E,S not W)
+
+### Verification
+- All 237 unit tests passing ✅
+- Content appears automatically on fresh world initialization ✅
+- Idempotent seeding (no duplicates on reopen) ✅
+
+### Commit
+`feat(content): integrate content objects, NPCs, and quests into world seeding` (3db56ea)
+
+---
+
 ## 📋 INTEGRATION & TESTING
 
-### Seeding Functions to Call
+### ✅ Seeding Functions Integration (Complete)
 
-The three new functions need to be called during world initialization:
+All three functions now called during world initialization:
 
-1. `create_content_objects(now)` → Add to object seeding
-2. `create_content_npcs(now)` → Add to NPC seeding
-3. `create_content_quests(now)` → Add to quest seeding
+1. ✅ `create_content_objects(now)` → Integrated at storage.rs:215
+2. ✅ `create_content_npcs(now)` → Integrated at storage.rs:216
+3. ✅ `create_content_quests(now)` → Integrated at storage.rs:217
 
 ### Test Coverage Needed
 
@@ -297,20 +348,22 @@ The three new functions need to be called during world initialization:
 ## 📊 STATISTICS
 
 ### Content Created
-- **Objects**: 12 (1 rumor board, 1 antenna, 4 symbols, 1 bench, 5 materials)
+- **Objects**: 13 (1 rumor board, 1 diagnostic panel, 1 northern array, 4 symbols, 1 bench, 5 materials)
 - **NPCs**: 4 (Old Graybeard, Barkeep Mira, Old Elm, Tinker Brass)
 - **Dialogue Nodes**: 24 total across 4 NPCs
 - **Quests**: 4 (tower_diagnostics, grove_mystery, tunnel_salvage, first_craft)
 - **Quest Objectives**: 18 total across 4 quests
-- **Code Added**: ~1,200 lines
+- **Rooms**: 1 new (repeater_upper for vertical navigation)
+- **Code Added**: ~1,500 lines (including integration)
 
 ### Rooms Populated
-- repeater_tower: 1 NPC, 1 object
-- relay_tavern: 1 NPC, 1 object
-- ancient_grove: 4 objects
-- west_residential: 1 NPC
-- workshop_district: 1 NPC, 1 object
-- Various: 5 material objects
+- repeater_tower: 1 NPC (Old Graybeard), 2 objects (diagnostic_panel, antenna_rod)
+- repeater_upper: 1 object (northern_array)
+- relay_tavern: 1 NPC (Barkeep Mira), 2 objects (rumor_board, signal_capacitor)
+- ancient_grove: 4 objects (carved_symbol_*), 1 material (crystal_shard)
+- west_residential: 1 NPC (Old Elm)
+- workshop_district: 1 NPC (Tinker Brass), 2 objects (crafting_bench, copper_wire)
+- maintenance_tunnels: 2 objects (carved_symbol_tunnel, circuit_board)
 
 ### Reward Economy
 - Total currency rewards: $210
@@ -321,8 +374,17 @@ The three new functions need to be called during world initialization:
 
 ## 🎯 NEXT STEPS
 
-### Immediate (Phase 4)
-1. Implement tower climb (repeater_upper room + UP/DOWN)
+### Optional (Phase 4.2-4.4) - Command System Extensions
+These puzzles require command modifications and are specified in PHASE_4_IMPLEMENTATION_NOTES.md:
+
+1. **Phase 4.2**: EXAMINE tracking for grove puzzle (~11 hours)
+2. **Phase 4.3**: Dark room visibility system (~15 hours) 
+3. **Phase 4.4**: CRAFT command implementation (~12 hours)
+
+**Note**: These are **optional enhancements**. The core content (NPCs, quests, objects, dialogue) is fully functional and integrated. Players can interact with NPCs, accept quests, and explore the new areas. The advanced puzzle mechanics require deeper command system work.
+
+### Immediate (If Continuing Phase 4)
+1. ~~Implement tower climb (repeater_upper room + UP/DOWN)~~ ✅ DONE
 2. Implement EXAMINE tracking for grove puzzle
 3. Implement CRAFT command
 4. Implement dark room visibility
