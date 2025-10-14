@@ -51,7 +51,7 @@ pub fn is_any_landing_room(room_id: &str) -> bool {
 /// mandatory system requirements. The remaining locations are instructional
 /// set dressing that operators are free to replace with their own layouts.
 ///
-/// Total: 15 rooms (7 original + 8 expansion areas)
+/// Total: 16 rooms (7 original + 8 expansion areas + 1 vertical space)
 pub const OLD_TOWNE_WORLD_ROOM_IDS: &[&str] = &[
     // Core system rooms (required)
     REQUIRED_LANDING_LOCATION_ID,
@@ -65,6 +65,7 @@ pub const OLD_TOWNE_WORLD_ROOM_IDS: &[&str] = &[
     // North expansion (wilderness, technology)
     "pine_ridge_trail",
     "repeater_tower",
+    "repeater_upper", // Tower upper platform (accessed via UP)
     // West expansion (social, residential)
     "relay_tavern",
     "west_residential",
@@ -237,15 +238,35 @@ repeater tower rising above the treeline. The sounds of town fade behind you to 
         "A tall communications tower bristling with antennas and cables.",
         "The mesh repeater tower stands three stories tall, its steel frame humming with radio \
 activity. Solar panels angle toward the sun while wind turbines spin lazily overhead. A \
-ladder leads up to the maintenance platform. Diagnostic panels blink with network status \
+ladder leads UP to the maintenance platform above. Diagnostic panels blink with network status \
 indicators. This relay node connects Old Towne to distant mesh communities.",
     )
     .with_created_at(now)
     .with_exit(Direction::South, "pine_ridge_trail")
-    .with_exit(Direction::Up, "repeater_tower") // Self-reference for climb puzzle
+    .with_exit(Direction::Up, "repeater_upper") // Climb to upper platform
     .with_flag(RoomFlag::QuestLocation)
     .with_capacity(5);
     rooms.push(repeater_tower);
+
+    // Repeater Tower Upper Platform (accessed via UP from ground level)
+    // World builders: Vertical navigation creates spatial depth
+    let repeater_upper = RoomRecord::world(
+        "repeater_upper",
+        "Repeater Tower - Upper Platform",
+        "The maintenance platform high above the tower base.",
+        "You stand on a metal grating platform twenty feet above the ground. The wind is stronger \
+up here, and you can see for miles across Old Towne and beyond. Three massive directional antennas \
+dominate the platform - the NORTHERN ARRAY points toward Pine Ridge, the eastern array faces the \
+forest, and the western one covers the residential areas. Control boxes and cable junctions are \
+mounted on the central mast. A ladder leads DOWN to the ground level. The view is breathtaking \
+but the height is dizzying.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::Down, "repeater_tower") // Descend to ground level
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Indoor) // Platform has roof/shelter
+    .with_capacity(3); // Small platform, limited space
+    rooms.push(repeater_upper);
 
     // WEST EXPANSION: Social & Residential
     // Design pattern: Create character and atmosphere through description
@@ -1484,8 +1505,9 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
 
 /// Create content population objects for the expanded world (Phase 1 of content implementation)
 ///
-/// This creates interactive objects placed throughout the 15-room world including:
+/// This creates interactive objects placed throughout the 16-room world including:
 /// - Rumor Board (relay_tavern): Read-only bulletin board with quest hints
+/// - Diagnostic Panel (repeater_tower): Interactive equipment for quest
 /// - Northern Array (repeater_tower): Antenna for observation and diagnostics
 /// - Carved Symbols (ancient_grove): Four trees with ancient carvings for puzzle
 /// - Crafting Bench (workshop_district): Shows crafting recipes
@@ -1520,7 +1542,34 @@ to the north and marks something called 'Ancient Grove' to the east.".to_string(
     };
     objects.push(rumor_board);
 
-    // 2. Northern Array (repeater_tower) - Directional antenna
+    // 2. Diagnostic Panel (repeater_tower) - Quest objective equipment
+    let diagnostic_panel = ObjectRecord {
+        id: "diagnostic_panel".to_string(),
+        name: "Diagnostic Panel".to_string(),
+        description: "A wall-mounted control panel with numerous status LEDs, signal strength meters, \
+and diagnostic readouts. A large red button labeled 'RUN DIAGNOSTICS' invites interaction. The display \
+currently shows all systems in green: 'TOWER STATUS: NOMINAL | SIGNAL QUALITY: 94% | POWER: OPTIMAL'. \
+USE this panel to run the full diagnostic sequence.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 50,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: true, // Can USE for diagnostics
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(diagnostic_panel);
+
+    // 3. Northern Array (repeater_tower) - Directional antenna
     let northern_array = ObjectRecord {
         id: "northern_array".to_string(),
         name: "Northern Array".to_string(),
@@ -1547,7 +1596,7 @@ maintenance.".to_string(),
     };
     objects.push(northern_array);
 
-    // 3. Carved Symbols - Ancient Grove (4 trees with carvings)
+    // 4. Carved Symbols - Ancient Grove (4 trees with carvings)
     
     // Oak Tree Symbols
     let carved_symbols_oak = ObjectRecord {
@@ -1654,7 +1703,7 @@ once placed there. The spiral draws your eye inward, making you feel both calm a
     };
     objects.push(carved_symbols_ash);
 
-    // 4. Crafting Bench (workshop_district)
+    // 5. Crafting Bench (workshop_district)
     let crafting_bench = ObjectRecord {
         id: "crafting_bench".to_string(),
         name: "Crafting Bench".to_string(),
@@ -1684,7 +1733,7 @@ organized and well-maintained. A sign reads: 'USE CRAFT <recipe_name> to create 
     };
     objects.push(crafting_bench);
 
-    // 5. Crafting Materials (takeable items scattered across locations)
+    // 6. Crafting Materials (takeable items scattered across locations)
     
     // Wire Spools (multiple locations)
     let wire_spool_1 = ObjectRecord {
