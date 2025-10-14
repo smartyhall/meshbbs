@@ -23,6 +23,15 @@ use crate::tmush::types::{
 };
 use crate::tmush::{PlayerRecord, TinyMushError, TinyMushStore};
 
+/// Crafting recipe definition (Phase 4.4)
+#[derive(Debug, Clone)]
+struct CraftRecipe {
+    name: String,
+    result_item: String,
+    materials: Vec<(&'static str, usize)>,
+    description: String,
+}
+
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TinyMushCommand {
@@ -39,6 +48,7 @@ pub enum TinyMushCommand {
     Use(String),     // U item - use/activate item
     Poke(String),    // POKE item - poke/prod an interactive object
     Examine(String), // X item - detailed examination
+    Craft(String),   // CRAFT recipe - craft item from materials (Phase 4.4)
 
     // Economy and shops (Phase 5)
     Buy(String, Option<u32>),  // BUY item [quantity] - purchase from shop
@@ -461,6 +471,7 @@ impl TinyMushProcessor {
             TinyMushCommand::Use(item) => self.handle_use(session, item, config).await,
             TinyMushCommand::Poke(target) => self.handle_poke(session, target, config).await,
             TinyMushCommand::Examine(target) => self.handle_examine(session, target, config).await,
+            TinyMushCommand::Craft(recipe) => self.handle_craft(session, recipe, config).await,
             TinyMushCommand::Buy(item, quantity) => {
                 self.handle_buy(session, item, quantity, config).await
             }
@@ -788,6 +799,13 @@ impl TinyMushProcessor {
             "X" | "EXAMINE" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Examine(parts[1..].join(" "))
+                } else {
+                    TinyMushCommand::Unknown(input)
+                }
+            }
+            "CRAFT" => {
+                if parts.len() > 1 {
+                    TinyMushCommand::Craft(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Unknown(input)
                 }
@@ -2060,7 +2078,7 @@ impl TinyMushProcessor {
 
         let target = target.to_uppercase();
 
-        let player = match self.get_or_create_player(session).await {
+        let mut player = match self.get_or_create_player(session).await {
             Ok(p) => p,
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
@@ -2069,6 +2087,12 @@ impl TinyMushProcessor {
         if let Some(object) = self.find_object_by_name(&target, &player.inventory) {
             let quantity = get_item_quantity(&player, &object.id);
             let examination = format_item_examination(&object, quantity);
+            
+            // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+            if object.id.starts_with("carved_symbol_") {
+                self.track_symbol_examination(&mut player, &object.id).await?;
+            }
+            
             return Ok(examination.join("\n"));
         }
 
@@ -2080,6 +2104,12 @@ impl TinyMushProcessor {
 
         if let Some(object) = self.find_object_by_name(&target, &room.items) {
             let examination = format_item_examination(&object, 1);
+            
+            // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+            if object.id.starts_with("carved_symbol_") {
+                self.track_symbol_examination(&mut player, &object.id).await?;
+            }
+            
             return Ok(examination.join("\n"));
         }
 
@@ -2087,6 +2117,291 @@ impl TinyMushProcessor {
             "You don't see '{}' here.\nType LOOK to see the room, or INVENTORY to check what you're carrying.",
             target
         ))
+    }
+
+    /// Handle CRAFT command - craft items from materials (Phase 4.4)
+    async fn handle_craft(
+        &mut self,
+        session: &Session,
+        recipe_name: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::inventory::{add_item_to_inventory, remove_item_from_inventory};
+        use crate::tmush::quest::update_quest_objective;
+        use crate::tmush::types::{ObjectiveType, QuestState};
+
+        let recipe_name = recipe_name.to_lowercase();
+
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Define recipes (hardcoded for Phase 4.4, could be data-driven later)
+        let recipe = match recipe_name.as_str() {
+            "signal_booster" => Some(CraftRecipe {
+                name: "signal_booster".to_string(),
+                result_item: "signal_booster".to_string(),
+                materials: vec![
+                    ("copper_wire", 2),
+                    ("circuit_board", 1),
+                    ("antenna_rod", 1),
+                ],
+                description: "A powerful signal booster for extended mesh range.".to_string(),
+            }),
+            "basic_antenna" => Some(CraftRecipe {
+                name: "basic_antenna".to_string(),
+                result_item: "basic_antenna".to_string(),
+                materials: vec![
+                    ("copper_wire", 2),
+                    ("antenna_rod", 1),
+                ],
+                description: "A simple antenna for basic mesh connectivity.".to_string(),
+            }),
+            _ => None,
+        };
+
+        let recipe = match recipe {
+            Some(r) => r,
+            None => {
+                return Ok(format!(
+                    "Unknown recipe: '{}'\nAvailable recipes: signal_booster, basic_antenna",
+                    recipe_name
+                ));
+            }
+        };
+
+        // Check if player has all required materials
+        let mut missing_materials = Vec::new();
+        for (material_id, required_qty) in &recipe.materials {
+            let owned_qty = player
+                .inventory
+                .iter()
+                .filter(|item_id| item_id.starts_with(material_id))
+                .count();
+
+            if owned_qty < *required_qty {
+                missing_materials.push(format!(
+                    "{} (need {}, have {})",
+                    material_id, required_qty, owned_qty
+                ));
+            }
+        }
+
+        if !missing_materials.is_empty() {
+            return Ok(format!(
+                "You don't have all the required materials to craft {}.\n\
+Missing: {}",
+                recipe.name,
+                missing_materials.join(", ")
+            ));
+        }
+
+        // Consume materials from inventory
+        for (material_id, required_qty) in &recipe.materials {
+            for _ in 0..*required_qty {
+                // Find and remove one instance of this material
+                if let Some(pos) = player
+                    .inventory
+                    .iter()
+                    .position(|item_id| item_id.starts_with(material_id))
+                {
+                    let item_id = player.inventory[pos].clone();
+                    match remove_item_from_inventory(&mut player, &item_id, 1) {
+                        crate::tmush::types::InventoryResult::Removed { .. } => {},
+                        crate::tmush::types::InventoryResult::Failed { reason } => {
+                            return Ok(format!("Failed to remove material {}: {}", material_id, reason));
+                        },
+                        _ => {},
+                    }
+                }
+            }
+        }
+
+        // Create the crafted item
+        let crafted_item = self.create_crafted_item(&recipe.result_item)?;
+        self.store().put_object(crafted_item.clone())?;
+        
+        // Add to player inventory (use default inventory config)
+        let inv_config = crate::tmush::types::InventoryConfig {
+            allow_stacking: true,
+            max_weight: 1000,
+            max_stacks: 100,
+        };
+        
+        match add_item_to_inventory(&mut player, &crafted_item, 1, &inv_config) {
+            crate::tmush::types::InventoryResult::Added { .. } => {},
+            crate::tmush::types::InventoryResult::Failed { reason } => {
+                return Ok(format!("Failed to add crafted item to inventory: {}", reason));
+            },
+            _ => {},
+        }
+        
+        // Save player
+        self.store().put_player(player.clone())?;
+
+        // Update quest objective if player has first_craft quest
+        let has_craft_quest = player.quests.iter().any(|q| {
+            q.quest_id == "first_craft" && matches!(q.state, QuestState::Active { .. })
+        });
+
+        if has_craft_quest {
+            let _ = update_quest_objective(
+                self.store(),
+                &player.username,
+                "first_craft",
+                &ObjectiveType::UseItem {
+                    item_id: "crafting_bench".to_string(),
+                    target: "craft".to_string(),
+                },
+                1,
+            );
+        }
+
+        Ok(format!(
+            "You successfully craft {}!\n{}",
+            crafted_item.name, recipe.description
+        ))
+    }
+
+    /// Create a crafted item (Phase 4.4 helper)
+    fn create_crafted_item(&self, item_id: &str) -> Result<crate::tmush::types::ObjectRecord> {
+        use crate::tmush::types::{ObjectOwner, ObjectRecord, OBJECT_SCHEMA_VERSION};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let now = Utc::now();
+        let unique_id = format!("{}_{}", item_id, Uuid::new_v4());
+
+        let (name, description, weight, value) = match item_id {
+            "signal_booster" => (
+                "Signal Booster",
+                "A hand-crafted signal booster that extends mesh network range by 50%. \
+The copper coils are wrapped precisely, and the circuit board hums with potential. \
+This represents your growing mastery of mesh technology.",
+                3,
+                100,
+            ),
+            "basic_antenna" => (
+                "Basic Antenna",
+                "A simple but functional antenna you crafted yourself. The copper wire \
+is wound carefully around the rod, creating a reliable signal receiver. \
+Not fancy, but it gets the job done.",
+                2,
+                25,
+            ),
+            _ => return Err(anyhow::anyhow!("Unknown crafted item: {}", item_id)),
+        };
+
+        Ok(ObjectRecord {
+            id: unique_id,
+            name: name.to_string(),
+            description: description.to_string(),
+            owner: ObjectOwner::Player {
+                username: "crafter".to_string(),
+            },
+            created_at: now,
+            weight,
+            currency_value: crate::tmush::types::CurrencyAmount::decimal(value),
+            value: value as u32,
+            takeable: true,
+            usable: false,
+            actions: std::collections::HashMap::new(),
+            flags: vec![],
+            locked: false,
+            clone_depth: 0,
+            clone_source_id: None,
+            clone_count: 0,
+            created_by: "crafting".to_string(),
+            ownership_history: vec![],
+            schema_version: OBJECT_SCHEMA_VERSION,
+        })
+    }
+
+    /// Track examination of carved symbols for grove mystery puzzle (Phase 4.2)
+    /// Updates player's examined_symbol_sequence and checks quest progress
+    async fn track_symbol_examination(
+        &mut self,
+        player: &mut crate::tmush::types::PlayerRecord,
+        symbol_id: &str,
+    ) -> Result<()> {
+        use crate::tmush::quest::update_quest_objective;
+        use crate::tmush::types::{ObjectiveType, QuestState};
+
+        // Add symbol to sequence if not already the last one examined
+        if player.examined_symbol_sequence.last() != Some(&symbol_id.to_string()) {
+            player.examined_symbol_sequence.push(symbol_id.to_string());
+            player.touch();
+            self.store().put_player(player.clone())?;
+        }
+
+        // Check if player has grove_mystery quest active
+        let has_grove_quest = player.quests.iter().any(|q| {
+            q.quest_id == "grove_mystery" && matches!(q.state, QuestState::Active { .. })
+        });
+
+        if !has_grove_quest {
+            return Ok(());
+        }
+
+        // Correct sequence: oak -> elm -> willow -> ash
+        let correct_sequence = vec![
+            "carved_symbols_oak",
+            "carved_symbols_elm",
+            "carved_symbols_willow",
+            "carved_symbols_ash",
+        ];
+
+        // Check each position in the sequence
+        for (idx, expected) in correct_sequence.iter().enumerate() {
+            if player.examined_symbol_sequence.len() > idx
+                && &player.examined_symbol_sequence[idx] == expected
+            {
+                // Update corresponding quest objective using UseItem type
+                let objective = ObjectiveType::UseItem {
+                    item_id: expected.to_string(),
+                    target: "examine".to_string(),
+                };
+
+                // Update quest objective
+                let _ = update_quest_objective(
+                    self.store(),
+                    &player.username,
+                    "grove_mystery",
+                    &objective,
+                    1,
+                );
+            }
+        }
+
+        // If sequence is wrong, reset it
+        if player.examined_symbol_sequence.len() >= correct_sequence.len() {
+            let is_correct = player.examined_symbol_sequence[..correct_sequence.len()]
+                .iter()
+                .zip(correct_sequence.iter())
+                .all(|(a, b)| a == b);
+
+            if !is_correct {
+                // Wrong sequence - reset
+                player.examined_symbol_sequence.clear();
+                player.touch();
+                self.store().put_player(player.clone())?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if player has a light source in inventory (Phase 4.3)
+    fn player_has_light_source(&self, player: &crate::tmush::types::PlayerRecord) -> bool {
+        for object_id in &player.inventory {
+            if let Ok(object) = self.store().get_object(object_id) {
+                if object.flags.contains(&crate::tmush::types::ObjectFlag::LightSource) {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Handle USE command - use/activate an object with trigger execution
@@ -8831,6 +9146,21 @@ impl TinyMushProcessor {
     async fn describe_current_room(&self, player: &PlayerRecord) -> Result<String> {
         match self.store().get_room(&player.current_room) {
             Ok(room) => {
+                // Check if room is dark and player has no light source (Phase 4.3)
+                let is_dark = room.flags.contains(&crate::tmush::types::RoomFlag::Dark);
+                let has_light = self.player_has_light_source(player);
+
+                if is_dark && !has_light {
+                    // Dark room without light source - minimal description
+                    return Ok(
+                        "=== Darkness ===\n\
+You are in pitch darkness. You can't see anything!\n\
+You might need a light source to explore safely here.\n\
+You can still navigate carefully, but you might miss important details.\n\n\
+Obvious exits: (too dark to see clearly)".to_string()
+                    );
+                }
+
                 let mut response = String::new();
 
                 // Room name
