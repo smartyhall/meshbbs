@@ -78,6 +78,8 @@ pub enum ObjectFlag {
     NoValue,
     /// Refuse to clone if object has contents
     NoCloneChildren,
+    /// Object provides light in dark rooms (torches, lanterns, glowing crystals)
+    LightSource,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]

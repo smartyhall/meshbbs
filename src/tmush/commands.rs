@@ -2175,6 +2175,18 @@ impl TinyMushProcessor {
         Ok(())
     }
 
+    /// Check if player has a light source in inventory (Phase 4.3)
+    fn player_has_light_source(&self, player: &crate::tmush::types::PlayerRecord) -> bool {
+        for object_id in &player.inventory {
+            if let Ok(object) = self.store().get_object(object_id) {
+                if object.flags.contains(&crate::tmush::types::ObjectFlag::LightSource) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// Handle USE command - use/activate an object with trigger execution
     async fn handle_use(
         &mut self,
@@ -8917,6 +8929,21 @@ impl TinyMushProcessor {
     async fn describe_current_room(&self, player: &PlayerRecord) -> Result<String> {
         match self.store().get_room(&player.current_room) {
             Ok(room) => {
+                // Check if room is dark and player has no light source (Phase 4.3)
+                let is_dark = room.flags.contains(&crate::tmush::types::RoomFlag::Dark);
+                let has_light = self.player_has_light_source(player);
+
+                if is_dark && !has_light {
+                    // Dark room without light source - minimal description
+                    return Ok(
+                        "=== Darkness ===\n\
+You are in pitch darkness. You can't see anything!\n\
+You might need a light source to explore safely here.\n\
+You can still navigate carefully, but you might miss important details.\n\n\
+Obvious exits: (too dark to see clearly)".to_string()
+                    );
+                }
+
                 let mut response = String::new();
 
                 // Room name

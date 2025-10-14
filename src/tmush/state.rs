@@ -3,7 +3,8 @@ use uuid::Uuid;
 
 use crate::tmush::types::{
     AchievementCategory, AchievementRecord, AchievementTrigger, CurrencyAmount, Direction,
-    ObjectOwner, ObjectRecord, ObjectTrigger, RoomFlag, RoomRecord, OBJECT_SCHEMA_VERSION,
+    ObjectFlag, ObjectOwner, ObjectRecord, ObjectTrigger, RoomFlag, RoomRecord,
+    OBJECT_SCHEMA_VERSION,
 };
 
 /// Required landing location where new characters are staged before entering the world.
@@ -1852,6 +1853,32 @@ organized and well-maintained. A sign reads: 'USE CRAFT <recipe_name> to create 
         schema_version: OBJECT_SCHEMA_VERSION,
     };
     objects.push(basic_component_1);
+
+    // 7. Torch (takeable light source for dark areas)
+    let torch = ObjectRecord {
+        id: "torch".to_string(),
+        name: "Torch".to_string(),
+        description: "A sturdy wooden torch wrapped with oil-soaked cloth. When lit, it provides \
+reliable illumination for exploring dark spaces. The flame flickers steadily, casting dancing \
+shadows on nearby surfaces. Essential equipment for venturing into the maintenance tunnels.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(10),
+        value: 10,
+        takeable: true,
+        usable: true, // Can USE to light/extinguish
+        actions: std::collections::HashMap::new(),
+        flags: vec![ObjectFlag::LightSource],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(torch);
 
     objects
 }

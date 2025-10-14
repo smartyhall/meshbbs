@@ -1135,6 +1135,7 @@ impl TinyMushStore {
             ("antenna_rod", "repeater_tower"),
             ("crystal_shard", "ancient_grove"),
             ("signal_capacitor", "relay_tavern"),
+            ("torch", "relay_tavern"),
         ];
 
         // Store all objects and place them in their designated rooms
