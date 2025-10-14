@@ -1806,3 +1806,332 @@ organized and well-maintained. A sign reads: 'USE CRAFT <recipe_name> to create 
 
     objects
 }
+
+/// Create content population NPCs for the expanded world (Phase 2 of content implementation)
+///
+/// This creates 4 NPCs with full dialogue trees placed throughout the world:
+/// - Old Graybeard (repeater_tower): Tech mentor, quest giver for tower_diagnostics
+/// - Barkeep Mira (relay_tavern): Social hub host, rumor dispenser
+/// - Old Elm (west_residential): Mystical elder, quest giver for grove_mystery
+/// - Tinker Brass (workshop_district): Crafting mentor, quest giver for first_craft
+pub fn create_content_npcs(now: DateTime<Utc>) -> Vec<crate::tmush::types::NpcRecord> {
+    use crate::tmush::types::{DialogChoice, DialogNode, NpcRecord};
+    use std::collections::HashMap;
+    
+    let mut npcs = Vec::new();
+
+    // 1. OLD GRAYBEARD - Repeater Tower technician and quest giver
+    let mut old_graybeard = NpcRecord::new(
+        "old_graybeard",
+        "Old Graybeard",
+        "Tower Technician",
+        "An elderly man with a weathered face and kind eyes. His beard is steel-gray and neatly \
+trimmed, and his hands bear the calluses of decades working with equipment. He wears a faded \
+technician's vest covered in pockets, each holding tools, wire snippets, and diagnostic devices. \
+Despite his age, his movements are precise and purposeful as he tends to the tower equipment.",
+        "repeater_tower",
+    );
+
+    let mut graybeard_tree = HashMap::new();
+    
+    // Greeting node
+    graybeard_tree.insert("greeting".to_string(), DialogNode::new(
+        "Ah, a visitor! Not many folks make the climb up here. I'm Graybeard - been keeping \
+this tower running for nigh on forty years now. What brings you up to my domain?"
+    )
+    .with_choice(DialogChoice::new("What is this place?").goto("about_tower"))
+    .with_choice(DialogChoice::new("Can I help with anything?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Just looking around").exit()));
+
+    // About the tower
+    graybeard_tree.insert("about_tower".to_string(), DialogNode::new(
+        "This is the Old Towne Repeater Tower - backbone of our mesh network for the northern sector. \
+That big antenna there keeps us connected to Pine Ridge and beyond. Without proper maintenance, the \
+whole region loses connectivity. It's vital work."
+    )
+    .with_choice(DialogChoice::new("How does it work?").goto("how_it_works"))
+    .with_choice(DialogChoice::new("Sounds important. Can I help?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Fascinating! I should go now").exit()));
+
+    // Technical explanation
+    graybeard_tree.insert("how_it_works".to_string(), DialogNode::new(
+        "The tower receives signals from the mesh below and amplifies them for long-distance relay. \
+We've got three main arrays - north, east, and west - each covering different sectors. The diagnostic \
+panel monitors signal strength, and we do regular checks by climbing up to inspect the antennas \
+directly. It's simple technology, but reliable when properly maintained."
+    )
+    .with_choice(DialogChoice::new("Could you teach me?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Thanks for explaining!").exit()));
+
+    // Quest offer
+    graybeard_tree.insert("quest_offer".to_string(), DialogNode::new(
+        "Well now, that's mighty kind of you! Truth is, I could use a hand with today's diagnostics. \
+My knees aren't what they used to be, and climbing the tower ladder takes me twice as long these days. \
+If you're willing to help, I can walk you through the procedure. It's a good way to learn how \
+these systems work!"
+    )
+    .with_choice(DialogChoice::new("I'd be happy to help!").goto("quest_accept"))
+    .with_choice(DialogChoice::new("What would I need to do?").goto("quest_details"))
+    .with_choice(DialogChoice::new("Maybe another time").exit()));
+
+    // Quest details
+    graybeard_tree.insert("quest_details".to_string(), DialogNode::new(
+        "The routine is straightforward: First, check the diagnostic panel down here on the ground \
+level - just USE it and it'll run through its self-tests. Then, climb UP the ladder to the \
+upper platform where the antennas are mounted. From up there, check the northern array's \
+alignment. That's the whole procedure! Should take you maybe ten minutes."
+    )
+    .with_choice(DialogChoice::new("Sounds easy enough! I'll do it").goto("quest_accept"))
+    .with_choice(DialogChoice::new("Let me think about it").exit()));
+
+    // Quest acceptance
+    graybeard_tree.insert("quest_accept".to_string(), DialogNode::new(
+        "Excellent! I'll log you as today's assistant. Here's what you need to know: Start with the \
+diagnostic panel right here - give it a USE command. Then climb UP to the upper platform. Once \
+you're up there, check out that northern array. When you're done, come back and tell me \
+what you found. I'll be here tending to the equipment."
+    )
+    .with_choice(DialogChoice::new("Got it! I'll get started").exit()));
+
+    old_graybeard.dialog_tree = graybeard_tree;
+    old_graybeard.created_at = now;
+    npcs.push(old_graybeard);
+
+    // 2. BARKEEP MIRA - Relay Tavern social hub host
+    let mut barkeep_mira = NpcRecord::new(
+        "barkeep_mira",
+        "Barkeep Mira",
+        "Tavern Keeper",
+        "A cheerful woman in her thirties with auburn hair tied back in a practical ponytail. She \
+wears a sturdy apron over comfortable clothes, and moves behind the bar with the efficiency of \
+someone who's done this for years. Her eyes are bright and observant - she seems to know \
+everyone who walks through the door and hear every conversation in the room.",
+        "relay_tavern",
+    );
+
+    let mut mira_tree = HashMap::new();
+
+    // Greeting
+    mira_tree.insert("greeting".to_string(), DialogNode::new(
+        "Welcome to the Relay Tavern! Pull up a stool and catch your breath. I'm Mira - I keep this \
+place running and the stories flowing. What can I do for you today?"
+    )
+    .with_choice(DialogChoice::new("What's the latest news?").goto("rumors"))
+    .with_choice(DialogChoice::new("Tell me about this place").goto("about_tavern"))
+    .with_choice(DialogChoice::new("Who are the interesting people around here?").goto("people"))
+    .with_choice(DialogChoice::new("Just passing through, thanks!").exit()));
+
+    // Rumors and news
+    mira_tree.insert("rumors".to_string(), DialogNode::new(
+        "Oh, you know how it goes - always something happening in Old Towne! Check out the rumor board \
+on the wall there if you want the full stories. But between you and me... Old Graybeard at the tower \
+has been worried about something. And folks who venture into that grove to the east come back with \
+strange tales about symbols and feelings. If you're looking for adventure, those might be good places \
+to start!"
+    )
+    .with_choice(DialogChoice::new("Tell me more about the tower").goto("tower_rumors"))
+    .with_choice(DialogChoice::new("What's this about a grove?").goto("grove_rumors"))
+    .with_choice(DialogChoice::new("Thanks for the tips!").exit()));
+
+    // Tower rumors
+    mira_tree.insert("tower_rumors".to_string(), DialogNode::new(
+        "The Repeater Tower is north of here - head to the North Gate, then take the Pine Ridge Trail. \
+Old Graybeard maintains it all by himself, bless him. He's getting on in years though, and I think \
+he'd appreciate help from someone young and spry like yourself. He's good people - knows more about \
+mesh networking than anyone alive."
+    )
+    .with_choice(DialogChoice::new("What about the grove?").goto("grove_rumors"))
+    .with_choice(DialogChoice::new("I'll check it out. Thanks!").exit()));
+
+    // Grove rumors
+    mira_tree.insert("grove_rumors".to_string(), DialogNode::new(
+        "The Ancient Grove is east of the Museum - through the Forest Path. It's a beautiful spot, \
+very peaceful... but there's something else there too. Old Elm, who lives over in the residential lane, \
+has been fascinated by it for years. Says there are symbols carved in the trees that predate the mesh \
+network. If you're curious about mysteries, you should talk to them."
+    )
+    .with_choice(DialogChoice::new("Interesting! What about the tower?").goto("tower_rumors"))
+    .with_choice(DialogChoice::new("I'll keep that in mind. Thanks!").exit()));
+
+    // About the tavern
+    mira_tree.insert("about_tavern".to_string(), DialogNode::new(
+        "The Relay Tavern has been here almost as long as the mesh network itself. We're the social \
+heart of Old Towne - where people come to unwind, share stories, and hear the latest news. That board \
+on the wall there is always full of notices, rumors, and requests for help. Consider it your community \
+bulletin board!"
+    )
+    .with_choice(DialogChoice::new("What's the latest news?").goto("rumors"))
+    .with_choice(DialogChoice::new("Who are the interesting locals?").goto("people"))
+    .with_choice(DialogChoice::new("Nice place! I'll look around").exit()));
+
+    // Local people
+    mira_tree.insert("people".to_string(), DialogNode::new(
+        "Oh, where do I start? There's Old Graybeard at the Repeater Tower - salt of the earth, that one. \
+Old Elm over in the residential lane, always pondering mysteries. Tinker Brass down in the Workshop \
+District if you need anything made or fixed. And of course, Mayor Thompson at City Hall handles all \
+the official business. They're all good folk!"
+    )
+    .with_choice(DialogChoice::new("Tell me the latest rumors").goto("rumors"))
+    .with_choice(DialogChoice::new("Thanks for the introductions!").exit()));
+
+    barkeep_mira.dialog_tree = mira_tree;
+    barkeep_mira.created_at = now;
+    npcs.push(barkeep_mira);
+
+    // 3. OLD ELM - Mystical elder and grove mystery quest giver
+    let mut old_elm = NpcRecord::new(
+        "old_elm",
+        "Old Elm",
+        "Village Elder",
+        "An ageless figure wrapped in layers of comfortable, earth-toned clothing. Their face is \
+lined with years of wisdom, and their eyes hold a knowing gleam. They move slowly but deliberately, \
+as if always aware of the flow of time around them. A wooden pendant carved with an intricate symbol \
+hangs around their neck. There's something calming about their presence, like being near an ancient tree.",
+        "west_residential",
+    );
+
+    let mut elm_tree = HashMap::new();
+
+    // Greeting
+    elm_tree.insert("greeting".to_string(), DialogNode::new(
+        "Ah, hello there, young one. I am called Old Elm, and I have walked these paths longer than \
+most can remember. The mesh network connects our devices, yes... but there are older connections, \
+deeper patterns. What draws you to speak with me today?"
+    )
+    .with_choice(DialogChoice::new("Tell me about the old connections").goto("old_patterns"))
+    .with_choice(DialogChoice::new("I heard you know about the grove").goto("grove_intro"))
+    .with_choice(DialogChoice::new("Just saying hello").exit()));
+
+    // Old patterns philosophy
+    elm_tree.insert("old_patterns".to_string(), DialogNode::new(
+        "Before radio waves and digital signals, humans found other ways to connect - through stories, \
+through symbols, through shared understanding. The Ancient Grove to the east remembers those times. \
+The trees there bear marks that speak to something older than our modern world. I have studied them \
+for many years."
+    )
+    .with_choice(DialogChoice::new("What do the symbols mean?").goto("symbols_meaning"))
+    .with_choice(DialogChoice::new("Can I help you understand them?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Fascinating perspective").exit()));
+
+    // Symbols meaning
+    elm_tree.insert("symbols_meaning".to_string(), DialogNode::new(
+        "That is the question I have pondered! I believe they represent concepts we still use today: \
+broadcast, frequency, connection, convergence. The ancients who carved them understood these principles \
+in their own way. But there is an order to the symbols - a sequence that unlocks understanding. \
+I am close to solving it, but my eyes grow dim and my steps grow slow."
+    )
+    .with_choice(DialogChoice::new("I could help you!").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Good luck with your research").exit()));
+
+    // Grove introduction
+    elm_tree.insert("grove_intro".to_string(), DialogNode::new(
+        "Ah yes, the Ancient Grove. A sacred place, though many have forgotten why. Four great trees \
+stand in a circle there - oak, elm, willow, and ash. Each bears a symbol carved deep into its bark. \
+I believe these symbols, observed in the proper order, reveal a truth about our connection to this land."
+    )
+    .with_choice(DialogChoice::new("What's the proper order?").goto("symbols_meaning"))
+    .with_choice(DialogChoice::new("Can I help you study them?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Sounds mysterious!").exit()));
+
+    // Quest offer
+    elm_tree.insert("quest_offer".to_string(), DialogNode::new(
+        "You would do this for an old seeker of truth? I am grateful. The task is simple in action, \
+though profound in meaning: Visit the Ancient Grove - east from the Museum, through the Forest Path. \
+Find the four trees and EXAMINE their carvings carefully. The order matters: oak, elm, willow, ash. \
+Observe them in sequence and see what understanding comes to you."
+    )
+    .with_choice(DialogChoice::new("I'll do it!").goto("quest_accept"))
+    .with_choice(DialogChoice::new("Why that specific order?").goto("sequence_explanation"))
+    .with_choice(DialogChoice::new("Let me think about it").exit()));
+
+    // Sequence explanation
+    elm_tree.insert("sequence_explanation".to_string(), DialogNode::new(
+        "The oak represents strength and foundation - the broadcast source. The elm speaks of community \
+and connection - the network itself. The willow shows flexibility and flow - the adaptability of signals. \
+The ash, finally, represents wisdom and convergence - all signals meeting in understanding. This is the \
+natural flow of communication, ancient and eternal."
+    )
+    .with_choice(DialogChoice::new("Beautiful! I'll observe them for you").goto("quest_accept"))
+    .with_choice(DialogChoice::new("Interesting philosophy").exit()));
+
+    // Quest acceptance
+    elm_tree.insert("quest_accept".to_string(), DialogNode::new(
+        "Thank you, seeker. May your journey bring understanding. Remember: the Ancient Grove lies east \
+from the Museum. EXAMINE each tree's carvings in sequence - oak, elm, willow, ash. When you have seen \
+them all, return and share what you have learned. Safe travels."
+    )
+    .with_choice(DialogChoice::new("I'll return soon").exit()));
+
+    old_elm.dialog_tree = elm_tree;
+    old_elm.created_at = now;
+    npcs.push(old_elm);
+
+    // 4. TINKER BRASS - Workshop District crafting mentor
+    let mut tinker_brass = NpcRecord::new(
+        "tinker_brass",
+        "Tinker Brass",
+        "Master Craftsperson",
+        "A sturdy person of indeterminate age, with muscular arms and clever fingers. They wear heavy \
+work gloves pushed back on their wrists, and a leather apron studded with pockets containing tools of \
+every description. Their eyes are sharp and assessing, always evaluating what things are made of and \
+how they might be improved. A pair of magnifying goggles sits pushed up on their forehead.",
+        "workshop_district",
+    );
+
+    let mut brass_tree = HashMap::new();
+
+    // Greeting
+    brass_tree.insert("greeting".to_string(), DialogNode::new(
+        "Well hello there! Welcome to my workshop. I'm Brass - I build things, fix things, and teach \
+folks how to do both. Always nice to see a new face around here. What brings you down to the district?"
+    )
+    .with_choice(DialogChoice::new("What do you make here?").goto("about_crafting"))
+    .with_choice(DialogChoice::new("Can you teach me to craft?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Just exploring").exit()));
+
+    // About crafting
+    brass_tree.insert("about_crafting".to_string(), DialogNode::new(
+        "Oh, all sorts of things! Signal boosters, antennas, relay equipment - anything the mesh network \
+needs. See that bench over there? That's where the magic happens. It's not really magic though - just \
+understanding materials, having the right tools, and following proven recipes. Anyone can learn it with \
+proper instruction!"
+    )
+    .with_choice(DialogChoice::new("Could you teach me?").goto("quest_offer"))
+    .with_choice(DialogChoice::new("Sounds complicated").exit()));
+
+    // Quest offer
+    brass_tree.insert("quest_offer".to_string(), DialogNode::new(
+        "You want to learn? Excellent! I love teaching enthusiastic students. Tell you what - I'll walk \
+you through making your first piece of equipment. We'll start with something simple but useful: a \
+signal booster. It's the perfect beginner project. You'll need to gather some materials first, though. \
+Are you ready to get started?"
+    )
+    .with_choice(DialogChoice::new("Yes! What do I need?").goto("quest_accept"))
+    .with_choice(DialogChoice::new("What exactly will I learn?").goto("learning_details"))
+    .with_choice(DialogChoice::new("Maybe later").exit()));
+
+    // Learning details
+    brass_tree.insert("learning_details".to_string(), DialogNode::new(
+        "Great question! First, you'll learn about materials - what wire is good for, why we use scrap \
+metal for housing, how components work. Then, you'll practice gathering resources - they're scattered \
+around town. Finally, you'll use the crafting bench to combine materials following a recipe. By the \
+end, you'll have a working signal booster AND the knowledge to craft more items on your own!"
+    )
+    .with_choice(DialogChoice::new("Perfect! Let's do it").goto("quest_accept"))
+    .with_choice(DialogChoice::new("Sounds like a lot").exit()));
+
+    // Quest acceptance
+    brass_tree.insert("quest_accept".to_string(), DialogNode::new(
+        "Wonderful! Here's your first lesson: A signal booster requires one wire spool and one piece \
+of scrap metal. You can find these materials around town - check the tunnel maintenance areas, the \
+workshop district, and other places where equipment is stored. Once you have both items, bring them \
+back here and use the CRAFT command at the bench. I'll be here when you're ready!"
+    )
+    .with_choice(DialogChoice::new("I'll gather the materials now!").exit()));
+
+    tinker_brass.dialog_tree = brass_tree;
+    tinker_brass.created_at = now;
+    npcs.push(tinker_brass);
+
+    npcs
+}
