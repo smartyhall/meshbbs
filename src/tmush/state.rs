@@ -1481,3 +1481,328 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
 
     objects
 }
+
+/// Create content population objects for the expanded world (Phase 1 of content implementation)
+///
+/// This creates interactive objects placed throughout the 15-room world including:
+/// - Rumor Board (relay_tavern): Read-only bulletin board with quest hints
+/// - Northern Array (repeater_tower): Antenna for observation and diagnostics
+/// - Carved Symbols (ancient_grove): Four trees with ancient carvings for puzzle
+/// - Crafting Bench (workshop_district): Shows crafting recipes
+/// - Crafting Materials (various): Wire, scrap metal, components for crafting system
+pub fn create_content_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
+    let mut objects = Vec::new();
+
+    // 1. Rumor Board (relay_tavern) - Social hub information board
+    let rumor_board = ObjectRecord {
+        id: "rumor_board".to_string(),
+        name: "Rumor Board".to_string(),
+        description: "A large cork board mounted on the tavern wall, covered in handwritten notes, \
+sketches of signal patterns, and cryptic messages. Several notes mention 'unusual readings from \
+the Grove' and 'Old Graybeard needs help at the tower'. A faded map shows the Repeater Tower \
+to the north and marks something called 'Ancient Grove' to the east.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 100, // Heavy, wall-mounted
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(rumor_board);
+
+    // 2. Northern Array (repeater_tower) - Directional antenna
+    let northern_array = ObjectRecord {
+        id: "northern_array".to_string(),
+        name: "Northern Array".to_string(),
+        description: "A large directional antenna mounted on a swivel base, pointing north toward \
+Pine Ridge Trail. The antenna has signal strength indicators showing moderate activity. A small \
+panel displays 'NORTH SECTOR: 78% OPTIMAL' in green LEDs. The mounting bolts show signs of recent \
+maintenance.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 200, // Very heavy equipment
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: true, // Can be used for diagnostics
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(northern_array);
+
+    // 3. Carved Symbols - Ancient Grove (4 trees with carvings)
+    
+    // Oak Tree Symbols
+    let carved_symbols_oak = ObjectRecord {
+        id: "carved_symbols_oak".to_string(),
+        name: "Oak Tree Carvings".to_string(),
+        description: "Ancient carvings etched into the massive oak trunk. The primary symbol is a \
+circle with radiating lines - like a sun, or perhaps a signal broadcast pattern. The grooves are \
+worn smooth by centuries of weather, but the design is still clear. Around it are smaller symbols \
+that might be letters or numbers in an old script.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 255, // Immovable (part of tree)
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(carved_symbols_oak);
+
+    // Elm Tree Symbols
+    let carved_symbols_elm = ObjectRecord {
+        id: "carved_symbols_elm".to_string(),
+        name: "Elm Tree Carvings".to_string(),
+        description: "The elm bears a different symbol: three wavy lines stacked vertically, like \
+waves or perhaps signal frequencies. The carving is deeper here, as if the maker wanted to emphasize \
+this one. Moss has grown in the grooves, giving the symbol a green glow in the dappled sunlight.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 255,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(carved_symbols_elm);
+
+    // Willow Tree Symbols
+    let carved_symbols_willow = ObjectRecord {
+        id: "carved_symbols_willow".to_string(),
+        name: "Willow Tree Carvings".to_string(),
+        description: "On the willow's bark: a triangular symbol with a dot at each point, connected \
+by curved lines. It resembles a network topology diagram - nodes and connections. The willow's \
+drooping branches frame the symbol, creating an almost shrine-like atmosphere.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 255,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(carved_symbols_willow);
+
+    // Ash Tree Symbols
+    let carved_symbols_ash = ObjectRecord {
+        id: "carved_symbols_ash".to_string(),
+        name: "Ash Tree Carvings".to_string(),
+        description: "The ash tree shows the final symbol: a spiral that winds inward to a central \
+point. Unlike the others, this one has a small hollow at the spiral's center, as if something was \
+once placed there. The spiral draws your eye inward, making you feel both calm and alert.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 255,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(carved_symbols_ash);
+
+    // 4. Crafting Bench (workshop_district)
+    let crafting_bench = ObjectRecord {
+        id: "crafting_bench".to_string(),
+        name: "Crafting Bench".to_string(),
+        description: "A sturdy workbench made of scarred oak, covered with tools, wire spools, and \
+organized bins of components. A hand-written recipe card is pinned to the wall:\n\n\
+📋 CRAFTING RECIPES:\n\
+  • Signal Booster: 1 wire + 1 scrap metal\n\
+  • Basic Antenna: 2 wire + 1 basic component\n\n\
+The bench has a vice, soldering iron, wire cutters, and various other tools. Everything is neatly \
+organized and well-maintained. A sign reads: 'USE CRAFT <recipe_name> to create items'.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 255,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(crafting_bench);
+
+    // 5. Crafting Materials (takeable items scattered across locations)
+    
+    // Wire Spools (multiple locations)
+    let wire_spool_1 = ObjectRecord {
+        id: "wire_spool_1".to_string(),
+        name: "Wire Spool".to_string(),
+        description: "A small spool of insulated copper wire, perfect for making signal equipment.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(5),
+        value: 5,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(wire_spool_1);
+
+    let wire_spool_2 = ObjectRecord {
+        id: "wire_spool_2".to_string(),
+        name: "Wire Spool".to_string(),
+        description: "A small spool of insulated copper wire, perfect for making signal equipment.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(5),
+        value: 5,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(wire_spool_2);
+
+    // Scrap Metal pieces
+    let scrap_metal_1 = ObjectRecord {
+        id: "scrap_metal_1".to_string(),
+        name: "Scrap Metal".to_string(),
+        description: "A piece of salvaged metal housing from old equipment. Still useful for crafting.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 2,
+        currency_value: CurrencyAmount::decimal(3),
+        value: 3,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(scrap_metal_1);
+
+    let scrap_metal_2 = ObjectRecord {
+        id: "scrap_metal_2".to_string(),
+        name: "Scrap Metal".to_string(),
+        description: "A piece of salvaged metal housing from old equipment. Still useful for crafting.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 2,
+        currency_value: CurrencyAmount::decimal(3),
+        value: 3,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(scrap_metal_2);
+
+    // Basic Components
+    let basic_component_1 = ObjectRecord {
+        id: "basic_component_1".to_string(),
+        name: "Basic Component".to_string(),
+        description: "A salvaged circuit board with useful capacitors and resistors still attached.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(10),
+        value: 10,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(basic_component_1);
+
+    objects
+}
