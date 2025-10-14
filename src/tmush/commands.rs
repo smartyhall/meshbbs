@@ -3125,35 +3125,21 @@ Not fancy, but it gets the job done.",
 
         let username = player.username.clone();
 
-        // Get NPCs in current room
-        let npcs = self.store().get_npcs_in_room(&player.current_room)?;
-
-        if npcs.is_empty() {
-            return Ok("There's nobody here to talk to.".to_string());
-        }
-
-        // Find matching NPC (case-insensitive partial match)
-        let npc = npcs.iter().find(|n| {
-            n.name.to_uppercase().contains(&npc_name) || n.id.to_uppercase().contains(&npc_name)
-        });
-
-        let Some(npc) = npc else {
-            let available: Vec<_> = npcs.iter().map(|n| n.name.as_str()).collect();
-            return Ok(format!(
-                "I don't see '{}' here.\nAvailable: {}",
-                npc_name,
-                available.join(", ")
-            ));
-        };
-
-        // Check if there's an active dialog session (branching dialogue)
-        if let Some(mut dialog_session) = self.store().get_dialog_session(&username, &npc.id)? {
+        // Check if there's already an active dialog session with this NPC ID
+        // This handles the case where we're continuing a conversation via numbered input
+        if let Some(mut dialog_session) = self.store().get_dialog_session(&username, &npc_name)? {
+            // We have an active session - npc_name is actually the npc_id
+            let npc_id = npc_name;
+            
+            // Get the NPC to access its name
+            let npc = self.store().get_npc(&npc_id)?;
+            
             // Player is in an active conversation
             if let Some(ref input) = topic {
                 // Check for special keywords
                 match input.as_str() {
                     "EXIT" | "QUIT" | "BYE" => {
-                        self.store().delete_dialog_session(&username, &npc.id)?;
+                        self.store().delete_dialog_session(&username, &npc_id)?;
                         return Ok(format!("You end your conversation with {}.", npc.name));
                     }
                     "BACK" => {
@@ -3161,7 +3147,7 @@ Not fancy, but it gets the job done.",
                             self.store().put_dialog_session(dialog_session.clone())?;
                             return self.render_dialog_node(
                                 &npc.name,
-                                &npc.id,
+                                &npc_id,
                                 &dialog_session,
                                 &player,
                             );
@@ -3182,7 +3168,7 @@ Not fancy, but it gets the job done.",
                                 .choices
                                 .iter()
                                 .filter(|c| {
-                                    self.evaluate_conditions(&c.conditions, &player, &npc.id)
+                                    self.evaluate_conditions(&c.conditions, &player, &npc_id)
                                         .unwrap_or(false)
                                 })
                                 .collect();
@@ -3191,7 +3177,7 @@ Not fancy, but it gets the job done.",
                                 let choice = visible_choices[choice_num - 1];
 
                                 if choice.exit {
-                                    self.store().delete_dialog_session(&username, &npc.id)?;
+                                    self.store().delete_dialog_session(&username, &npc_id)?;
                                     return Ok(format!(
                                         "You end your conversation with {}.",
                                         npc.name
@@ -3212,7 +3198,7 @@ Not fancy, but it gets the job done.",
                             // Execute actions for the new node
                             let action_messages =
                                 if let Some(node) = dialog_session.get_current_node() {
-                                    self.execute_actions(&node.actions, &username, &npc.id)
+                                    self.execute_actions(&node.actions, &username, &npc_id)
                                         .await?
                                 } else {
                                     Vec::new()
@@ -3222,7 +3208,7 @@ Not fancy, but it gets the job done.",
 
                             let mut response = self.render_dialog_node(
                                 &npc.name,
-                                &npc.id,
+                                &npc_id,
                                 &dialog_session,
                                 &player,
                             )?;
@@ -3235,7 +3221,7 @@ Not fancy, but it gets the job done.",
 
                             return Ok(response);
                         } else {
-                            self.store().delete_dialog_session(&username, &npc.id)?;
+                            self.store().delete_dialog_session(&username, &npc_id)?;
                             return Ok("Conversation error - dialogue tree too deep.".to_string());
                         }
                     }
@@ -3245,8 +3231,30 @@ Not fancy, but it gets the job done.",
             }
 
             // No input or invalid input - show current node again
-            return self.render_dialog_node(&npc.name, &npc.id, &dialog_session, &player);
+            return self.render_dialog_node(&npc.name, &npc_id, &dialog_session, &player);
         }
+
+        // No active session - need to find NPC in room by name
+        // Get NPCs in current room
+        let npcs = self.store().get_npcs_in_room(&player.current_room)?;
+
+        if npcs.is_empty() {
+            return Ok("There's nobody here to talk to.".to_string());
+        }
+
+        // Find matching NPC (case-insensitive partial match)
+        let npc = npcs.iter().find(|n| {
+            n.name.to_uppercase().contains(&npc_name) || n.id.to_uppercase().contains(&npc_name)
+        });
+
+        let Some(npc) = npc else {
+            let available: Vec<_> = npcs.iter().map(|n| n.name.as_str()).collect();
+            return Ok(format!(
+                "I don't see '{}' here.\nAvailable: {}",
+                npc_name,
+                available.join(", ")
+            ));
+        };
 
         // Handle LIST keyword to show available topics
         if let Some(ref t) = topic {
