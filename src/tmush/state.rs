@@ -2135,3 +2135,232 @@ back here and use the CRAFT command at the bench. I'll be here when you're ready
 
     npcs
 }
+
+/// Create content population quests for the expanded world (Phase 3 of content implementation)
+///
+/// This creates 4 quests that provide guided gameplay through the new content:
+/// - tower_diagnostics: Technical puzzle teaching tower navigation
+/// - grove_mystery: Observation puzzle with symbol sequence
+/// - tunnel_salvage: Dark navigation and resource collection
+/// - first_craft: Crafting tutorial quest
+pub fn create_content_quests(now: DateTime<Utc>) -> Vec<crate::tmush::types::QuestRecord> {
+    use crate::tmush::types::{CurrencyAmount, ObjectiveType, QuestObjective, QuestRecord};
+
+    let mut quests = Vec::new();
+
+    // QUEST 1: Tower Diagnostics (Old Graybeard's quest)
+    let mut tower_diagnostics = QuestRecord::new(
+        "tower_diagnostics",
+        "Tower Diagnostics",
+        "Help Old Graybeard perform routine diagnostics on the Repeater Tower. Check the ground-level \
+diagnostic panel, climb to the upper platform, and inspect the northern array antenna.",
+        "old_graybeard",
+        2, // Difficulty: 2/5 (easy-moderate)
+    );
+
+    tower_diagnostics.created_at = now;
+    
+    tower_diagnostics = tower_diagnostics
+        .with_objective(QuestObjective::new(
+            "Talk to Old Graybeard",
+            ObjectiveType::TalkToNpc {
+                npc_id: "old_graybeard".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Use the diagnostic panel",
+            ObjectiveType::UseItem {
+                item_id: "diagnostic_panel".to_string(),
+                target: "self".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Climb to the tower upper platform",
+            ObjectiveType::VisitLocation {
+                room_id: "repeater_upper".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Inspect the northern array",
+            ObjectiveType::UseItem {
+                item_id: "northern_array".to_string(),
+                target: "self".to_string(),
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 5000 }) // $50 or 500cp
+        .with_reward_experience(100)
+        .with_reward_item("signal_booster");
+
+    quests.push(tower_diagnostics);
+
+    // QUEST 2: Grove Mystery (Old Elm's quest)
+    let mut grove_mystery = QuestRecord::new(
+        "grove_mystery",
+        "The Grove Mystery",
+        "Old Elm believes the Ancient Grove holds secrets about connections that predate the mesh network. \
+Visit the grove and examine the four great trees in the proper sequence: oak, elm, willow, ash.",
+        "old_elm",
+        3, // Difficulty: 3/5 (moderate - requires observation)
+    );
+
+    grove_mystery.created_at = now;
+    
+    grove_mystery = grove_mystery
+        .with_prerequisite("tower_diagnostics") // Must complete tower quest first
+        .with_objective(QuestObjective::new(
+            "Talk to Old Elm",
+            ObjectiveType::TalkToNpc {
+                npc_id: "old_elm".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Visit the Ancient Grove",
+            ObjectiveType::VisitLocation {
+                room_id: "ancient_grove".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Examine the oak tree carvings",
+            ObjectiveType::UseItem {
+                item_id: "carved_symbols_oak".to_string(),
+                target: "examine".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Examine the elm tree carvings",
+            ObjectiveType::UseItem {
+                item_id: "carved_symbols_elm".to_string(),
+                target: "examine".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Examine the willow tree carvings",
+            ObjectiveType::UseItem {
+                item_id: "carved_symbols_willow".to_string(),
+                target: "examine".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Examine the ash tree carvings",
+            ObjectiveType::UseItem {
+                item_id: "carved_symbols_ash".to_string(),
+                target: "examine".to_string(),
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 7500 }) // $75 or 750cp
+        .with_reward_experience(150)
+        .with_reward_item("ancient_token");
+
+    quests.push(grove_mystery);
+
+    // QUEST 3: Tunnel Salvage (Exploration quest)
+    let mut tunnel_salvage = QuestRecord::new(
+        "tunnel_salvage",
+        "Tunnel Salvage",
+        "The maintenance tunnels beneath Old Towne are dark and labyrinthine, but they contain valuable \
+salvage materials. Navigate the tunnels and collect useful components for the community.",
+        "mayor_thompson", // Given by Mayor as a community service quest
+        3, // Difficulty: 3/5 (requires light source, navigation)
+    );
+
+    tunnel_salvage.created_at = now;
+    
+    tunnel_salvage = tunnel_salvage
+        .with_objective(QuestObjective::new(
+            "Enter the maintenance tunnels",
+            ObjectiveType::VisitLocation {
+                room_id: "maintenance_tunnels".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Collect wire spools",
+            ObjectiveType::CollectItem {
+                item_id: "wire_spool".to_string(),
+                count: 2,
+            },
+            2,
+        ))
+        .with_objective(QuestObjective::new(
+            "Collect scrap metal",
+            ObjectiveType::CollectItem {
+                item_id: "scrap_metal".to_string(),
+                count: 2,
+            },
+            2,
+        ))
+        .with_objective(QuestObjective::new(
+            "Find a basic component",
+            ObjectiveType::CollectItem {
+                item_id: "basic_component".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 6000 }) // $60 or 600cp
+        .with_reward_experience(125);
+
+    quests.push(tunnel_salvage);
+
+    // QUEST 4: First Craft (Tinker Brass's tutorial quest)
+    let mut first_craft = QuestRecord::new(
+        "first_craft",
+        "Your First Craft",
+        "Tinker Brass wants to teach you the basics of crafting. Gather the materials for a signal booster \
+(1 wire spool + 1 scrap metal) and learn to use the crafting bench in the Workshop District.",
+        "tinker_brass",
+        1, // Difficulty: 1/5 (tutorial quest)
+    );
+
+    first_craft.created_at = now;
+    
+    first_craft = first_craft
+        .with_objective(QuestObjective::new(
+            "Talk to Tinker Brass",
+            ObjectiveType::TalkToNpc {
+                npc_id: "tinker_brass".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Collect a wire spool",
+            ObjectiveType::CollectItem {
+                item_id: "wire_spool".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Collect scrap metal",
+            ObjectiveType::CollectItem {
+                item_id: "scrap_metal".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Visit the Workshop District",
+            ObjectiveType::VisitLocation {
+                room_id: "workshop_district".to_string(),
+            },
+            1,
+        ))
+        // Note: The actual CRAFT command execution will complete this quest
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 2500 }) // $25 or 250cp
+        .with_reward_experience(75)
+        .with_reward_item("crafters_apron"); // Cosmetic reward showing they learned crafting
+
+    quests.push(first_craft);
+
+    quests
+}
