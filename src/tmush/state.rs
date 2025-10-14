@@ -50,14 +50,30 @@ pub fn is_any_landing_room(room_id: &str) -> bool {
 /// Only `REQUIRED_LANDING_LOCATION_ID` and `REQUIRED_START_LOCATION_ID` are
 /// mandatory system requirements. The remaining locations are instructional
 /// set dressing that operators are free to replace with their own layouts.
+///
+/// Total: 15 rooms (7 original + 8 expansion areas)
 pub const OLD_TOWNE_WORLD_ROOM_IDS: &[&str] = &[
+    // Core system rooms (required)
     REQUIRED_LANDING_LOCATION_ID,
     REQUIRED_START_LOCATION_ID,
+    // Original locations (government, culture, commerce)
     "city_hall_lobby",
     "mayor_office",
     "mesh_museum",
     "north_gate",
     "south_market",
+    // North expansion (wilderness, technology)
+    "pine_ridge_trail",
+    "repeater_tower",
+    // West expansion (social, residential)
+    "relay_tavern",
+    "west_residential",
+    // East expansion (nature, exploration)
+    "forest_path",
+    "ancient_grove",
+    // South expansion (underground, crafting)
+    "maintenance_tunnels",
+    "workshop_district",
 ];
 
 /// Build the canonical "Old Towne Mesh" starter rooms that Phase 1 seeds into the database.
@@ -94,8 +110,9 @@ quietly while townsfolk trade stories about far-off packet relays.",
     .with_created_at(now)
     .with_exit(Direction::North, "city_hall_lobby")
     .with_exit(Direction::East, "mesh_museum")
-    .with_exit(Direction::West, "north_gate")
+    .with_exit(Direction::West, "west_residential") // Link to residential
     .with_exit(Direction::South, "south_market")
+    .with_exit(Direction::Down, "maintenance_tunnels") // Access to underground
     .with_capacity(25)
     .with_flag(RoomFlag::Safe)
     .with_flag(RoomFlag::Indoor);
@@ -140,7 +157,9 @@ Interactive exhibits let visitors replay famous packet traces.",
     )
     .with_created_at(now)
     .with_exit(Direction::West, REQUIRED_START_LOCATION_ID)
-    .with_exit(Direction::North, "north_gate")
+    .with_exit(Direction::West, "city_hall_lobby") // Keep city hall connection
+    .with_exit(Direction::North, "forest_path") // Link to nature areas
+    .with_exit(Direction::South, "north_gate") // Keep existing
     .with_flag(RoomFlag::Indoor)
     .with_flag(RoomFlag::QuestLocation);
     rooms.push(museum);
@@ -153,9 +172,10 @@ Interactive exhibits let visitors replay famous packet traces.",
 path a narrow trail promises adventure past the ridge.",
     )
     .with_created_at(now)
+    .with_exit(Direction::North, "pine_ridge_trail") // Link to wilderness
+    .with_exit(Direction::West, "relay_tavern") // Link to tavern
     .with_exit(Direction::South, REQUIRED_START_LOCATION_ID)
     .with_exit(Direction::East, "mesh_museum")
-    .with_flag(RoomFlag::PlayerCreated)
     .with_flag(RoomFlag::QuestLocation);
     rooms.push(north_gate);
 
@@ -168,10 +188,190 @@ fresh bread mingles with solder flux drifting from a repair booth.",
     )
     .with_created_at(now)
     .with_exit(Direction::North, REQUIRED_START_LOCATION_ID)
+    .with_exit(Direction::South, "workshop_district") // Link to crafting area
     .with_flag(RoomFlag::Shop)
     .with_flag(RoomFlag::Indoor)
     .with_capacity(18);
     rooms.push(south_market);
+
+    // ========================================================================
+    // EXPANSION AREAS - Educational examples for world builders
+    // ========================================================================
+    //
+    // These rooms demonstrate various world design patterns:
+    // - Transition areas that connect zones (pine_ridge_trail)
+    // - Quest hubs with puzzles (repeater_tower)
+    // - Social gathering spots (relay_tavern)
+    // - Atmospheric/ambient locations (west_residential)
+    // - Nature areas for companions (forest_path, ancient_grove)
+    // - Dark exploration zones (maintenance_tunnels)
+    // - Crafting/commerce extensions (workshop_district)
+
+    // NORTH EXPANSION: Wilderness & Technology
+    // Design pattern: Gateway → Trail → Destination
+    // This creates a sense of journey and discovery
+
+    // Connect North Gate to the wilderness areas
+    // World builders: Use transition rooms to separate themed zones
+    let pine_ridge = RoomRecord::world(
+        "pine_ridge_trail",
+        "Pine Ridge Trail",
+        "A winding forest trail lined with towering pines.",
+        "The packed earth trail winds upward through ancient pines. Sunlight filters through \
+the canopy, dappling the ground with moving shadows. To the north, you can see a tall \
+repeater tower rising above the treeline. The sounds of town fade behind you to the south.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::South, "north_gate")
+    .with_exit(Direction::North, "repeater_tower")
+    .with_exit(Direction::East, "forest_path")
+    .with_flag(RoomFlag::Safe) // Transition areas often safe
+    .with_capacity(10);
+    rooms.push(pine_ridge);
+
+    // Quest hub with technical theme and puzzle potential
+    // World builders: QuestLocation flag marks important areas
+    let repeater_tower = RoomRecord::world(
+        "repeater_tower",
+        "Repeater Tower",
+        "A tall communications tower bristling with antennas and cables.",
+        "The mesh repeater tower stands three stories tall, its steel frame humming with radio \
+activity. Solar panels angle toward the sun while wind turbines spin lazily overhead. A \
+ladder leads up to the maintenance platform. Diagnostic panels blink with network status \
+indicators. This relay node connects Old Towne to distant mesh communities.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::South, "pine_ridge_trail")
+    .with_exit(Direction::Up, "repeater_tower") // Self-reference for climb puzzle
+    .with_flag(RoomFlag::QuestLocation)
+    .with_capacity(5);
+    rooms.push(repeater_tower);
+
+    // WEST EXPANSION: Social & Residential
+    // Design pattern: Create character and atmosphere through description
+
+    // Social hub - tavern/pub gathering place
+    // World builders: Social spaces benefit from Safe flag and higher capacity
+    let tavern = RoomRecord::world(
+        "relay_tavern",
+        "The Relay Tavern",
+        "A cozy tavern where mesh operators swap stories over drinks.",
+        "Warm firelight flickers across wooden tables where locals gather to share news from \
+distant nodes. The bar is carved from a single massive log, its surface worn smooth by \
+countless elbows. Network topology maps cover one wall, marked with routes and relay \
+points. The air smells of fresh bread and pine resin. This is where you hear the latest \
+gossip and rumors.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::East, "north_gate")
+    .with_exit(Direction::South, "west_residential")
+    .with_flag(RoomFlag::Safe)
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(20); // Social hubs need room for groups
+    rooms.push(tavern);
+
+    // Residential area with ambient NPCs
+    // World builders: These areas provide context and immersion
+    let west_lane = RoomRecord::world(
+        "west_residential",
+        "West Residential Lane",
+        "A quiet lane lined with modest homes and small gardens.",
+        "Comfortable homes line this peaceful street, their gardens bursting with vegetables \
+and wildflowers. Solar panels on every roof feed power back to the mesh. Children's \
+laughter echoes from a nearby yard. Mesh antennas sprout from rooftops like mechanical \
+flowers. Residents nod friendly greetings as they tend their gardens or repair equipment.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::North, "relay_tavern")
+    .with_exit(Direction::East, REQUIRED_START_LOCATION_ID)
+    .with_flag(RoomFlag::Safe)
+    .with_capacity(15);
+    rooms.push(west_lane);
+
+    // EAST EXPANSION: Nature & Exploration  
+    // Design pattern: Natural areas for companion spawning and peaceful exploration
+
+    // Nature trail for companion encounters
+    // World builders: Outdoor areas good for companion/creature spawns
+    let forest_path = RoomRecord::world(
+        "forest_path",
+        "Forest Path",
+        "A narrow path meanders through dense woods.",
+        "The forest path twists between massive oaks and maples. Birdsong fills the air, \
+and deer tracks mark the soft earth. Sunlight breaks through the canopy in golden shafts. \
+This peaceful place seems untouched by technology - nature holds dominion here. You might \
+encounter wildlife: a loyal hound, a gentle horse, or perhaps a shadow cat.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::West, "pine_ridge_trail")
+    .with_exit(Direction::East, "ancient_grove")
+    .with_exit(Direction::South, "mesh_museum")
+    .with_flag(RoomFlag::Safe)
+    .with_capacity(8);
+    rooms.push(forest_path);
+
+    // Destination location with quest potential
+    // World builders: End-of-path locations work well for quest objectives
+    let ancient_grove = RoomRecord::world(
+        "ancient_grove",
+        "Ancient Grove",
+        "A mystical grove of towering ancient trees.",
+        "Enormous trees form a natural cathedral here, their trunks wider than houses. Moss \
+carpets the ground, and the air shimmers with an almost magical quality. This grove has \
+stood for centuries, predating the mesh network by generations. Strange symbols are carved \
+into some tree trunks - remnants of old rituals? The peaceful energy here seems to \
+strengthen and restore those who visit.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::West, "forest_path")
+    .with_flag(RoomFlag::Safe)
+    .with_flag(RoomFlag::QuestLocation)
+    .with_capacity(6);
+    rooms.push(ancient_grove);
+
+    // SOUTH EXPANSION: Underground & Crafting
+    // Design pattern: Dark/dangerous areas contrast with safe zones above
+
+    // Dark exploration area - requires light source
+    // World builders: Dark flag creates atmospheric exploration challenges
+    let tunnels = RoomRecord::world(
+        "maintenance_tunnels",
+        "Maintenance Tunnels",
+        "Dimly lit tunnels beneath the town streets.",
+        "The underground maintenance tunnels carry mesh cables and power conduits beneath \
+Old Towne. Emergency lights provide minimal illumination, casting eerie shadows. Water \
+drips somewhere in the darkness. These tunnels connect to various parts of town - useful \
+for quick travel if you don't mind the claustrophobic atmosphere and occasional strange \
+echoes. Something scurries in the shadows...",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::North, REQUIRED_START_LOCATION_ID)
+    .with_exit(Direction::Down, "maintenance_tunnels") // Loop for maze-like feel
+    .with_exit(Direction::East, "workshop_district")
+    .with_flag(RoomFlag::Dark) // Requires light source
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(5);
+    rooms.push(tunnels);
+
+    // Crafting and commerce hub
+    // World builders: Shop flag enables vendor NPCs and trading
+    let workshop = RoomRecord::world(
+        "workshop_district",
+        "Workshop District",
+        "A maze of workshops and tool sheds filled with industrious activity.",
+        "The workshop district buzzes with activity. Craftspeople bend over workbenches, \
+soldering components and assembling modules. The air smells of hot metal and machine oil. \
+Shelves overflow with parts: resistors, capacitors, antennas, cables. A bulletin board \
+advertises custom builds and repair services. This is where mesh hardware is born, \
+modified, and resurrected.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::West, "maintenance_tunnels")
+    .with_exit(Direction::North, "south_market")
+    .with_flag(RoomFlag::Shop) // Commerce area
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(12);
+    rooms.push(workshop);
 
     rooms
 }
