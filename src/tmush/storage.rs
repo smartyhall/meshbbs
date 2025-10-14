@@ -3926,7 +3926,11 @@ mod tests {
         let count = store.seed_quests_if_needed().expect("seed check");
         assert_eq!(count, 0, "should not reseed when quests already exist");
         let quest_ids = store.list_quest_ids().expect("list quests");
-        assert_eq!(quest_ids.len(), 7, "should still have 7 quests (3 starter + 4 content)");
+        assert_eq!(
+            quest_ids.len(),
+            11,
+            "should still have 11 quests (3 starter + 4 original content + 4 Phase 4 quests)"
+        );
     }
 
     #[test]

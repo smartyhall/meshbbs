@@ -395,6 +395,135 @@ modified, and resurrected.",
     .with_capacity(12);
     rooms.push(workshop);
 
+    // ==================== PHASE 4 QUEST ROOMS ====================
+
+    // CIPHER QUEST LOCATION (Phase 4.2)
+    let cipher_chamber = RoomRecord::world(
+        "cipher_chamber",
+        "Cipher Chamber",
+        "An ancient stone chamber with four seasonal glyphs.",
+        "This circular chamber appears to be a place of learning from ages past. Four stone tablets \
+stand at the cardinal directions, each carved with distinct seasonal symbols. The floor shows a faded \
+mosaic of interconnected circles - perhaps an ancient visualization of communication networks. The air \
+here feels heavy with knowledge, as if the stones themselves remember important secrets.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::South, "ancient_grove") // Accessible from ancient grove
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Safe)
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(4);
+    rooms.push(cipher_chamber);
+
+    // DARK NAVIGATION QUEST LOCATIONS (Phase 4.3)
+    
+    let deep_caverns = RoomRecord::world(
+        "deep_caverns_entrance",
+        "Deep Caverns Entrance",
+        "The entrance to pitch-black caverns beneath Old Towne.",
+        "The tunnel mouth yawns before you, descending into absolute darkness. Without a light source, \
+you can see nothing beyond the first few feet. Cold air flows up from below, carrying the scent of \
+damp stone and ancient earth. Rough-hewn steps lead downward into the unknown. This place has been \
+sealed for decades - few know it even exists.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::Up, "maintenance_tunnels") // Access from maintenance tunnels
+    .with_exit(Direction::Down, "sunken_chamber")
+    .with_flag(RoomFlag::Dark) // Requires light source
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(3);
+    rooms.push(deep_caverns);
+
+    let sunken_chamber = RoomRecord::world(
+        "sunken_chamber",
+        "Sunken Chamber",
+        "A flooded chamber deep underground, utterly dark without light.",
+        "Your light reflects off standing water covering the floor. The chamber is partially flooded, \
+with water reaching mid-calf. Stalactites hang from the ceiling like ancient teeth. The walls show \
+tool marks - this was carved by hand, long ago. A strange echo makes it hard to judge the chamber's \
+true size. To the east, a narrow passage continues deeper.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::Up, "deep_caverns_entrance")
+    .with_exit(Direction::East, "hidden_vault")
+    .with_flag(RoomFlag::Dark)
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(3);
+    rooms.push(sunken_chamber);
+
+    let hidden_vault = RoomRecord::world(
+        "hidden_vault",
+        "Hidden Vault",
+        "A secret vault hidden in the deepest darkness, containing ancient artifacts.",
+        "Your light reveals a treasure trove of pre-mesh artifacts. Metal shelves line the walls, \
+holding ancient communication equipment: vacuum tubes, crystal sets, relay switches, and things you \
+can't even identify. Everything is preserved in the constant temperature and dry air. A workbench \
+holds tools and schematics. Someone used this as a workshop, then sealed it away. Why?",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::West, "sunken_chamber")
+    .with_flag(RoomFlag::Dark)
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Safe) // Once you reach it, it's safe
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(2);
+    rooms.push(hidden_vault);
+
+    // EPIC QUEST LOCATIONS (Phase 4.2-4.4 Combined)
+
+    let forgotten_ruins = RoomRecord::world(
+        "forgotten_ruins_entrance",
+        "Forgotten Ruins Entrance",
+        "Ancient ruins hidden in the wilderness beyond Old Towne.",
+        "Crumbling stone walls emerge from thick vegetation. This place predates the mesh by centuries, \
+possibly millennia. The entrance is flanked by four stone pillars, each bearing a distinct glyph. \
+Vines have overtaken much of the structure, but the stonework beneath is solid. A sense of anticipation \
+hangs in the air - this place has been waiting to be rediscovered.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::South, "forest_path") // Beyond the ancient grove
+    .with_exit(Direction::East, "ruins_dark_passage")
+    .with_flag(RoomFlag::QuestLocation)
+    .with_capacity(4);
+    rooms.push(forgotten_ruins);
+
+    let ruins_passage = RoomRecord::world(
+        "ruins_dark_passage",
+        "Dark Passage",
+        "A pitch-black passage through the ancient ruins.",
+        "Without light, you'd be completely lost here. The passage twists through solid rock, showing \
+precision engineering that surpasses modern techniques. The walls are smooth as glass in places, \
+rough-hewn in others. Symbols are carved at intervals - way markers? Warnings? Instructions? \
+The passage opens into a larger chamber ahead.",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::West, "forgotten_ruins_entrance")
+    .with_exit(Direction::North, "artifact_chamber")
+    .with_flag(RoomFlag::Dark)
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(3);
+    rooms.push(ruins_passage);
+
+    let artifact_chamber = RoomRecord::world(
+        "artifact_chamber",
+        "Artifact Chamber",
+        "The inner sanctum containing the legendary lost artifact.",
+        "The chamber's centerpiece is a raised platform holding a sophisticated device under a crystal \
+dome. Even centuries later, indicator lights still glow faintly. This is the legendary communication \
+artifact - a masterwork combining technology and artistry. Inscriptions cover the walls in multiple \
+languages, all saying the same thing: 'To connect is to understand. To understand is to unite.'",
+    )
+    .with_created_at(now)
+    .with_exit(Direction::South, "ruins_dark_passage")
+    .with_flag(RoomFlag::QuestLocation)
+    .with_flag(RoomFlag::Safe)
+    .with_flag(RoomFlag::Indoor)
+    .with_capacity(2);
+    rooms.push(artifact_chamber);
+
     rooms
 }
 
@@ -1880,6 +2009,337 @@ shadows on nearby surfaces. Essential equipment for venturing into the maintenan
     };
     objects.push(torch);
 
+    // ==================== PHASE 4 QUEST OBJECTS ====================
+
+    // CIPHER QUEST SYMBOLS (Phase 4.2) - Must be examined in order: Spring, Summer, Autumn, Winter
+    
+    let cipher_spring = ObjectRecord {
+        id: "cipher_spring".to_string(),
+        name: "Spring Glyph".to_string(),
+        description: "A stone tablet carved with an intricate symbol representing spring: sprouting \
+seedlings emerging from soil, surrounded by dewdrops and young leaves. The carving style matches \
+ancient pre-mesh artifacts. Small text below reads: 'GROWTH - The First Signal'.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 50,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(cipher_spring);
+
+    let cipher_summer = ObjectRecord {
+        id: "cipher_summer".to_string(),
+        name: "Summer Glyph".to_string(),
+        description: "A stone tablet showing the summer symbol: a blazing sun with strong, bold rays \
+reaching in all directions. The carving depicts maximum energy and reach. Text reads: 'STRENGTH - \
+The Broadcast Peak'.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 50,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(cipher_summer);
+
+    let cipher_autumn = ObjectRecord {
+        id: "cipher_autumn".to_string(),
+        name: "Autumn Glyph".to_string(),
+        description: "The autumn tablet features falling leaves arranged in a spiral pattern, \
+suggesting transformation and change. The leaves seem to form data packets flowing through a network. \
+Text reads: 'CHANGE - The Signal Adapts'.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 50,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(cipher_autumn);
+
+    let cipher_winter = ObjectRecord {
+        id: "cipher_winter".to_string(),
+        name: "Winter Glyph".to_string(),
+        description: "The final tablet shows a snowflake's perfect geometry - six symmetric branches, \
+each subdividing into smaller patterns. Beneath it: bare trees storing energy underground. Text reads: \
+'REST - The Silent Network Awaits'.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 50,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(cipher_winter);
+
+    // LOST ARTIFACT QUEST GLYPHS (Phase 4.2 - Epic Quest)
+    
+    let ruins_glyph_alpha = ObjectRecord {
+        id: "ruins_glyph_alpha".to_string(),
+        name: "Alpha Glyph".to_string(),
+        description: "A weathered stone pillar bearing the first glyph: a simple upward arrow with \
+three horizontal lines beneath it. This represents 'TRANSMIT'. The stone is worn but the carving \
+remains deep and clear.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 100,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(ruins_glyph_alpha);
+
+    let ruins_glyph_beta = ObjectRecord {
+        id: "ruins_glyph_beta".to_string(),
+        name: "Beta Glyph".to_string(),
+        description: "The second pillar shows a circle with radiating waves - the universal symbol \
+for 'RECEIVE'. Moss grows in the carved grooves, giving it an eerie green glow in dim light.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 100,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(ruins_glyph_beta);
+
+    let ruins_glyph_gamma = ObjectRecord {
+        id: "ruins_glyph_gamma".to_string(),
+        name: "Gamma Glyph".to_string(),
+        description: "The third glyph depicts two circles connected by a curved line - 'RELAY'. \
+This symbol appears on ancient communication equipment throughout the mesh.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 100,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(ruins_glyph_gamma);
+
+    let ruins_glyph_delta = ObjectRecord {
+        id: "ruins_glyph_delta".to_string(),
+        name: "Delta Glyph".to_string(),
+        description: "The final pillar bears a complex mandala: multiple circles interconnected in a \
+perfect network pattern. This is 'UNITY' - the goal of all communication. The carving is so intricate \
+it seems to shimmer as you examine it.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 100,
+        currency_value: CurrencyAmount::default(),
+        value: 0,
+        takeable: false,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(ruins_glyph_delta);
+
+    // LIGHT SOURCE OBJECTS (Phase 4.3 - Dark Navigation)
+
+    let lantern = ObjectRecord {
+        id: "lantern".to_string(),
+        name: "LED Lantern".to_string(),
+        description: "A modern LED lantern powered by a small battery pack. Provides bright, steady \
+illumination for navigating dark spaces. Much more reliable than torches and won't run out during \
+exploration. Has adjustable brightness settings.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 2,
+        currency_value: CurrencyAmount::decimal(50),
+        value: 50,
+        takeable: true,
+        usable: true,
+        actions: std::collections::HashMap::new(),
+        flags: vec![ObjectFlag::LightSource],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(lantern);
+
+    let glowstick = ObjectRecord {
+        id: "glowstick".to_string(),
+        name: "Chemical Glowstick".to_string(),
+        description: "A bendable plastic tube containing chemical compounds that glow when activated. \
+Provides soft green illumination for several hours. Not as bright as a lantern, but lightweight and \
+reliable. Commonly used by tunnel maintenance crews.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(5),
+        value: 5,
+        takeable: true,
+        usable: true,
+        actions: std::collections::HashMap::new(),
+        flags: vec![ObjectFlag::LightSource],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(glowstick);
+
+    // CRAFTING MATERIALS & RECIPES (Phase 4.4)
+    
+    // Additional crafting components beyond basic ones already defined
+    let crystal_oscillator = ObjectRecord {
+        id: "crystal_oscillator".to_string(),
+        name: "Crystal Oscillator".to_string(),
+        description: "A precision electronic component - a small quartz crystal that oscillates at \
+an exact frequency. Essential for advanced signal processing equipment. Rare and valuable.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(200),
+        value: 200,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(crystal_oscillator);
+
+    let power_cell = ObjectRecord {
+        id: "power_cell".to_string(),
+        name: "Power Cell".to_string(),
+        description: "A rechargeable battery cell used to power portable equipment. Still holds a \
+charge. Can be used in crafting or sold for credits.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 2,
+        currency_value: CurrencyAmount::decimal(75),
+        value: 75,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(power_cell);
+
+    let circuit_board = ObjectRecord {
+        id: "circuit_board".to_string(),
+        name: "Circuit Board".to_string(),
+        description: "A bare printed circuit board with copper traces ready for component placement. \
+Used in advanced crafting projects. The traces form an elegant pattern of interconnected pathways.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(100),
+        value: 100,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(circuit_board);
+
     objects
 }
 
@@ -2438,5 +2898,324 @@ salvage materials. Navigate the tunnels and collect useful components for the co
 
     quests.push(first_craft);
 
+    // ==================== PHASE 4 QUESTS ====================
+    // These quests specifically use Phase 4.2-4.4 mechanics
+
+    // QUEST 5: The Cipher (Phase 4.2 - Symbol Sequence Quest)
+    let mut the_cipher = QuestRecord::new(
+        "the_cipher",
+        "The Cipher",
+        "An ancient message has been discovered, encoded in symbols scattered throughout the ancient ruins. \
+Examine the symbols in the correct sequence to unlock their meaning. Legends say the order follows \
+the cycle of seasons: Spring (growth), Summer (strength), Autumn (change), Winter (rest).",
+        "old_elm",
+        4, // Difficulty: 4/5 (requires careful observation and correct sequence)
+    );
+
+    the_cipher.created_at = now;
+    
+    the_cipher = the_cipher
+        .with_prerequisite("grove_mystery") // Must complete grove mystery first
+        .with_objective(QuestObjective::new(
+            "Talk to Old Elm about the cipher",
+            ObjectiveType::TalkToNpc {
+                npc_id: "old_elm".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Examine symbols in correct sequence",
+            ObjectiveType::ExamineSequence {
+                object_ids: vec![
+                    "cipher_spring".to_string(),
+                    "cipher_summer".to_string(),
+                    "cipher_autumn".to_string(),
+                    "cipher_winter".to_string(),
+                ],
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Return to Old Elm with your discovery",
+            ObjectiveType::TalkToNpc {
+                npc_id: "old_elm".to_string(),
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 10000 }) // $100 or 1000cp
+        .with_reward_experience(250)
+        .with_reward_item("decoder_lens"); // Special item for future puzzles
+
+    quests.push(the_cipher);
+
+    // QUEST 6: Into the Depths (Phase 4.3 - Dark Navigation Quest)
+    let mut into_the_depths = QuestRecord::new(
+        "into_the_depths",
+        "Into the Depths",
+        "The Deep Caverns beneath Old Towne have never been fully explored. They're pitch black - you'll \
+need a light source to navigate safely. Rumors speak of a hidden chamber containing pre-mesh artifacts.",
+        "old_graybeard",
+        4, // Difficulty: 4/5 (requires light source, navigation in darkness)
+    );
+
+    into_the_depths.created_at = now;
+    
+    into_the_depths = into_the_depths
+        .with_prerequisite("tunnel_salvage") // Must complete tunnel salvage first
+        .with_objective(QuestObjective::new(
+            "Obtain a light source",
+            ObjectiveType::ObtainLightSource,
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Enter the Deep Caverns",
+            ObjectiveType::NavigateDarkRoom {
+                room_id: "deep_caverns_entrance".to_string(),
+                requires_light: true,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Navigate to the Sunken Chamber",
+            ObjectiveType::NavigateDarkRoom {
+                room_id: "sunken_chamber".to_string(),
+                requires_light: true,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Discover the hidden vault",
+            ObjectiveType::NavigateDarkRoom {
+                room_id: "hidden_vault".to_string(),
+                requires_light: true,
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 12000 }) // $120 or 1200cp
+        .with_reward_experience(300)
+        .with_reward_item("ancient_relay_core"); // Rare crafting material
+
+    quests.push(into_the_depths);
+
+    // QUEST 7: Master Artisan (Phase 4.4 - Crafting Chain Quest)
+    let mut master_artisan = QuestRecord::new(
+        "master_artisan",
+        "Master Artisan",
+        "Tinker Brass believes you're ready for advanced crafting techniques. Prove your skill by crafting \
+multiple items from scratch: an antenna, a relay module, and finally a complex signal array.",
+        "tinker_brass",
+        5, // Difficulty: 5/5 (requires extensive material gathering and crafting)
+    );
+
+    master_artisan.created_at = now;
+    
+    master_artisan = master_artisan
+        .with_prerequisite("first_craft") // Must complete basic crafting first
+        .with_objective(QuestObjective::new(
+            "Craft a basic antenna",
+            ObjectiveType::CraftItem {
+                item_id: "basic_antenna".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Craft a relay module",
+            ObjectiveType::CraftItem {
+                item_id: "relay_module".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Craft an advanced signal array",
+            ObjectiveType::CraftItem {
+                item_id: "signal_array_advanced".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 15000 }) // $150 or 1500cp
+        .with_reward_experience(400)
+        .with_reward_item("master_crafter_badge"); // Title unlock item
+
+    quests.push(master_artisan);
+
+    // QUEST 8: The Lost Artifact (Combined Phase 4 Mechanics - Epic Quest)
+    let mut the_lost_artifact = QuestRecord::new(
+        "the_lost_artifact",
+        "The Lost Artifact",
+        "Legends tell of an ancient communication device hidden in the Forgotten Ruins. To reach it, you must: \
+decipher the entrance symbols, navigate the dark passages with a light source, and craft a special key to \
+unlock the artifact chamber. This is the ultimate test of your skills.",
+        "old_elm",
+        5, // Difficulty: 5/5 (requires all Phase 4 mechanics)
+    );
+
+    the_lost_artifact.created_at = now;
+    
+    the_lost_artifact = the_lost_artifact
+        .with_prerequisite("the_cipher") // Must complete cipher quest
+        .with_prerequisite("into_the_depths") // Must complete dark navigation quest
+        .with_prerequisite("master_artisan") // Must complete crafting mastery
+        .with_objective(QuestObjective::new(
+            "Find the Forgotten Ruins entrance",
+            ObjectiveType::VisitLocation {
+                room_id: "forgotten_ruins_entrance".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Decipher the entrance sequence",
+            ObjectiveType::ExamineSequence {
+                object_ids: vec![
+                    "ruins_glyph_alpha".to_string(),
+                    "ruins_glyph_beta".to_string(),
+                    "ruins_glyph_gamma".to_string(),
+                    "ruins_glyph_delta".to_string(),
+                ],
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Navigate the Dark Passage",
+            ObjectiveType::NavigateDarkRoom {
+                room_id: "ruins_dark_passage".to_string(),
+                requires_light: true,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Craft the Artifact Chamber Key",
+            ObjectiveType::CraftItem {
+                item_id: "artifact_chamber_key".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Enter the Artifact Chamber",
+            ObjectiveType::VisitLocation {
+                room_id: "artifact_chamber".to_string(),
+            },
+            1,
+        ))
+        .with_objective(QuestObjective::new(
+            "Collect the Ancient Communication Device",
+            ObjectiveType::CollectItem {
+                item_id: "ancient_comm_device".to_string(),
+                count: 1,
+            },
+            1,
+        ))
+        .with_reward_currency(CurrencyAmount::Decimal { minor_units: 50000 }) // $500 or 5000cp - epic reward
+        .with_reward_experience(1000)
+        .with_reward_item("legendary_mesh_artifact"); // Legendary item
+
+    quests.push(the_lost_artifact);
+
     quests
+}
+
+/// Create faction definitions for the reputation system (Phase 5)
+pub fn create_factions() -> Vec<crate::tmush::types::FactionRecord> {
+    use crate::tmush::types::FactionRecord;
+    
+    let mut factions = Vec::new();
+
+    // FACTION 1: Old Towne Citizens
+    let old_towne = FactionRecord::new(
+        "old_towne",
+        "Old Towne Citizens",
+        "The community of Old Towne Mesh. Gaining their trust grants access to community resources, \
+housing discounts, and insider information. They value reliability and community service.",
+    )
+    .with_npc("mayor_thompson")
+    .with_npc("city_clerk")
+    .with_quest("welcome_towne")
+    .with_quest("market_exploration")
+    .with_benefit("Friendly", "10% discount at all Old Towne shops")
+    .with_benefit("Honored", "Access to community storage, priority housing")
+    .with_benefit("Revered", "Old Towne Ambassador title, town hall access");
+
+    factions.push(old_towne);
+
+    // FACTION 2: Tinkers Guild
+    let tinkers = FactionRecord::new(
+        "tinkers",
+        "Tinkers Guild",
+        "Master craftspeople and engineers who build and maintain the mesh network. Members gain access \
+to advanced crafting recipes, rare materials, and technical knowledge.",
+    )
+    .with_npc("tinker_brass")
+    .with_npc("old_graybeard")
+    .with_quest("first_craft")
+    .with_quest("tower_diagnostics")
+    .with_quest("master_artisan")
+    .with_benefit("Friendly", "Access to basic crafting recipes")
+    .with_benefit("Honored", "Advanced crafting recipes, 20% material discount")
+    .with_benefit("Revered", "Master Crafter title, legendary recipes, workshop access");
+
+    factions.push(tinkers);
+
+    // FACTION 3: Wanderers League
+    let wanderers = FactionRecord::new(
+        "wanderers",
+        "Wanderers League",
+        "Explorers, adventurers, and those who map the unknown. They reward discovery and bravery \
+with maps, equipment, and tales of distant places.",
+    )
+    .with_quest("network_explorer")
+    .with_quest("tunnel_salvage")
+    .with_quest("into_the_depths")
+    .with_benefit("Friendly", "Access to exploration maps, 10% faster travel")
+    .with_benefit("Honored", "Pathfinder title, rare light sources, danger sense")
+    .with_benefit("Revered", "Legendary Explorer title, teleportation access");
+
+    factions.push(wanderers);
+
+    // FACTION 4: Merchants Coalition
+    let traders = FactionRecord::new(
+        "traders",
+        "Merchants Coalition",
+        "The economic backbone of Old Towne. Traders value commerce and fair dealing. Good standing \
+grants better prices, rare goods access, and trading privileges.",
+    )
+    .with_benefit("Friendly", "5% better buying/selling prices")
+    .with_benefit("Honored", "15% better prices, access to rare item auctions")
+    .with_benefit("Revered", "Merchant Prince title, private trading network");
+
+    factions.push(traders);
+
+    // FACTION 5: Scholars Circle
+    let scholars = FactionRecord::new(
+        "scholars",
+        "Scholars Circle",
+        "Keepers of history and knowledge. They study the old world and seek to understand the mysteries \
+of the ancient communication networks. Rewards include rare lore, decryption keys, and historical artifacts.",
+    )
+    .with_npc("old_elm")
+    .with_quest("grove_mystery")
+    .with_quest("the_cipher")
+    .with_quest("the_lost_artifact")
+    .with_benefit("Friendly", "Access to library, basic lore knowledge")
+    .with_benefit("Honored", "Lorekeeper title, cipher solving bonuses, artifact appraisal")
+    .with_benefit("Revered", "Master Scholar title, access to restricted archives");
+
+    factions.push(scholars);
+
+    // FACTION 6: Underground Network
+    let underground = FactionRecord::new(
+        "underground",
+        "Underground Network",
+        "A secretive group operating in the tunnels and shadows. They deal in information, black market \
+goods, and alternative solutions. Gaining their trust is difficult but rewarding.",
+    )
+    .with_benefit("Friendly", "Access to tunnel shortcuts, black market contacts")
+    .with_benefit("Honored", "Shadow Runner title, stealth bonuses, information network")
+    .with_benefit("Revered", "Underground Legend title, master fence access, safe houses");
+
+    factions.push(underground);
+
+    factions
 }

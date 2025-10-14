@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Phase 4 Quest Content & Phase 5 Features
+
+#### Quest System Enhancements
+- **New ObjectiveType variants** for Phase 4 puzzle mechanics:
+  - `ExamineSequence`: Track players examining objects in correct order (Phase 4.2 symbol puzzles)
+  - `NavigateDarkRoom`: Require light sources for dark navigation (Phase 4.3)
+  - `CraftItem`: Track crafting specific items (Phase 4.4)
+  - `ObtainLightSource`: Require light source in inventory
+
+#### Phase 4 Quests (4 new quests)
+- **The Cipher** (difficulty 4): Examine seasonal symbols in correct sequence, rewards decoder lens
+- **Into the Depths** (difficulty 4): Navigate dark caverns with light source, rewards ancient relay core
+- **Master Artisan** (difficulty 5): Craft antenna, relay module, and advanced signal array, rewards master crafter badge
+- **The Lost Artifact** (difficulty 5): Epic quest combining all Phase 4 mechanics - symbol sequences, dark navigation, and crafting special key
+
+#### Phase 4 Rooms (7 new locations)
+- **Cipher Chamber**: Ancient stone chamber with four seasonal glyphs
+- **Deep Caverns Entrance**: Pitch-black entrance to underground caverns
+- **Sunken Chamber**: Flooded chamber requiring light source navigation
+- **Hidden Vault**: Secret vault containing ancient artifacts
+- **Forgotten Ruins Entrance**: Ancient ruins with glyph pillars
+- **Dark Passage**: Twisting passage through ruins requiring light
+- **Artifact Chamber**: Inner sanctum with legendary communication device
+
+#### Phase 4 Objects (20+ new objects)
+- **Cipher Glyphs**: Spring, Summer, Autumn, Winter symbol tablets for puzzle quests
+- **Ruins Glyphs**: Alpha, Beta, Gamma, Delta pillars for epic quest
+- **Light Sources**: LED lantern, chemical glowstick (in addition to existing torch)
+- **Crafting Materials**: Crystal oscillator, power cell, circuit board for advanced crafting
+
+#### Phase 5: Reputation System
+- **Faction tracking**: Players can build reputation (-100 to +100) with six factions:
+  - Old Towne Citizens
+  - Tinkers Guild
+  - Wanderers League
+  - Merchants Coalition
+  - Scholars Circle
+  - Underground Network
+- **Reputation levels**: Hated, Hostile, Unfriendly, Neutral, Friendly, Honored, Revered
+- **Faction benefits**: Each faction grants benefits at different reputation levels
+- **PlayerRecord.faction_reputation**: HashMap tracking reputation with all factions
+- **Helper methods**: `get_reputation()`, `add_reputation()`, `set_reputation()`, `get_reputation_level()`, `has_reputation_level()`
+
+#### Integration Tests
+- **phase_4_quest_integration.rs**: 9 comprehensive tests covering:
+  - Cipher quest examine sequence objectives
+  - Dark navigation quest light requirements
+  - Crafting quest craft objectives
+  - Epic quest combining all mechanics
+  - Player symbol sequence tracking
+  - Light source object flags
+  - Reputation tracking and level calculation
+  - Reputation bounds clamping
+
+### Changed
+- **Quest count**: Total quests increased from 7 to 11 (3 starter + 4 original content + 4 Phase 4 quests)
+- **Test suite**: Updated quest count assertions in storage and integration tests
+
 ## [1.0.110-beta] - 2025-10-13
 
 ### Fixed

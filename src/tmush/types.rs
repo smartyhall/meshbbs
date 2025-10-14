@@ -1178,6 +1178,24 @@ pub enum ObjectiveType {
     TalkToNpc { npc_id: String },
     /// Use an item on a target
     UseItem { item_id: String, target: String },
+    /// Examine objects in a specific sequence (Phase 4.2 symbol puzzles)
+    /// Tracks if player examined objects in correct order
+    ExamineSequence { 
+        object_ids: Vec<String>,  // Required sequence of object IDs
+    },
+    /// Navigate dark rooms with a light source (Phase 4.3 dark navigation)
+    /// Requires visiting a dark room while carrying a LightSource object
+    NavigateDarkRoom {
+        room_id: String,
+        requires_light: bool,
+    },
+    /// Craft a specific item (Phase 4.4 crafting system)
+    CraftItem {
+        item_id: String,
+        count: u32,
+    },
+    /// Have a specific object with LightSource flag in inventory
+    ObtainLightSource,
 }
 
 /// Individual quest objective with progress tracking
@@ -1458,6 +1476,135 @@ impl PlayerAchievement {
     }
 }
 
+/// Faction system data structures for Phase 5
+///
+/// Factions represent groups that players can build reputation with
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum FactionId {
+    /// Old Towne Mesh community
+    OldTowne,
+    /// Tech enthusiasts and builders
+    Tinkers,
+    /// Explorers and adventurers
+    Wanderers,
+    /// Merchants and traders
+    Traders,
+    /// Scholars and lore keepers
+    Scholars,
+    /// Underground resistance
+    Underground,
+}
+
+impl FactionId {
+    pub fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            FactionId::OldTowne => "Old Towne Citizens",
+            FactionId::Tinkers => "Tinkers Guild",
+            FactionId::Wanderers => "Wanderers League",
+            FactionId::Traders => "Merchants Coalition",
+            FactionId::Scholars => "Scholars Circle",
+            FactionId::Underground => "Underground Network",
+        }
+    }
+}
+
+/// Reputation level thresholds
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ReputationLevel {
+    Hated,      // -100 to -75
+    Hostile,    // -74 to -50
+    Unfriendly, // -49 to -25
+    Neutral,    // -24 to +24
+    Friendly,   // +25 to +49
+    Honored,    // +50 to +74
+    Revered,    // +75 to +100
+}
+
+impl ReputationLevel {
+    pub fn from_points(points: i32) -> Self {
+        match points {
+            i32::MIN..=-75 => ReputationLevel::Hated,
+            -74..=-50 => ReputationLevel::Hostile,
+            -49..=-25 => ReputationLevel::Unfriendly,
+            -24..=24 => ReputationLevel::Neutral,
+            25..=49 => ReputationLevel::Friendly,
+            50..=74 => ReputationLevel::Honored,
+            75..=i32::MAX => ReputationLevel::Revered,
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            ReputationLevel::Hated => "Hated",
+            ReputationLevel::Hostile => "Hostile",
+            ReputationLevel::Unfriendly => "Unfriendly",
+            ReputationLevel::Neutral => "Neutral",
+            ReputationLevel::Friendly => "Friendly",
+            ReputationLevel::Honored => "Honored",
+            ReputationLevel::Revered => "Revered",
+        }
+    }
+
+    pub fn color_code(&self) -> &str {
+        match self {
+            ReputationLevel::Hated => "🔴",
+            ReputationLevel::Hostile => "🟠",
+            ReputationLevel::Unfriendly => "🟡",
+            ReputationLevel::Neutral => "⚪",
+            ReputationLevel::Friendly => "🟢",
+            ReputationLevel::Honored => "🔵",
+            ReputationLevel::Revered => "🟣",
+        }
+    }
+}
+
+/// Faction record template
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FactionRecord {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    /// Quests that grant reputation with this faction
+    pub reputation_quests: Vec<String>,
+    /// NPCs that are part of this faction
+    pub npc_members: Vec<String>,
+    /// Benefits at each reputation level
+    pub benefits: HashMap<String, String>, // reputation_level -> benefit description
+}
+
+impl FactionRecord {
+    pub fn new(id: &str, name: &str, description: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: description.to_string(),
+            reputation_quests: Vec::new(),
+            npc_members: Vec::new(),
+            benefits: HashMap::new(),
+        }
+    }
+
+    pub fn with_quest(mut self, quest_id: &str) -> Self {
+        self.reputation_quests.push(quest_id.to_string());
+        self
+    }
+
+    pub fn with_npc(mut self, npc_id: &str) -> Self {
+        self.npc_members.push(npc_id.to_string());
+        self
+    }
+
+    pub fn with_benefit(mut self, level: &str, benefit: &str) -> Self {
+        self.benefits.insert(level.to_string(), benefit.to_string());
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PlayerRecord {
     pub username: String,
@@ -1532,6 +1679,10 @@ pub struct PlayerRecord {
     /// Stores object IDs in order examined: ["carved_symbol_oak", "carved_symbol_elm", ...]
     #[serde(default)]
     pub examined_symbol_sequence: Vec<String>,
+    /// Faction reputation tracking (Phase 5)
+    /// Maps faction_id to reputation points (-100 to +100)
+    #[serde(default)]
+    pub faction_reputation: HashMap<String, i32>,
     pub schema_version: u8,
 }
 
@@ -1572,6 +1723,7 @@ impl PlayerRecord {
             last_clone_time: 0,
             total_objects_owned: 0,
             examined_symbol_sequence: Vec::new(),
+            faction_reputation: HashMap::new(),
             schema_version: PLAYER_SCHEMA_VERSION,
         }
     }
@@ -1633,6 +1785,39 @@ impl PlayerRecord {
     /// Check if player has sufficient builder level
     pub fn has_builder_level(&self, required_level: u8) -> bool {
         self.builder_level() >= required_level
+    }
+
+    // ======== Reputation System Methods (Phase 5) ========
+
+    /// Get reputation points with a faction
+    pub fn get_reputation(&self, faction_id: &str) -> i32 {
+        *self.faction_reputation.get(faction_id).unwrap_or(&0)
+    }
+
+    /// Add reputation with a faction (can be negative to decrease)
+    pub fn add_reputation(&mut self, faction_id: &str, points: i32) {
+        let current = self.get_reputation(faction_id);
+        let new_total = (current + points).clamp(-100, 100);
+        self.faction_reputation.insert(faction_id.to_string(), new_total);
+        self.touch();
+    }
+
+    /// Set reputation with a faction to a specific value
+    pub fn set_reputation(&mut self, faction_id: &str, points: i32) {
+        let clamped = points.clamp(-100, 100);
+        self.faction_reputation.insert(faction_id.to_string(), clamped);
+        self.touch();
+    }
+
+    /// Get reputation level with a faction
+    pub fn get_reputation_level(&self, faction_id: &str) -> ReputationLevel {
+        let points = self.get_reputation(faction_id);
+        ReputationLevel::from_points(points)
+    }
+
+    /// Check if player meets reputation requirement
+    pub fn has_reputation_level(&self, faction_id: &str, required_level: ReputationLevel) -> bool {
+        self.get_reputation_level(faction_id) >= required_level
     }
 }
 
