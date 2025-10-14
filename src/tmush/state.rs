@@ -2009,6 +2009,112 @@ shadows on nearby surfaces. Essential equipment for venturing into the maintenan
     };
     objects.push(torch);
 
+    // 8. Additional Crafting Materials for recipes
+    
+    // Copper Wire (used in signal_booster and basic_antenna recipes)
+    let copper_wire = ObjectRecord {
+        id: "copper_wire".to_string(),
+        name: "Copper Wire".to_string(),
+        description: "High-quality copper wire suitable for antenna construction and signal routing. \
+The wire is flexible yet durable, with excellent conductivity properties. Essential for advanced \
+crafting projects.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(8),
+        value: 8,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(copper_wire);
+
+    // Antenna Rod (used in signal_booster and basic_antenna recipes)
+    let antenna_rod = ObjectRecord {
+        id: "antenna_rod".to_string(),
+        name: "Antenna Rod".to_string(),
+        description: "A telescoping metal rod designed for antenna construction. When extended, \
+it can serve as an effective radiating element for mesh signals. The rod has calibration marks \
+for optimal frequency tuning.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 2,
+        currency_value: CurrencyAmount::decimal(15),
+        value: 15,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(antenna_rod);
+
+    // Crystal Shard (rare material for advanced crafting)
+    let crystal_shard = ObjectRecord {
+        id: "crystal_shard".to_string(),
+        name: "Crystal Shard".to_string(),
+        description: "A translucent crystal fragment with unusual electromagnetic properties. \
+When held near active mesh equipment, it seems to resonate faintly. Local legends claim these \
+crystals were used in ancient communication rituals.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(50),
+        value: 50,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(crystal_shard);
+
+    // Signal Capacitor (advanced electronic component)
+    let signal_capacitor = ObjectRecord {
+        id: "signal_capacitor".to_string(),
+        name: "Signal Capacitor".to_string(),
+        description: "A high-capacity electrolytic capacitor designed for RF signal filtering. \
+The component is labeled with technical specifications and has a slight blue glow from its \
+charge indicator. Used in advanced signal processing circuits.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(25),
+        value: 25,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(signal_capacitor);
+
     // ==================== PHASE 4 QUEST OBJECTS ====================
 
     // CIPHER QUEST SYMBOLS (Phase 4.2) - Must be examined in order: Spring, Summer, Autumn, Winter
