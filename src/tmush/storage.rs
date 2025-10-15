@@ -904,6 +904,12 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Check if an NPC exists
+    pub fn npc_exists(&self, npc_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("npcs:{}", npc_id);
+        Ok(self.npcs.contains_key(key.as_bytes())?)
+    }
+
     // ============================================================================
     // Conversation State Storage (Phase 8.5)
     // ============================================================================

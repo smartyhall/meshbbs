@@ -49,10 +49,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Seeded starter achievements verification
 - **608 total tests passing** (including new achievement tests)
 
+#### Phase 2: NPC System (@NPC Command)
+- **@NPC command**: Complete admin interface for data-driven NPC management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new NPCs with default settings (spawns in starting_room)
+  - `EDIT <id> NAME <text>`: Update NPC display name
+  - `EDIT <id> TITLE <text>`: Set NPC title/role
+  - `EDIT <id> DESCRIPTION <text>`: Set NPC description
+  - `EDIT <id> ROOM <room_id>`: Move NPC to different room
+  - `EDIT <id> DIALOG <key> <response>`: Add dialogue response (key->response mapping)
+  - `EDIT <id> FLAG <flag>`: Add NPC behavioral flag (5 flag types)
+  - `DELETE <id>`: Remove NPC from database
+  - `LIST`: List all NPCs with room location and flags
+  - `SHOW <id>`: Display detailed NPC information including all dialogue
+
+#### NPC Flag Types (5 variants)
+- **TutorialNpc**: Provides new player guidance
+- **QuestGiver**: Can offer quests to players
+- **Vendor**: Can engage in trading
+- **Guard**: Special patrol/security behavior
+- **Immortal**: Cannot be removed or modified by standard means
+
+#### Storage Layer Enhancements
+- `npc_exists()`: Fast existence check for NPCs
+- NPC CRUD operations integrated with TinyMushStore
+- Support for dialogue HashMap and future dialog_tree system
+
+#### Testing
+- **7 new integration tests** in `tests/npc_management.rs`:
+  - CRUD operations validation
+  - All field editing (name, title, description, room, dialog)
+  - Dialogue management with multiple key->response pairs
+  - All 5 flag type management
+  - Multiple flags per NPC
+  - Existence checks and error handling
+  - Seeded starter NPCs verification (5 NPCs: mayor_thompson, city_clerk, gate_guard, market_vendor, museum_curator)
+- **615 total tests passing** (including 7 new NPC tests)
+
 ### Developer Notes
-- **Pattern**: Achievement system follows proven @QUEST/@RECIPE command structure
-- **Migration Status**: Phase 1 of 6-phase data-driven content migration (see TODO.md)
-- **Next Steps**: Phase 2 (NPC system), Phase 3 (Companions), Phase 4 (Rooms), Phase 5 (Objects), Phase 6 (Polish)
+- **Pattern**: Achievement and NPC systems follow proven @QUEST/@RECIPE command structure
+- **Migration Status**: Phase 2 of 6-phase data-driven content migration (see TODO.md)
+- **Next Steps**: Phase 3 (Companions), Phase 4 (Rooms), Phase 5 (Objects), Phase 6 (Polish)
 
 ## [1.0.115-beta] - 2025-10-14
 

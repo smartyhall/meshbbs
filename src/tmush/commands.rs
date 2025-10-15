@@ -175,6 +175,7 @@ pub enum TinyMushCommand {
     Recipe(String, Vec<String>), // @RECIPE <subcommand> [args] - manage crafting recipes (admin only)
     QuestAdmin(String, Vec<String>), // @QUEST <subcommand> [args] - manage quests (admin only)
     AchievementAdmin(String, Vec<String>), // @ACHIEVEMENT <subcommand> [args] - manage achievements (admin only)
+    NPCAdmin(String, Vec<String>), // @NPC <subcommand> [args] - manage NPCs (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -628,6 +629,9 @@ impl TinyMushProcessor {
             }
             TinyMushCommand::AchievementAdmin(subcommand, args) => {
                 self.handle_achievement_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::NPCAdmin(subcommand, args) => {
+                self.handle_npc_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1272,6 +1276,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::AchievementAdmin(subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @ACHIEVEMENT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new achievement\n  EDIT <id> DESCRIPTION <text> - Set description\n  EDIT <id> CATEGORY <type> - Set category (Combat/Exploration/Social/Economic/Quest/Special)\n  EDIT <id> TRIGGER <type> <params> - Set trigger condition\n    Trigger types:\n      KILLCOUNT <num> - Defeat N enemies\n      ROOMVISITS <num> - Visit N unique rooms\n      FRIENDCOUNT <num> - Make N friends\n      MESSAGESSENT <num> - Send N messages\n      TRADECOUNT <num> - Complete N trades\n      CURRENCYEARNED <amount> - Earn X currency\n      QUESTCOMPLETION <num> - Complete N quests\n      VISITLOCATION <room_id> - Visit specific location\n      COMPLETEQUEST <quest_id> - Complete specific quest\n  EDIT <id> TITLE <text> - Set title reward (optional)\n  EDIT <id> HIDDEN <true|false> - Toggle hidden status\n  DELETE <id> - Delete achievement\n  LIST [category] - List achievements (optional filter)\n  SHOW <id> - Show achievement details\n\nExample: @ACHIEVEMENT CREATE first_kill \"First Blood\"".to_string())
+                }
+            }
+            "@NPC" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::NPCAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @NPC <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new NPC\n  EDIT <id> NAME <text> - Set NPC name\n  EDIT <id> TITLE <text> - Set NPC title\n  EDIT <id> DESCRIPTION <text> - Set NPC description\n  EDIT <id> ROOM <room_id> - Set NPC location\n  EDIT <id> DIALOG <key> <text> - Add simple dialogue response\n  DELETE <id> - Delete NPC\n  LIST - List all NPCs\n  SHOW <id> - Show NPC details\n\nNPC Flags (use @NPC EDIT <id> FLAG <flag>):\n  VENDOR - NPC can trade items\n  GUARD - NPC provides security\n  TUTORIALNPC - NPC helps with tutorials\n  QUESTGIVER - NPC gives quests\n\nExample: @NPC CREATE blacksmith \"Forge Master Grimm\"\nExample: @NPC EDIT blacksmith ROOM town_forge\nExample: @NPC EDIT blacksmith DIALOG greeting Welcome to my forge!".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -7572,6 +7585,227 @@ Not fancy, but it gets the job done.",
             }
             _ => Ok(format!(
                 "Unknown @ACHIEVEMENT subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle the NPC admin command for data-driven NPC management.
+    async fn handle_npc_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @NPC commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @NPC CREATE <npc_id> <name>\nExample: @NPC CREATE blacksmith \"Forge Master Grimm\"".to_string());
+                }
+                let npc_id = &args[0];
+                let name = args[1..].join(" ");
+                if name.is_empty() {
+                    return Ok("NPC name cannot be empty".to_string());
+                }
+
+                if store.npc_exists(npc_id)? {
+                    return Ok(format!("NPC '{}' already exists", npc_id));
+                }
+
+                use crate::tmush::types::NpcRecord;
+                let npc = NpcRecord::new(
+                    npc_id,
+                    &name,
+                    "No title set",
+                    "No description set yet",
+                    "starting_room", // Default room
+                );
+
+                store.put_npc(npc)?;
+                Ok(format!("Created NPC '{}' with name \"{}\"", npc_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 2 {
+                    return Ok(
+                        "Usage: @NPC EDIT <npc_id> <field> <value>\n\
+                        Fields: NAME, TITLE, DESCRIPTION, ROOM, DIALOG, FLAG\n\
+                        Examples:\n\
+                        @NPC EDIT blacksmith NAME Forge Master Grimm\n\
+                        @NPC EDIT blacksmith TITLE Master Blacksmith\n\
+                        @NPC EDIT blacksmith DESCRIPTION A burly dwarf with...\n\
+                        @NPC EDIT blacksmith ROOM town_forge\n\
+                        @NPC EDIT blacksmith DIALOG greeting Welcome to my forge!\n\
+                        @NPC EDIT blacksmith FLAG VENDOR".to_string()
+                    );
+                }
+
+                let npc_id = &args[0];
+                let field = args[1].to_uppercase();
+                let value_args = &args[2..];
+
+                let mut npc = match store.get_npc(npc_id) {
+                    Ok(n) => n,
+                    Err(_) => return Ok(format!("NPC '{}' does not exist", npc_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        let name = value_args.join(" ");
+                        if name.is_empty() {
+                            return Ok("Name cannot be empty".to_string());
+                        }
+                        npc.name = name.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Updated name for '{}'", npc_id))
+                    }
+                    "TITLE" => {
+                        let title = value_args.join(" ");
+                        if title.is_empty() {
+                            return Ok("Title cannot be empty".to_string());
+                        }
+                        npc.title = title.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Updated title for '{}'", npc_id))
+                    }
+                    "DESCRIPTION" | "DESC" => {
+                        let description = value_args.join(" ");
+                        if description.is_empty() {
+                            return Ok("Description cannot be empty".to_string());
+                        }
+                        npc.description = description.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Updated description for '{}'", npc_id))
+                    }
+                    "ROOM" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @NPC EDIT <id> ROOM <room_id>".to_string());
+                        }
+                        let room_id = value_args[0].to_string();
+                        npc.room_id = room_id.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Moved '{}' to room '{}'", npc_id, room_id))
+                    }
+                    "DIALOG" | "DIALOGUE" => {
+                        if value_args.len() < 2 {
+                            return Ok("Usage: @NPC EDIT <id> DIALOG <key> <response>\nExample: @NPC EDIT blacksmith DIALOG greeting Welcome traveler!".to_string());
+                        }
+                        let key = value_args[0].to_lowercase();
+                        let response = value_args[1..].join(" ");
+                        npc.dialog.insert(key.clone(), response.clone());
+                        store.put_npc(npc)?;
+                        Ok(format!("Added dialog '{}' to '{}'", key, npc_id))
+                    }
+                    "FLAG" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @NPC EDIT <id> FLAG <flag>\nFlags: VENDOR, GUARD, TUTORIALNPC, QUESTGIVER, IMMORTAL".to_string());
+                        }
+                        use crate::tmush::types::NpcFlag;
+                        let flag_str = value_args[0].to_uppercase();
+                        let flag = match flag_str.as_str() {
+                            "VENDOR" => NpcFlag::Vendor,
+                            "GUARD" => NpcFlag::Guard,
+                            "TUTORIALNPC" | "TUTORIAL" => NpcFlag::TutorialNpc,
+                            "QUESTGIVER" | "QUEST" => NpcFlag::QuestGiver,
+                            "IMMORTAL" => NpcFlag::Immortal,
+                            _ => return Ok(format!("Invalid flag: {}\nValid flags: VENDOR, GUARD, TUTORIALNPC, QUESTGIVER, IMMORTAL", value_args[0])),
+                        };
+                        
+                        if !npc.flags.contains(&flag) {
+                            npc.flags.push(flag.clone());
+                            store.put_npc(npc)?;
+                            Ok(format!("Added flag {:?} to '{}'", flag, npc_id))
+                        } else {
+                            Ok(format!("NPC '{}' already has flag {:?}", npc_id, flag))
+                        }
+                    }
+                    _ => Ok(format!(
+                        "Unknown field: {}\nValid fields: NAME, TITLE, DESCRIPTION, ROOM, DIALOG, FLAG",
+                        field
+                    )),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @NPC DELETE <npc_id>".to_string());
+                }
+                let npc_id = &args[0];
+
+                if !store.npc_exists(npc_id)? {
+                    return Ok(format!("NPC '{}' does not exist", npc_id));
+                }
+
+                store.delete_npc(npc_id)?;
+                Ok(format!("Deleted NPC '{}'", npc_id))
+            }
+            "LIST" => {
+                let ids = store.list_npc_ids()?;
+                
+                if ids.is_empty() {
+                    return Ok("No NPCs found".to_string());
+                }
+
+                let mut output = format!("NPCs ({})\n", ids.len());
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                
+                for id in ids {
+                    if let Ok(npc) = store.get_npc(&id) {
+                        let flags_str = if !npc.flags.is_empty() {
+                            format!(" [{:?}]", npc.flags)
+                        } else {
+                            String::new()
+                        };
+                        output.push_str(&format!("• {} - \"{}\" ({}){}\n", npc.id, npc.name, npc.room_id, flags_str));
+                    }
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @NPC SHOW <npc_id>".to_string());
+                }
+                let npc_id = &args[0];
+
+                let npc = match store.get_npc(npc_id) {
+                    Ok(n) => n,
+                    Err(_) => return Ok(format!("NPC '{}' does not exist", npc_id)),
+                };
+
+                let mut output = format!("NPC: {}\n", npc.id);
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                output.push_str(&format!("Name: {}\n", npc.name));
+                output.push_str(&format!("Title: {}\n", npc.title));
+                output.push_str(&format!("Description: {}\n", npc.description));
+                output.push_str(&format!("Location: {}\n", npc.room_id));
+                
+                if !npc.flags.is_empty() {
+                    output.push_str(&format!("Flags: {:?}\n", npc.flags));
+                }
+                
+                if !npc.dialog.is_empty() {
+                    output.push_str("\nDialogue responses:\n");
+                    for (key, response) in &npc.dialog {
+                        output.push_str(&format!("  {}: {}\n", key, response));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @NPC subcommand: {}\n\
                 Use: CREATE, EDIT, DELETE, LIST, SHOW",
                 subcommand
             )),
