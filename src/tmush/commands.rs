@@ -1543,7 +1543,7 @@ impl TinyMushProcessor {
                     let object_name = parts[1..].join(" ");
                     TinyMushCommand::Clone(object_name)
                 } else {
-                    TinyMushCommand::Unknown("Usage: /CLONE <object>\nExample: /CLONE sword\nNote: Only owned clonable objects can be cloned".to_string())
+                    TinyMushCommand::Unknown("Usage: /CLONE <object>\nExample: /CLONE sword\nNote: Requires builder privileges (level 1+). Only owned clonable objects can be cloned".to_string())
                 }
             }
 

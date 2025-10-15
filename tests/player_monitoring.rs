@@ -1,6 +1,6 @@
 /// Integration tests for player monitoring commands (Phase 9.4)
 ///
-/// Tests the /PLAYERS, WHERE, and /GOTO commands added in Phase 9.3
+/// Tests the @PLAYERS, WHERE, and @GOTO commands added in Phase 9.3
 /// for admin oversight and alpha testing management.
 ///
 /// Note: These tests use test_tmush_ensure_player_exists() to force
@@ -72,9 +72,9 @@ async fn test_players_command_lists_all() {
         .await
         .unwrap();
 
-    // Execute /PLAYERS command as alice
+    // Execute @PLAYERS command as alice
     server
-        .route_test_text_direct(&alice_key, "/players")
+        .route_test_text_direct(&alice_key, "@players")
         .await
         .unwrap();
     let messages = server.test_messages();
@@ -97,7 +97,7 @@ async fn test_players_command_lists_all() {
     );
 }
 
-/// Test /PLAYERS command denies access to non-admins
+/// Test @PLAYERS command denies access to non-admins
 
 #[tokio::test]
 async fn test_players_command_requires_admin() {
@@ -126,7 +126,7 @@ async fn test_players_command_requires_admin() {
         .unwrap();
 
     server
-        .route_test_text_direct(&node_key, "/players")
+        .route_test_text_direct(&node_key, "@players")
         .await
         .unwrap();
     let messages = server.test_messages();
@@ -356,7 +356,7 @@ async fn test_where_player_not_found() {
     );
 }
 
-/// Test /GOTO <room> teleports admin to specific room
+/// Test @GOTO <room> teleports admin to specific room
 
 #[tokio::test]
 async fn test_goto_room_teleports_admin() {
@@ -391,7 +391,7 @@ async fn test_goto_room_teleports_admin() {
         .unwrap();
 
     server
-        .route_test_text_direct(&node_key, "/goto market")
+        .route_test_text_direct(&node_key, "@goto market")
         .await
         .unwrap();
     let messages = server.test_messages();
@@ -407,7 +407,7 @@ async fn test_goto_room_teleports_admin() {
     );
 }
 
-/// Test /GOTO denies access to non-admins
+/// Test @GOTO denies access to non-admins
 
 #[tokio::test]
 async fn test_goto_requires_admin() {
@@ -433,7 +433,7 @@ async fn test_goto_requires_admin() {
         .unwrap();
 
     server
-        .route_test_text_direct(&node_key, "/goto market")
+        .route_test_text_direct(&node_key, "@goto market")
         .await
         .unwrap();
     let messages = server.test_messages();
@@ -449,7 +449,7 @@ async fn test_goto_requires_admin() {
     );
 }
 
-/// Test /GOTO handles invalid target
+/// Test @GOTO handles invalid target
 
 #[tokio::test]
 async fn test_goto_invalid_target() {
@@ -484,7 +484,7 @@ async fn test_goto_invalid_target() {
         .unwrap();
 
     server
-        .route_test_text_direct(&node_key, "/goto nonexistent_place")
+        .route_test_text_direct(&node_key, "@goto nonexistent_place")
         .await
         .unwrap();
     let messages = server.test_messages();
@@ -540,9 +540,9 @@ async fn test_monitoring_commands_all_admin_levels() {
             .await
             .unwrap();
 
-        // Test /PLAYERS
+        // Test @PLAYERS
         server
-            .route_test_text_direct(&node_key, "/players")
+            .route_test_text_direct(&node_key, "@players")
             .await
             .unwrap();
         let messages = server.test_messages();
@@ -553,13 +553,13 @@ async fn test_monitoring_commands_all_admin_levels() {
             .join("\n");
         assert!(
             !result.contains("Permission denied"),
-            "Level {} should have access to /PLAYERS",
+            "Level {} should have access to @PLAYERS",
             level
         );
 
-        // Test /GOTO
+        // Test @GOTO
         server
-            .route_test_text_direct(&node_key, "/goto market")
+            .route_test_text_direct(&node_key, "@goto market")
             .await
             .unwrap();
         let messages = server.test_messages();
@@ -570,7 +570,7 @@ async fn test_monitoring_commands_all_admin_levels() {
             .join("\n");
         assert!(
             !result.contains("Permission denied"),
-            "Level {} should have access to /GOTO",
+            "Level {} should have access to @GOTO",
             level
         );
     }

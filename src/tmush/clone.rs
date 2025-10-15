@@ -40,6 +40,7 @@ pub const MAX_CLONABLE_VALUE: u32 = 100;
 /// Clone an object with comprehensive security checks
 ///
 /// ## Security Controls
+/// 0. **Builder Permission**: Player must have builder level 1+ (prevents general player abuse)
 /// 1. **Permission**: Player must own the source object
 /// 2. **Flags**: Object must be Clonable, not Unique, not QuestItem
 /// 3. **Depth**: Clone genealogy must be < MAX_CLONE_DEPTH
@@ -74,6 +75,13 @@ pub fn clone_object(
     let now = Utc::now().timestamp() as u64;
 
     // ===== SECURITY CHECKS (FAIL FAST) =====
+
+    // Check 0: Builder permissions required (Phase 6 Security Enhancement)
+    if player.builder_level() < 1 {
+        return Err(TinyMushError::PermissionDenied(
+            "Cloning requires builder privileges (level 1+). Contact an admin for access.".to_string()
+        ));
+    }
 
     // Check 1: Player must own the source object
     if !is_owner(&source, cloner_username) {
