@@ -23,15 +23,6 @@ use crate::tmush::types::{
 };
 use crate::tmush::{PlayerRecord, TinyMushError, TinyMushStore};
 
-/// Crafting recipe definition (Phase 4.4)
-#[derive(Debug, Clone)]
-struct CraftRecipe {
-    name: String,
-    result_item: String,
-    materials: Vec<(&'static str, usize)>,
-    description: String,
-}
-
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TinyMushCommand {
@@ -2491,54 +2482,65 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // Define recipes (hardcoded for Phase 4.4, could be data-driven later)
-        let recipe = match recipe_name.as_str() {
-            "signal_booster" => Some(CraftRecipe {
-                name: "signal_booster".to_string(),
-                result_item: "signal_booster".to_string(),
-                materials: vec![
-                    ("copper_wire", 2),
-                    ("circuit_board", 1),
-                    ("antenna_rod", 1),
-                ],
-                description: "A powerful signal booster for extended mesh range.".to_string(),
-            }),
-            "basic_antenna" => Some(CraftRecipe {
-                name: "basic_antenna".to_string(),
-                result_item: "basic_antenna".to_string(),
-                materials: vec![
-                    ("copper_wire", 2),
-                    ("antenna_rod", 1),
-                ],
-                description: "A simple antenna for basic mesh connectivity.".to_string(),
-            }),
-            _ => None,
-        };
-
-        let recipe = match recipe {
+        // Look up recipe in database (data-driven as of crafting refactor)
+        let recipe = match self.find_recipe_by_name_or_id(&recipe_name) {
             Some(r) => r,
             None => {
+                // List available recipes
+                let all_recipes = self.store().list_recipes(None)?;
+                let recipe_names: Vec<String> = all_recipes.iter().map(|r| r.name.clone()).collect();
+                
                 return Ok(format!(
-                    "Unknown recipe: '{}'\nAvailable recipes: signal_booster, basic_antenna",
-                    recipe_name
+                    "Unknown recipe: '{}'\nAvailable recipes: {}",
+                    recipe_name,
+                    if recipe_names.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        recipe_names.join(", ")
+                    }
                 ));
             }
         };
 
+        // Check if station requirement is met
+        if let Some(required_station) = &recipe.requires_station {
+            // Check if player has the station in inventory or is in a room with it
+            let has_station = player.inventory.iter().any(|item_id| item_id.starts_with(required_station));
+            
+            if !has_station {
+                return Ok(format!(
+                    "You need a {} to craft {}.",
+                    required_station, recipe.name
+                ));
+            }
+        }
+
         // Check if player has all required materials
         let mut missing_materials = Vec::new();
-        for (material_id, required_qty) in &recipe.materials {
-            let owned_qty = player
-                .inventory
-                .iter()
-                .filter(|item_id| item_id.starts_with(material_id))
-                .count();
+        for material in &recipe.materials {
+            if !material.consumed {
+                // Tool requirement - just need to have it
+                let has_tool = player.inventory.iter().any(|item_id| item_id.starts_with(&material.item_id));
+                if !has_tool {
+                    missing_materials.push(format!(
+                        "{} (tool)",
+                        material.item_id
+                    ));
+                }
+            } else {
+                // Material requirement - need enough to consume
+                let owned_qty = player
+                    .inventory
+                    .iter()
+                    .filter(|item_id| item_id.starts_with(&material.item_id))
+                    .count();
 
-            if owned_qty < *required_qty {
-                missing_materials.push(format!(
-                    "{} (need {}, have {})",
-                    material_id, required_qty, owned_qty
-                ));
+                if owned_qty < material.quantity as usize {
+                    missing_materials.push(format!(
+                        "{} (need {}, have {})",
+                        material.item_id, material.quantity, owned_qty
+                    ));
+                }
             }
         }
 
@@ -2551,44 +2553,47 @@ Missing: {}",
             ));
         }
 
-        // Consume materials from inventory
-        for (material_id, required_qty) in &recipe.materials {
-            for _ in 0..*required_qty {
-                // Find and remove one instance of this material
-                if let Some(pos) = player
-                    .inventory
-                    .iter()
-                    .position(|item_id| item_id.starts_with(material_id))
-                {
-                    let item_id = player.inventory[pos].clone();
-                    match remove_item_from_inventory(&mut player, &item_id, 1) {
-                        crate::tmush::types::InventoryResult::Removed { .. } => {},
-                        crate::tmush::types::InventoryResult::Failed { reason } => {
-                            return Ok(format!("Failed to remove material {}: {}", material_id, reason));
-                        },
-                        _ => {},
+        // Consume materials from inventory (but not tools)
+        for material in &recipe.materials {
+            if material.consumed {
+                for _ in 0..material.quantity {
+                    // Find and remove one instance of this material
+                    if let Some(pos) = player
+                        .inventory
+                        .iter()
+                        .position(|item_id| item_id.starts_with(&material.item_id))
+                    {
+                        let item_id = player.inventory[pos].clone();
+                        match remove_item_from_inventory(&mut player, &item_id, 1) {
+                            crate::tmush::types::InventoryResult::Removed { .. } => {},
+                            crate::tmush::types::InventoryResult::Failed { reason } => {
+                                return Ok(format!("Failed to remove material {}: {}", material.item_id, reason));
+                            },
+                            _ => {},
+                        }
                     }
                 }
             }
         }
 
-        // Create the crafted item
-        let crafted_item = self.create_crafted_item(&recipe.result_item)?;
-        self.store().put_object(crafted_item.clone())?;
-        
-        // Add to player inventory (use default inventory config)
+        // Create the crafted item(s)
         let inv_config = crate::tmush::types::InventoryConfig {
             allow_stacking: true,
             max_weight: 1000,
             max_stacks: 100,
         };
         
-        match add_item_to_inventory(&mut player, &crafted_item, 1, &inv_config) {
-            crate::tmush::types::InventoryResult::Added { .. } => {},
-            crate::tmush::types::InventoryResult::Failed { reason } => {
-                return Ok(format!("Failed to add crafted item to inventory: {}", reason));
-            },
-            _ => {},
+        for _ in 0..recipe.result_quantity {
+            let crafted_item = self.create_crafted_item(&recipe.result_item_id)?;
+            self.store().put_object(crafted_item.clone())?;
+            
+            match add_item_to_inventory(&mut player, &crafted_item, 1, &inv_config) {
+                crate::tmush::types::InventoryResult::Added { .. } => {},
+                crate::tmush::types::InventoryResult::Failed { reason } => {
+                    return Ok(format!("Failed to add crafted item to inventory: {}", reason));
+                },
+                _ => {},
+            }
         }
         
         // Save player
@@ -2612,10 +2617,41 @@ Missing: {}",
             );
         }
 
-        Ok(format!(
-            "You successfully craft {}!\n{}",
-            crafted_item.name, recipe.description
-        ))
+        let result_msg = if recipe.result_quantity > 1 {
+            format!("You successfully craft {} x{}!", recipe.name, recipe.result_quantity)
+        } else {
+            format!("You successfully craft {}!", recipe.name)
+        };
+
+        let description = if recipe.description.is_empty() {
+            "".to_string()
+        } else {
+            format!("\n{}", recipe.description)
+        };
+
+        Ok(format!("{}{}", result_msg, description))
+    }
+
+    /// Find a recipe by ID or name (case-insensitive)
+    fn find_recipe_by_name_or_id(&self, search: &str) -> Option<crate::tmush::types::CraftingRecipe> {
+        let all_recipes = self.store().list_recipes(None).ok()?;
+        let search_lower = search.to_lowercase();
+        
+        // First try exact ID match
+        for recipe in &all_recipes {
+            if recipe.id == search_lower {
+                return Some(recipe.clone());
+            }
+        }
+        
+        // Then try case-insensitive name match
+        for recipe in &all_recipes {
+            if recipe.name.to_lowercase() == search_lower {
+                return Some(recipe.clone());
+            }
+        }
+        
+        None
     }
 
     /// Create a crafted item (Phase 4.4 helper)
@@ -6602,6 +6638,255 @@ Not fancy, but it gets the job done.",
                     - EDIT <topic> <json> - Edit dialogue tree\n\
                     - DELETE <topic> - Remove dialogue\n\
                     - TEST <topic> - Test conditions for current player",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle @RECIPE command - manage crafting recipes (admin only)
+    async fn handle_recipe(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        // Check admin level (sysop = 3, admin = 2)
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Only admins can manage crafting recipes.".to_string());
+        }
+
+        let store = self.store();
+
+        match subcommand.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @RECIPE CREATE <id> <name>\nExample: @RECIPE CREATE goat_cheese \"Goat Milk Cheese\"".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                let recipe_name = args[1..].join(" ");
+
+                // Check if recipe already exists
+                if store.recipe_exists(&recipe_id)? {
+                    return Ok(format!("Recipe '{}' already exists. Use @RECIPE EDIT to modify it or @RECIPE DELETE to remove it first.", recipe_id));
+                }
+
+                // Create new recipe
+                let recipe = crate::tmush::types::CraftingRecipe::new(
+                    &recipe_id,
+                    &recipe_name,
+                    &recipe_id, // Default result item ID same as recipe ID
+                    &player.username,
+                );
+
+                store.put_recipe(recipe)?;
+
+                Ok(format!(
+                    "Recipe '{}' created.\n\nNext steps:\n\
+                    - @RECIPE EDIT {} MATERIAL ADD <item_id> <qty>\n\
+                    - @RECIPE EDIT {} RESULT <item_id> [qty]\n\
+                    - @RECIPE EDIT {} DESCRIPTION <text>\n\
+                    - @RECIPE EDIT {} STATION <station_id>",
+                    recipe_name, recipe_id, recipe_id, recipe_id, recipe_id
+                ))
+            }
+            "EDIT" => {
+                if args.is_empty() {
+                    return Ok("Usage: @RECIPE EDIT <id> <field> <value>\nFields: MATERIAL, RESULT, DESCRIPTION, STATION".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                let mut recipe = match store.get_recipe(&recipe_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Recipe '{}' not found.", recipe_id)),
+                };
+
+                if args.len() < 2 {
+                    return Ok("Usage: @RECIPE EDIT <id> <field> <value>".to_string());
+                }
+
+                let field = args[1].to_uppercase();
+                match field.as_str() {
+                    "MATERIAL" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> MATERIAL ADD/REMOVE <item_id> [qty]".to_string());
+                        }
+
+                        let action = args[2].to_uppercase();
+                        match action.as_str() {
+                            "ADD" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @RECIPE EDIT <id> MATERIAL ADD <item_id> <qty>".to_string());
+                                }
+
+                                let item_id = &args[3];
+                                let quantity: u32 = args[4].parse().unwrap_or(1);
+
+                                recipe.materials.push(crate::tmush::types::RecipeMaterial::new(item_id, quantity));
+                                store.put_recipe(recipe)?;
+
+                                Ok(format!("Added material: {} x{}", item_id, quantity))
+                            }
+                            "REMOVE" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @RECIPE EDIT <id> MATERIAL REMOVE <item_id>".to_string());
+                                }
+
+                                let item_id = &args[3];
+                                recipe.materials.retain(|m| m.item_id != *item_id);
+                                store.put_recipe(recipe)?;
+
+                                Ok(format!("Removed material: {}", item_id))
+                            }
+                            _ => Ok("Usage: @RECIPE EDIT <id> MATERIAL ADD/REMOVE <item_id> [qty]".to_string()),
+                        }
+                    }
+                    "RESULT" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> RESULT <item_id> [qty]".to_string());
+                        }
+
+                        recipe.result_item_id = args[2].clone();
+                        if args.len() >= 4 {
+                            recipe.result_quantity = args[3].parse().unwrap_or(1);
+                        }
+
+                        store.put_recipe(recipe.clone())?;
+
+                        Ok(format!(
+                            "Recipe will create: {} x{}",
+                            recipe.result_item_id, recipe.result_quantity
+                        ))
+                    }
+                    "DESCRIPTION" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> DESCRIPTION <text>".to_string());
+                        }
+
+                        recipe.description = args[2..].join(" ");
+                        store.put_recipe(recipe)?;
+
+                        Ok("Description updated.".to_string())
+                    }
+                    "STATION" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> STATION <station_id>\nExample: @RECIPE EDIT goat_cheese STATION cheese_press".to_string());
+                        }
+
+                        recipe.requires_station = Some(args[2].clone());
+                        store.put_recipe(recipe.clone())?;
+
+                        Ok(format!("Recipe requires crafting station: {}", args[2]))
+                    }
+                    _ => Ok("Unknown field. Use: MATERIAL, RESULT, DESCRIPTION, or STATION".to_string()),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @RECIPE DELETE <id>".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                match store.get_recipe(&recipe_id) {
+                    Ok(recipe) => {
+                        store.delete_recipe(&recipe_id)?;
+                        Ok(format!("Recipe '{}' has been deleted.", recipe.name))
+                    }
+                    Err(_) => Ok(format!("Recipe '{}' not found.", recipe_id)),
+                }
+            }
+            "LIST" => {
+                let station_filter = args.first().map(|s| s.as_str());
+                let recipes = store.list_recipes(station_filter)?;
+
+                if recipes.is_empty() {
+                    return Ok("No recipes found.".to_string());
+                }
+
+                let mut output = if let Some(station) = station_filter {
+                    format!("=== RECIPES FOR {} ===\n\n", station)
+                } else {
+                    "=== ALL RECIPES ===\n\n".to_string()
+                };
+
+                for (idx, recipe) in recipes.iter().enumerate() {
+                    output.push_str(&format!(
+                        "{}. {} (ID: {})\n",
+                        idx + 1,
+                        recipe.name,
+                        recipe.id
+                    ));
+
+                    if let Some(station) = &recipe.requires_station {
+                        output.push_str(&format!("   Station: {}\n", station));
+                    }
+
+                    output.push_str(&format!("   Materials: {}\n", recipe.materials.len()));
+                    output.push_str(&format!("   Creates: {} x{}\n\n", recipe.result_item_id, recipe.result_quantity));
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @RECIPE SHOW <id>".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                let recipe = match store.get_recipe(&recipe_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Recipe '{}' not found.", recipe_id)),
+                };
+
+                let mut output = format!(
+                    "=== RECIPE: {} ===\n\
+                    ID: {}\n\
+                    Description: {}\n\n\
+                    MATERIALS REQUIRED:\n",
+                    recipe.name,
+                    recipe.id,
+                    if recipe.description.is_empty() {
+                        "(no description)"
+                    } else {
+                        &recipe.description
+                    }
+                );
+
+                if recipe.materials.is_empty() {
+                    output.push_str("  (no materials set - use @RECIPE EDIT to add)\n");
+                } else {
+                    for material in &recipe.materials {
+                        let consumed = if material.consumed { "consumed" } else { "tool" };
+                        output.push_str(&format!(
+                            "  - {} x{} ({})\n",
+                            material.item_id, material.quantity, consumed
+                        ));
+                    }
+                }
+
+                output.push_str(&format!(
+                    "\nCREATES: {} x{}\n",
+                    recipe.result_item_id, recipe.result_quantity
+                ));
+
+                if let Some(station) = &recipe.requires_station {
+                    output.push_str(&format!("REQUIRES STATION: {}\n", station));
+                }
+
+                output.push_str(&format!(
+                    "\nCreated by: {} on {}\n",
+                    recipe.created_by,
+                    recipe.created_at.format("%Y-%m-%d")
+                ));
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @RECIPE subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
                 subcommand
             )),
         }
