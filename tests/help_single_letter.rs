@@ -35,9 +35,11 @@ async fn help_single_letter_alias() {
             .process(&mut session, forbidden, &mut storage, &cfg, &registry)
             .await
             .unwrap();
+        // After authentication fix: unauthenticated users get "Authentication required" for unknown commands
+        // instead of "Invalid command"
         assert!(
-            out.starts_with("Invalid command"),
-            "Long-form variant '{forbidden}' should be rejected"
+            out.starts_with("Invalid command") || out.contains("Authentication required"),
+            "Long-form variant '{forbidden}' should be rejected or require auth. Got: {out}"
         );
     }
 

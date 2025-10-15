@@ -17,6 +17,9 @@ async fn numbered_area_selection() {
         .await
         .unwrap();
 
+    // Login first (required after authentication fix)
+    session.login("test_user".into(), 1).await.unwrap();
+
     // Enter message areas
     let areas_output = meshbbs::bbs::commands::CommandProcessor::new()
         .process(&mut session, "M", &mut storage, &cfg, &registry)
