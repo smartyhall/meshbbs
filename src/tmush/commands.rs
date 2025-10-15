@@ -1987,6 +1987,8 @@ impl TinyMushProcessor {
         _config: &Config,
     ) -> Result<String> {
         use crate::tmush::trigger::integration::execute_on_take;
+        use crate::tmush::inventory::{add_item_to_inventory, can_add_item};
+        use crate::tmush::types::InventoryConfig;
 
         let player_node_id = &session.node_id;
 
@@ -2063,9 +2065,14 @@ impl TinyMushProcessor {
             }
         }
 
-        // Check inventory capacity
-        if player.inventory.len() >= 100 {
-            return Ok("Your inventory is full! (Max 100 items)".to_string());
+        // Use inventory config
+        let inventory_config = InventoryConfig::default();
+        
+        // Check if player can add item to inventory
+        let store = self.store();
+        let get_item = |object_id: &str| store.get_object(object_id).ok();
+        if let Err(reason) = can_add_item(&player, &object, quantity, &inventory_config, get_item) {
+            return Ok(reason);
         }
 
         // Fire OnTake trigger before taking
@@ -2077,8 +2084,8 @@ impl TinyMushProcessor {
             return Ok(format!("Error updating room: {}", e));
         }
 
-        // Add to player inventory
-        player.inventory.push(object.id.clone());
+        // Add to player inventory using new system
+        let _result = add_item_to_inventory(&mut player, &object, quantity, &inventory_config);
 
         // Record ownership transfer
         let mut updated_object = object.clone();
@@ -2167,9 +2174,16 @@ impl TinyMushProcessor {
             }
         }
 
-        // Check inventory capacity
-        if player.inventory.len() >= 100 {
-            return Ok("Your inventory is full! (Max 100 items)".to_string());
+        // Use inventory system
+        use crate::tmush::inventory::{add_item_to_inventory, can_add_item};
+        use crate::tmush::types::InventoryConfig;
+        
+        let inventory_config = InventoryConfig::default();
+        let store = self.store();
+        let get_item = |object_id: &str| store.get_object(object_id).ok();
+        
+        if let Err(reason) = can_add_item(&player, &object, 1, &inventory_config, get_item) {
+            return Ok(reason);
         }
 
         // Fire OnTake trigger
@@ -2181,8 +2195,8 @@ impl TinyMushProcessor {
             return Ok(format!("Error updating room: {}", e));
         }
 
-        // Add to player inventory
-        player.inventory.push(object.id.clone());
+        // Add to player inventory using new system
+        let _result = add_item_to_inventory(&mut player, &object, 1, &inventory_config);
 
         // Record ownership transfer
         let mut updated_object = object.clone();
