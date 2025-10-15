@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2025-10-15
+
+### Added - Production Deployment & Advanced Object Management
+
+This release adds production-ready systemd deployment support, security hardening,
+admin workflow improvements, and comprehensive object management tools for large worlds.
+
+#### Systemd Service Integration
+- **Production-ready systemd service**: Full integration with systemd on Raspberry Pi and Linux systems
+  - Automatic service installation via `install.sh`
+  - Security hardening: `ProtectSystem=full`, `PrivateTmp=true`, memory limits
+  - Graceful shutdown support (SIGTERM handling)
+  - Service templates in `docs/administration/SYSTEMD_SETUP.md`
+  - Compatible with older kernels (RPi 3/4 tested)
+- **Fixed systemd compatibility issues**:
+  - Removed `RestrictNamespaces=true` (incompatible with older kernels)
+  - Changed `ProtectSystem=strict` → `ProtectSystem=full` (fixes 226/NAMESPACE error)
+  - Changed `MemoryLimit` → `MemoryMax` (removed deprecation warning)
+  - Added `start` subcommand to ExecStart for proper daemon mode
+  - Created `meshbbs.log` during installation for mount namespace compatibility
+
+#### Admin Command Standardization
+- **All admin commands now use @ prefix**: Standardized to MUSH conventions
+  - Converted 17 commands: @BUILDER, @SETBUILDER, @REMOVEBUILDER, @BUILDERS
+  - Player monitoring: @PLAYERS, @WHERE, @GOTO
+  - Clone management: @LISTCLONES, @CLONESTATS
+  - Backup operations: @BACKUP, @RESTORE, @LISTBACKUPS, @VERIFYBACKUP, @DELETEBACKUP, @BACKUPCONFIG
+  - World events: @CONVERT_CURRENCY
+  - Updated all help text and documentation
+  - Maintains consistency across 33 total admin commands
+
+#### Clone Security Enhancements
+- **Builder permission requirement for /CLONE**: Security fix for production worlds
+  - Only builders (level 1+) can now use /CLONE command
+  - Prevents general player abuse of cloning system
+  - Added Check 0 (builder permission) before all other security checks
+  - Updated help text to mention builder requirement
+  - Added `test_non_builder_cannot_clone()` test case
+- **Existing clone protections remain**:
+  - UNIQUE flag prevents cloning entirely
+  - Quest items blocked via Quest flag
+  - High-value items (>100 gold) cannot be cloned
+  - Max clone depth: 3 levels
+  - Player quotas: 100 objects max, 20 clones/hour
+  - 60-second cooldown between operations
+
+#### Advanced Object Management (@OBJECT Enhancements)
+- **@OBJECT LIST [pattern]**: Optional fuzzy search filter
+  - Case-insensitive substring matching on ID, name, and description
+  - Example: `@OBJECT LIST torch` shows all torch-related objects
+  - Shows filtered count vs total count
+- **@OBJECT SEARCH <pattern>**: Advanced fuzzy search with scoring
+  - Intelligent relevance ranking (exact match > partial > description)
+  - Word boundary matching for better results
+  - Top 20 results with scores displayed
+  - Truncated descriptions for readability
+  - Example: `@OBJECT SEARCH singing mushroom` finds even with typos
+- **@OBJECT INSTANCES <id>**: Track object usage across world
+  - Scans all rooms (items field)
+  - Scans all player inventories
+  - Shows clone information for prototypes
+  - Displays location summary with counts
+  - Example output: "📍 Rooms (3), 🎒 Player Inventories (2), 📊 Total: 5"
+- **@OBJECT EDIT warnings**: Smart warnings for heavily-used objects
+  - Warns when editing prototypes (clone_count > 0)
+  - Warns when object appears in multiple locations
+  - Shows instance count breakdown (rooms/players)
+  - Suggests using @OBJECT INSTANCES for details
+  - Prevents accidental edits to widely-used items
+
+### Changed
+- **Install script improvements**: Enhanced path layout and systemd integration
+- **Documentation updates**: Added systemd setup guide, updated admin command reference
+- **Test suite enhancements**: Added 14 new tests for clone security and object management
+
+### Fixed
+- **Systemd service startup failures** on Raspberry Pi and older Linux kernels
+- **Player monitoring commands** now use @ prefix consistently
+- **Clone security vulnerability** allowing any player to clone objects
+
+### Technical Notes
+- All 636+ tests passing
+- No breaking changes to existing functionality
+- Backward compatible with existing game worlds and configurations
+- Systemd service templates tested on Raspberry Pi 3/4
+
 ## [1.0.900] - 2025-10-15
 
 ### Added - Complete Data-Driven Content Management System
