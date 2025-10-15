@@ -5,6 +5,271 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added - Data-Driven Seed Content Migration
+
+#### Phase 6: JSON Seed Data Migration
+- **Seed data now JSON-based**: All initial game content now loaded from editable JSON files in `data/seeds/`
+  - `npcs.json`: 5 starter NPCs (Mayor Thompson, City Clerk, Gate Guard, Market Vendor, Museum Curator)
+  - `companions.json`: 3 companions (Gentle Mare, Loyal Hound, Shadow Cat)
+  - `rooms.json`: 24 world rooms (Old Towne Mesh complete world map)
+  - `achievements.json`: 17 achievements across 6 categories
+  - `quests.json`: 3 starter quests (Welcome, Market Exploration, Network Explorer)
+  - `recipes.json`: 2 crafting recipes (Signal Booster, Basic Antenna)
+
+- **seed_loader module**: New `src/tmush/seed_loader.rs` with 6 loading functions
+  - `load_npcs_from_json()`: Deserialize NPCs with dialogues and flags
+  - `load_companions_from_json()`: Deserialize companions with types and locations
+  - `load_rooms_from_json()`: Deserialize rooms with exits, flags, and capacity
+  - `load_achievements_from_json()`: Deserialize achievements with triggers
+  - `load_quests_from_json()`: Deserialize quests with objectives and rewards
+  - `load_recipes_from_json()`: Deserialize crafting recipes with materials
+
+- **Fallback to hardcoded seeds**: If JSON files are missing, automatically falls back to hardcoded Rust seed functions for backwards compatibility
+
+- **Installation support**: `install.sh` now creates `data/seeds/` directory and copies all seed JSON files
+
+- **Package distribution**: All 6 seed JSON files included in cargo-deb package assets
+
+#### Benefits
+- **Admins can customize content**: Edit seed JSON files to customize initial world without recompiling
+- **Version control friendly**: Seed data changes visible in git diffs as JSON
+- **Easier testing**: Create custom test worlds by modifying JSON files
+- **Modding support**: Community can share custom seed content as JSON files
+- **No compilation required**: Adjust NPC dialogue, room descriptions, achievement triggers without rebuilding
+
+### Added - Data-Driven Achievement Management
+
+#### Phase 1: Achievement System (@ACHIEVEMENT Command)
+- **@ACHIEVEMENT command**: Complete admin interface for data-driven achievement management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new achievements with default settings
+  - `EDIT <id> DESCRIPTION <text>`: Set achievement description
+  - `EDIT <id> CATEGORY <category>`: Set category (Combat, Exploration, Social, Economic, Quest, Special)
+  - `EDIT <id> TRIGGER <type> <params>`: Configure trigger conditions (9 trigger types supported)
+  - `EDIT <id> TITLE <text>`: Set optional title reward
+  - `EDIT <id> HIDDEN <true|false>`: Toggle hidden achievement visibility
+  - `DELETE <id>`: Remove achievement from database
+  - `LIST [category]`: List all achievements or filter by category
+  - `SHOW <id>`: Display detailed achievement information
+  - Alias: `@ACH` for shorter command usage
+
+#### Achievement Trigger Types (9 variants)
+- **KILLCOUNT <required>**: Track enemy defeats
+- **ROOMVISITS <required>**: Track room exploration
+- **FRIENDCOUNT <required>**: Track social connections
+- **MESSAGESSENT <required>**: Track message activity
+- **TRADECOUNT <required>**: Track trading activity
+- **CURRENCYEARNED <amount>**: Track currency accumulation
+- **QUESTCOMPLETION <required>**: Track quest completions
+- **VISITLOCATION <room_id>**: Require visiting specific location
+- **COMPLETEQUEST <quest_id>**: Require completing specific quest
+
+#### Storage Layer Enhancements
+- `achievement_exists()`: Fast existence check for achievements
+- Achievement CRUD operations integrated with TinyMushStore
+- Full support for all 6 achievement categories and 9 trigger types
+
+#### Testing
+- **7 new integration tests** in `tests/achievement_management.rs`:
+  - CRUD operations validation
+  - All field editing (description, category, trigger, title, hidden)
+  - All 9 trigger type parsing and validation
+  - Category validation for all 6 categories
+  - Existence checks and error handling
+  - List filtering by category
+  - Seeded starter achievements verification
+- **608 total tests passing** (including new achievement tests)
+
+#### Phase 2: NPC System (@NPC Command)
+- **@NPC command**: Complete admin interface for data-driven NPC management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new NPCs with default settings (spawns in starting_room)
+  - `EDIT <id> NAME <text>`: Update NPC display name
+  - `EDIT <id> TITLE <text>`: Set NPC title/role
+  - `EDIT <id> DESCRIPTION <text>`: Set NPC description
+  - `EDIT <id> ROOM <room_id>`: Move NPC to different room
+  - `EDIT <id> DIALOG <key> <response>`: Add dialogue response (key->response mapping)
+  - `EDIT <id> FLAG <flag>`: Add NPC behavioral flag (5 flag types)
+  - `DELETE <id>`: Remove NPC from database
+  - `LIST`: List all NPCs with room location and flags
+  - `SHOW <id>`: Display detailed NPC information including all dialogue
+
+#### NPC Flag Types (5 variants)
+- **TutorialNpc**: Provides new player guidance
+- **QuestGiver**: Can offer quests to players
+- **Vendor**: Can engage in trading
+- **Guard**: Special patrol/security behavior
+- **Immortal**: Cannot be removed or modified by standard means
+
+#### Storage Layer Enhancements
+- `npc_exists()`: Fast existence check for NPCs
+- `companion_exists()`: Fast existence check for companions
+- NPC CRUD operations integrated with TinyMushStore
+- Companion CRUD operations integrated with TinyMushStore
+- Support for dialogue HashMap and future dialog_tree system
+
+#### Testing
+- **7 new integration tests** in `tests/npc_management.rs`:
+  - CRUD operations validation
+  - All field editing (name, title, description, room, dialog)
+  - Dialogue management with multiple key->response pairs
+  - All 5 flag type management
+  - Multiple flags per NPC
+  - Existence checks and error handling
+  - Seeded starter NPCs verification (5 NPCs: mayor_thompson, city_clerk, gate_guard, market_vendor, museum_curator)
+- **7 new integration tests** in `tests/companion_management.rs`:
+  - CRUD operations validation
+  - All field editing (name, description, type, room)
+  - All 6 CompanionType variants (Horse, Dog, Cat, Familiar, Mercenary, Construct)
+  - All 7 CompanionBehavior types (AutoFollow, AlertDanger, ExtraStorage, CombatAssist, Healing, SkillBoost, IdleChatter)
+  - Complex behavior management with parameters
+  - Multiple behaviors per companion
+  - Existence checks and error handling
+  - Seeded starter companions verification (3 companions: gentle_mare, loyal_hound, shadow_cat)
+- **622 total tests passing** (including 14 new NPC+Companion tests)
+
+#### Phase 3: Companion System (@COMPANION Command)
+- **@COMPANION command**: Complete admin interface for data-driven companion management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new companions with default type (Dog) and default room (starting_room)
+  - `EDIT <id> NAME <text>`: Update companion display name
+  - `EDIT <id> DESCRIPTION <text>`: Set companion description
+  - `EDIT <id> TYPE <type>`: Set companion type (6 types)
+  - `EDIT <id> ROOM <room_id>`: Move companion to different room
+  - `EDIT <id> BEHAVIOR <behavior> [params]`: Add companion behavior (7 behavior types with parameters)
+  - `DELETE <id>`: Remove companion from database
+  - `LIST`: List all companions with type, room location, and owner
+  - `SHOW <id>`: Display detailed companion information including all behaviors and inventory
+  - Aliases: `@COMPANIONS`, `@PET` for alternate command usage
+
+#### Companion Types (6 variants)
+- **Horse**: Mount with extra storage capacity, auto-follows owner
+- **Dog**: Loyal follower with danger alerts and idle chatter
+- **Cat**: Independent companion with idle chatter behaviors
+- **Familiar**: Magical companion with skill boosts and auto-follow
+- **Mercenary**: Combat assistant with damage bonuses
+- **Construct**: Mechanical ally with storage and combat capabilities
+
+#### Companion Behaviors (7 types with parameters)
+- **AutoFollow**: Automatically follow owner between rooms
+- **AlertDanger**: Warn player when danger is nearby
+- **ExtraStorage <capacity>**: Provide additional inventory slots (e.g., saddlebags)
+- **CombatAssist <damage_bonus>**: Add bonus damage in combat
+- **Healing <heal_amount> <cooldown_seconds>**: Provide healing over time
+- **SkillBoost <skill> <bonus>**: Boost specific skill (e.g., magic +10)
+- **IdleChatter <message1> [message2...]**: Say ambient messages periodically
+
+#### Phase 4: Room System (@ROOM Command)
+- **@ROOM command**: Complete admin interface for data-driven room/location management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new rooms with default world settings
+  - `EDIT <id> NAME <text>`: Update room display name
+  - `EDIT <id> SHORTDESC <text>`: Set short description (shown in exits/lists)
+  - `EDIT <id> LONGDESC <text>`: Set long description (shown when entering room)
+  - `EDIT <id> EXIT <direction> <destination_id>`: Add directional exit to another room (10 directions)
+  - `EDIT <id> FLAG <flag>`: Add room behavioral flag (13 flag types)
+  - `EDIT <id> CAPACITY <number>`: Set maximum occupancy (1-65535)
+  - `DELETE <id>`: Remove room from database (with validation)
+  - `LIST`: List all rooms with exit counts and active flags
+  - `SHOW <id>`: Display detailed room information including all exits, flags, items, owner, visibility
+
+#### Room Directions (10 variants)
+- **Cardinal**: North, South, East, West
+- **Vertical**: Up, Down
+- **Diagonal**: Northeast, Northwest, Southeast, Southwest
+- **Exit validation**: Destination room must exist before creating exit
+
+#### Room Flags (13 variants)
+- **Safe**: No combat allowed, safe zone for players
+- **Dark**: Requires light source to navigate
+- **Indoor**: Interior location (affects weather/time-of-day descriptions)
+- **Shop**: Contains vendor NPCs or vending machines
+- **QuestLocation**: Key location for quest objectives
+- **PvpEnabled**: Player vs player combat allowed
+- **PlayerCreated**: Built by players using housing system
+- **Private**: Access restricted to owner and invited guests
+- **Moderated**: Requires moderator approval for messages
+- **Instanced**: Each player sees separate instance (e.g., personal landing room)
+- **Crowded**: High traffic area with performance considerations
+- **HousingOffice**: Location where players can purchase housing
+- **NoTeleportOut**: Players cannot teleport/warp out of room
+
+#### Storage Layer Enhancements
+- `room_exists()`: Fast existence check for rooms using "rooms:world:{id}" key format
+- `list_room_ids()`: Scan and return all room IDs from primary tree with "rooms:world:" prefix
+- `delete_room()`: Remove room from database with flush (ensures persistence)
+- Room CRUD operations use primary sled tree (not dedicated tree like NPCs/Companions)
+- Support for bidirectional exit management with destination validation
+
+#### Testing
+- **7 new integration tests** in `tests/room_management.rs`:
+  - CRUD operations validation (create, read, update, delete)
+  - All field editing (name, short_desc, long_desc, capacity)
+  - Exit management with 10 direction types and destination validation
+  - Single and multiple exit handling
+  - All 13 flag type management with validation
+  - Multiple flags per room (combinations)
+  - Existence checks and error handling
+  - Seeded starter rooms verification (20+ rooms including gazebo_landing, town_square, all world locations)
+- **629 total tests passing** (including 7 new room tests, 21 total from phases 2-4)
+
+#### Phase 5: Object System (@OBJECT Command)
+- **@OBJECT command**: Complete admin interface for data-driven object management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new world objects with default properties
+  - `EDIT <id> NAME <text>`: Update object display name
+  - `EDIT <id> DESCRIPTION <text>`: Set object description
+  - `EDIT <id> WEIGHT <number>`: Set weight in units (0-255)
+  - `EDIT <id> VALUE <number>`: Set currency value in base units
+  - `EDIT <id> FLAG <flag>`: Add object behavioral flag (12 flag types)
+  - `EDIT <id> TAKEABLE <true|false>`: Toggle whether object can be picked up
+  - `EDIT <id> USABLE <true|false>`: Toggle whether object can be used
+  - `EDIT <id> LOCKED <true|false>`: Toggle lock status (prevents taking)
+  - `DELETE <id>`: Remove world object from database
+  - `LIST`: List all world objects with properties and flags
+  - `SHOW <id>`: Display detailed object information including history
+  - Aliases: `@OBJECTS`, `@OBJ` for alternate command usage
+
+#### Object Flags (12 variants)
+- **QuestItem**: Required for quest objectives
+- **Consumable**: Single-use items (potions, food)
+- **Equipment**: Can be equipped by players
+- **KeyItem**: Important story or quest items
+- **Container**: Can hold other objects
+- **Magical**: Has magical properties or effects
+- **Companion**: Pet or ally object
+- **Clonable**: Players can create copies (opt-in)
+- **Unique**: Cannot be cloned (artifacts, quest items)
+- **NoValue**: Strip currency value to 0 on clone
+- **NoCloneChildren**: Cannot clone if contains other objects
+- **LightSource**: Provides illumination in dark rooms (torches, lanterns)
+
+#### Storage Layer Enhancements
+- `object_exists()`: Fast existence check using secondary index (oid:{id}) and fallback to "objects:world:{id}"
+- `list_object_ids()`: Scan and return all world object IDs from objects tree with "objects:world:" prefix
+- `delete_object_world()`: Remove world object with index cleanup and flush
+- Object CRUD operations use dedicated objects sled tree with O(1) secondary index
+- Support for both world-owned and player-owned objects with different key formats
+
+#### Testing
+- **7 new integration tests** in `tests/object_management.rs`:
+  - CRUD operations validation (create, read, update, delete)
+  - All field editing (name, description, weight, value, takeable, usable, locked)
+  - All 12 flag type management with validation
+  - Object flag combinations
+  - Existence checks and error handling
+  - List functionality with sorting validation
+  - Seeded objects verification (37 objects present in initialized database)
+- **636 total tests passing** (including 7 new object tests, 28 total from phases 2-5)
+
+### Developer Notes
+- **Pattern**: Achievement, NPC, Companion, Room, and Object systems follow proven @QUEST/@RECIPE command structure
+- **Migration Status**: Phase 5 of 6-phase data-driven content migration (see TODO.md)
+- **Next Steps**: Phase 6 (Polish & Documentation)
+- **Implementation Notes**: Object system features include:
+  - Secondary index for O(1) object lookups (oid:{id} → full key)
+  - Support for world-owned vs player-owned objects with different key formats
+  - Currency value using CurrencyAmount type (supports multi-tier and decimal)
+  - Clone tracking with depth, source ID, and clone count fields
+  - Ownership history for forensic tracking
+
 ## [1.0.115-beta] - 2025-10-14
 
 ### Added - Phase 4 Quest Content & Phase 5 Features

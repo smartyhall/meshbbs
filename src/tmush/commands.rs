@@ -18,19 +18,11 @@ use crate::tmush::trigger::{
     execute_on_look, execute_on_poke, execute_on_use, execute_room_on_enter,
 };
 use crate::tmush::types::{
-    BulletinBoard, BulletinMessage, CurrencyAmount, Direction as TmushDirection, ObjectRecord,
-    RoomFlag, TutorialState, TutorialStep,
+    AchievementCategory, AchievementRecord, AchievementTrigger, BulletinBoard, BulletinMessage,
+    CurrencyAmount, Direction as TmushDirection, ObjectRecord, RoomFlag, TutorialState,
+    TutorialStep,
 };
 use crate::tmush::{PlayerRecord, TinyMushError, TinyMushStore};
-
-/// Crafting recipe definition (Phase 4.4)
-#[derive(Debug, Clone)]
-struct CraftRecipe {
-    name: String,
-    result_item: String,
-    materials: Vec<(&'static str, usize)>,
-    description: String,
-}
 
 /// TinyMUSH command categories for parsing and routing
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +172,13 @@ pub enum TinyMushCommand {
     EditNpc(String, String, String), // @EDITNPC <npc_id> <field> <value> - edit NPC properties (admin only)
     ListAbandoned, // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
     Dialog(String, String, Option<String>), // @DIALOG <npc> <subcommand> [args] - manage NPC dialogue trees (admin only)
+    Recipe(String, Vec<String>), // @RECIPE <subcommand> [args] - manage crafting recipes (admin only)
+    QuestAdmin(String, Vec<String>), // @QUEST <subcommand> [args] - manage quests (admin only)
+    AchievementAdmin(String, Vec<String>), // @ACHIEVEMENT <subcommand> [args] - manage achievements (admin only)
+    NPCAdmin(String, Vec<String>), // @NPC <subcommand> [args] - manage NPCs (admin only)
+    CompanionAdmin(String, Vec<String>), // @COMPANION <subcommand> [args] - manage companions (admin only)
+    RoomAdmin(String, Vec<String>), // @ROOM <subcommand> [args] - manage rooms (admin only)
+    ObjectAdmin(String, Vec<String>), // @OBJECT <subcommand> [args] - manage objects (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -624,6 +623,27 @@ impl TinyMushProcessor {
             TinyMushCommand::Dialog(npc_id, subcommand, args) => {
                 self.handle_dialog(session, npc_id, subcommand, args, config)
                     .await
+            }
+            TinyMushCommand::Recipe(subcommand, args) => {
+                self.handle_recipe(session, subcommand, args, config).await
+            }
+            TinyMushCommand::QuestAdmin(subcommand, args) => {
+                self.handle_quest_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::AchievementAdmin(subcommand, args) => {
+                self.handle_achievement_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::NPCAdmin(subcommand, args) => {
+                self.handle_npc_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::CompanionAdmin(subcommand, args) => {
+                self.handle_companion_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::RoomAdmin(subcommand, args) => {
+                self.handle_room_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::ObjectAdmin(subcommand, args) => {
+                self.handle_object_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1241,6 +1261,69 @@ impl TinyMushProcessor {
                     TinyMushCommand::Dialog(npc_id, subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @DIALOG <npc> <subcommand> [args]\nSubcommands: LIST, VIEW <topic>, ADD <topic> <text>, EDIT <topic> <json>, DELETE <topic>, TEST <topic>\nExample: @DIALOG merchant VIEW greeting".to_string())
+                }
+            }
+            "@RECIPE" | "@RCP" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::Recipe(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @RECIPE <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new recipe\n  EDIT <id> MATERIAL ADD <item_id> <qty> - Add material\n  EDIT <id> MATERIAL REMOVE <item_id> - Remove material\n  EDIT <id> RESULT <item_id> [qty] - Set result item\n  EDIT <id> STATION <station_id> - Set crafting station\n  EDIT <id> DESCRIPTION <text> - Set description\n  DELETE <id> - Delete recipe\n  LIST [station] - List all recipes\n  SHOW <id> - Show recipe details\n\nExample: @RECIPE CREATE goat_cheese \"Goat Milk Cheese\"".to_string())
+                }
+            }
+            "@QUEST" | "@QST" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::QuestAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @QUEST <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new quest\n  EDIT <id> DESCRIPTION <text> - Set description\n  EDIT <id> GIVER <npc_id> - Set quest giver NPC\n  EDIT <id> LEVEL <num> - Set recommended level\n  EDIT <id> OBJECTIVE ADD <type> <details> - Add objective\n  EDIT <id> OBJECTIVE REMOVE <index> - Remove objective\n  EDIT <id> REWARD CURRENCY <amount> - Set currency reward\n  EDIT <id> REWARD XP <amount> - Set experience reward\n  EDIT <id> REWARD ITEM <item_id> - Set item reward\n  EDIT <id> PREREQUISITE <quest_id> - Set prerequisite quest\n  DELETE <id> - Delete quest\n  LIST - List all quests\n  SHOW <id> - Show quest details\n\nExample: @QUEST CREATE fetch_water \"Fetch Water for the Village\"".to_string())
+                }
+            }
+            "@ACHIEVEMENT" | "@ACH" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::AchievementAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @ACHIEVEMENT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new achievement\n  EDIT <id> DESCRIPTION <text> - Set description\n  EDIT <id> CATEGORY <type> - Set category (Combat/Exploration/Social/Economic/Quest/Special)\n  EDIT <id> TRIGGER <type> <params> - Set trigger condition\n    Trigger types:\n      KILLCOUNT <num> - Defeat N enemies\n      ROOMVISITS <num> - Visit N unique rooms\n      FRIENDCOUNT <num> - Make N friends\n      MESSAGESSENT <num> - Send N messages\n      TRADECOUNT <num> - Complete N trades\n      CURRENCYEARNED <amount> - Earn X currency\n      QUESTCOMPLETION <num> - Complete N quests\n      VISITLOCATION <room_id> - Visit specific location\n      COMPLETEQUEST <quest_id> - Complete specific quest\n  EDIT <id> TITLE <text> - Set title reward (optional)\n  EDIT <id> HIDDEN <true|false> - Toggle hidden status\n  DELETE <id> - Delete achievement\n  LIST [category] - List achievements (optional filter)\n  SHOW <id> - Show achievement details\n\nExample: @ACHIEVEMENT CREATE first_kill \"First Blood\"".to_string())
+                }
+            }
+            "@NPC" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::NPCAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @NPC <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new NPC\n  EDIT <id> NAME <text> - Set NPC name\n  EDIT <id> TITLE <text> - Set NPC title\n  EDIT <id> DESCRIPTION <text> - Set NPC description\n  EDIT <id> ROOM <room_id> - Set NPC location\n  EDIT <id> DIALOG <key> <text> - Add simple dialogue response\n  DELETE <id> - Delete NPC\n  LIST - List all NPCs\n  SHOW <id> - Show NPC details\n\nNPC Flags (use @NPC EDIT <id> FLAG <flag>):\n  VENDOR - NPC can trade items\n  GUARD - NPC provides security\n  TUTORIALNPC - NPC helps with tutorials\n  QUESTGIVER - NPC gives quests\n\nExample: @NPC CREATE blacksmith \"Forge Master Grimm\"\nExample: @NPC EDIT blacksmith ROOM town_forge\nExample: @NPC EDIT blacksmith DIALOG greeting Welcome to my forge!".to_string())
+                }
+            }
+            "@COMPANION" | "@COMPANIONS" | "@PET" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::CompanionAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @COMPANION <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new companion\n  EDIT <id> NAME <text> - Set companion name\n  EDIT <id> DESCRIPTION <text> - Set companion description\n  EDIT <id> TYPE <type> - Set companion type\n  EDIT <id> ROOM <room_id> - Set companion location\n  EDIT <id> BEHAVIOR <behavior> [params] - Add companion behavior\n  DELETE <id> - Delete companion\n  LIST - List all companions\n  SHOW <id> - Show companion details\n\nCompanion Types:\n  HORSE - Mount, extra storage\n  DOG - Loyal follower, alert danger\n  CAT - Independent, idle chatter\n  FAMILIAR - Magic boost, auto-follow\n  MERCENARY - Combat assist\n  CONSTRUCT - Mechanical ally\n\nBehavior Examples:\n  @COMPANION EDIT loyal_dog BEHAVIOR AutoFollow\n  @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30\n  @COMPANION EDIT guard_dog BEHAVIOR CombatAssist 5\n  @COMPANION EDIT healing_cat BEHAVIOR Healing 10 300\n\nExample: @COMPANION CREATE war_horse \"Battle Steed\"\nExample: @COMPANION EDIT war_horse TYPE HORSE\nExample: @COMPANION EDIT war_horse ROOM armory".to_string())
+                }
+            }
+            "@ROOM" | "@ROOMS" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::RoomAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @ROOM <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new room\n  EDIT <id> NAME <text> - Set room name\n  EDIT <id> SHORTDESC <text> - Set room short description\n  EDIT <id> LONGDESC <text> - Set room long description\n  EDIT <id> EXIT <direction> <dest_room> - Add exit (N/S/E/W/U/D/NE/NW/SE/SW)\n  EDIT <id> FLAG <flag> - Add room flag\n  EDIT <id> CAPACITY <number> - Set max occupancy\n  DELETE <id> - Delete room\n  LIST - List all rooms\n  SHOW <id> - Show room details\n\nRoom Flags:\n  SAFE - No combat allowed\n  DARK - Requires light source\n  INDOOR - Protected from weather\n  SHOP - Commercial location\n  QUESTLOCATION - Quest-related room\n  PVPENABLED - PvP combat allowed\n  PLAYERCREATED - Player-made room\n  PRIVATE - Restricted access\n  MODERATED - Admin-monitored\n  INSTANCED - Separate copy per player\n  CROWDED - High traffic area\n  HOUSINGOFFICE - Housing services\n  NOTELEPORTOUT - Cannot teleport out\n\nExit Examples:\n  @ROOM EDIT tavern EXIT NORTH town_square\n  @ROOM EDIT dungeon EXIT UP surface_entrance\n\nExample: @ROOM CREATE dark_cave \"Mysterious Cave\"\nExample: @ROOM EDIT dark_cave FLAG DARK\nExample: @ROOM EDIT dark_cave CAPACITY 10".to_string())
+                }
+            }
+            "@OBJECT" | "@OBJECTS" | "@OBJ" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::ObjectAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @OBJECT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new world object\n  EDIT <id> NAME <text> - Set object name\n  EDIT <id> DESCRIPTION <text> - Set object description\n  EDIT <id> WEIGHT <number> - Set weight (0-255)\n  EDIT <id> VALUE <amount> - Set currency value\n  EDIT <id> FLAG <flag> - Add object flag\n  EDIT <id> TAKEABLE <true|false> - Set takeable property\n  EDIT <id> USABLE <true|false> - Set usable property\n  EDIT <id> LOCKED <true|false> - Lock to prevent taking\n  DELETE <id> - Delete object\n  LIST - List all world objects\n  SHOW <id> - Show object details\n\nObject Flags:\n  QUESTITEM - Required for quests\n  CONSUMABLE - Single-use item\n  EQUIPMENT - Can be equipped\n  KEYITEM - Important story item\n  CONTAINER - Can hold other items\n  MAGICAL - Has magical properties\n  COMPANION - Companion pet/ally\n  CLONABLE - Can be cloned by players\n  UNIQUE - Cannot be cloned\n  NOVALUE - Strip value on clone\n  NOCLONECHILDREN - Cannot clone with contents\n  LIGHTSOURCE - Provides light in dark rooms\n\nValue Examples:\n  @OBJECT EDIT torch VALUE 5gc - Sets value to 5 gold, 0 silver, 0 copper\n  @OBJECT EDIT sword VALUE 2gc,50sc - Sets value to 2 gold, 50 silver, 0 copper\n\nExample: @OBJECT CREATE basic_torch \"Wooden Torch\"\nExample: @OBJECT EDIT basic_torch DESCRIPTION \"A simple torch that provides light.\"\nExample: @OBJECT EDIT basic_torch FLAG LIGHTSOURCE\nExample: @OBJECT EDIT basic_torch TAKEABLE true\nExample: @OBJECT EDIT basic_torch WEIGHT 5".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -2478,54 +2561,65 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // Define recipes (hardcoded for Phase 4.4, could be data-driven later)
-        let recipe = match recipe_name.as_str() {
-            "signal_booster" => Some(CraftRecipe {
-                name: "signal_booster".to_string(),
-                result_item: "signal_booster".to_string(),
-                materials: vec![
-                    ("copper_wire", 2),
-                    ("circuit_board", 1),
-                    ("antenna_rod", 1),
-                ],
-                description: "A powerful signal booster for extended mesh range.".to_string(),
-            }),
-            "basic_antenna" => Some(CraftRecipe {
-                name: "basic_antenna".to_string(),
-                result_item: "basic_antenna".to_string(),
-                materials: vec![
-                    ("copper_wire", 2),
-                    ("antenna_rod", 1),
-                ],
-                description: "A simple antenna for basic mesh connectivity.".to_string(),
-            }),
-            _ => None,
-        };
-
-        let recipe = match recipe {
+        // Look up recipe in database (data-driven as of crafting refactor)
+        let recipe = match self.find_recipe_by_name_or_id(&recipe_name) {
             Some(r) => r,
             None => {
+                // List available recipes
+                let all_recipes = self.store().list_recipes(None)?;
+                let recipe_names: Vec<String> = all_recipes.iter().map(|r| r.name.clone()).collect();
+                
                 return Ok(format!(
-                    "Unknown recipe: '{}'\nAvailable recipes: signal_booster, basic_antenna",
-                    recipe_name
+                    "Unknown recipe: '{}'\nAvailable recipes: {}",
+                    recipe_name,
+                    if recipe_names.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        recipe_names.join(", ")
+                    }
                 ));
             }
         };
 
+        // Check if station requirement is met
+        if let Some(required_station) = &recipe.requires_station {
+            // Check if player has the station in inventory or is in a room with it
+            let has_station = player.inventory.iter().any(|item_id| item_id.starts_with(required_station));
+            
+            if !has_station {
+                return Ok(format!(
+                    "You need a {} to craft {}.",
+                    required_station, recipe.name
+                ));
+            }
+        }
+
         // Check if player has all required materials
         let mut missing_materials = Vec::new();
-        for (material_id, required_qty) in &recipe.materials {
-            let owned_qty = player
-                .inventory
-                .iter()
-                .filter(|item_id| item_id.starts_with(material_id))
-                .count();
+        for material in &recipe.materials {
+            if !material.consumed {
+                // Tool requirement - just need to have it
+                let has_tool = player.inventory.iter().any(|item_id| item_id.starts_with(&material.item_id));
+                if !has_tool {
+                    missing_materials.push(format!(
+                        "{} (tool)",
+                        material.item_id
+                    ));
+                }
+            } else {
+                // Material requirement - need enough to consume
+                let owned_qty = player
+                    .inventory
+                    .iter()
+                    .filter(|item_id| item_id.starts_with(&material.item_id))
+                    .count();
 
-            if owned_qty < *required_qty {
-                missing_materials.push(format!(
-                    "{} (need {}, have {})",
-                    material_id, required_qty, owned_qty
-                ));
+                if owned_qty < material.quantity as usize {
+                    missing_materials.push(format!(
+                        "{} (need {}, have {})",
+                        material.item_id, material.quantity, owned_qty
+                    ));
+                }
             }
         }
 
@@ -2538,44 +2632,47 @@ Missing: {}",
             ));
         }
 
-        // Consume materials from inventory
-        for (material_id, required_qty) in &recipe.materials {
-            for _ in 0..*required_qty {
-                // Find and remove one instance of this material
-                if let Some(pos) = player
-                    .inventory
-                    .iter()
-                    .position(|item_id| item_id.starts_with(material_id))
-                {
-                    let item_id = player.inventory[pos].clone();
-                    match remove_item_from_inventory(&mut player, &item_id, 1) {
-                        crate::tmush::types::InventoryResult::Removed { .. } => {},
-                        crate::tmush::types::InventoryResult::Failed { reason } => {
-                            return Ok(format!("Failed to remove material {}: {}", material_id, reason));
-                        },
-                        _ => {},
+        // Consume materials from inventory (but not tools)
+        for material in &recipe.materials {
+            if material.consumed {
+                for _ in 0..material.quantity {
+                    // Find and remove one instance of this material
+                    if let Some(pos) = player
+                        .inventory
+                        .iter()
+                        .position(|item_id| item_id.starts_with(&material.item_id))
+                    {
+                        let item_id = player.inventory[pos].clone();
+                        match remove_item_from_inventory(&mut player, &item_id, 1) {
+                            crate::tmush::types::InventoryResult::Removed { .. } => {},
+                            crate::tmush::types::InventoryResult::Failed { reason } => {
+                                return Ok(format!("Failed to remove material {}: {}", material.item_id, reason));
+                            },
+                            _ => {},
+                        }
                     }
                 }
             }
         }
 
-        // Create the crafted item
-        let crafted_item = self.create_crafted_item(&recipe.result_item)?;
-        self.store().put_object(crafted_item.clone())?;
-        
-        // Add to player inventory (use default inventory config)
+        // Create the crafted item(s)
         let inv_config = crate::tmush::types::InventoryConfig {
             allow_stacking: true,
             max_weight: 1000,
             max_stacks: 100,
         };
         
-        match add_item_to_inventory(&mut player, &crafted_item, 1, &inv_config) {
-            crate::tmush::types::InventoryResult::Added { .. } => {},
-            crate::tmush::types::InventoryResult::Failed { reason } => {
-                return Ok(format!("Failed to add crafted item to inventory: {}", reason));
-            },
-            _ => {},
+        for _ in 0..recipe.result_quantity {
+            let crafted_item = self.create_crafted_item(&recipe.result_item_id)?;
+            self.store().put_object(crafted_item.clone())?;
+            
+            match add_item_to_inventory(&mut player, &crafted_item, 1, &inv_config) {
+                crate::tmush::types::InventoryResult::Added { .. } => {},
+                crate::tmush::types::InventoryResult::Failed { reason } => {
+                    return Ok(format!("Failed to add crafted item to inventory: {}", reason));
+                },
+                _ => {},
+            }
         }
         
         // Save player
@@ -2599,10 +2696,41 @@ Missing: {}",
             );
         }
 
-        Ok(format!(
-            "You successfully craft {}!\n{}",
-            crafted_item.name, recipe.description
-        ))
+        let result_msg = if recipe.result_quantity > 1 {
+            format!("You successfully craft {} x{}!", recipe.name, recipe.result_quantity)
+        } else {
+            format!("You successfully craft {}!", recipe.name)
+        };
+
+        let description = if recipe.description.is_empty() {
+            "".to_string()
+        } else {
+            format!("\n{}", recipe.description)
+        };
+
+        Ok(format!("{}{}", result_msg, description))
+    }
+
+    /// Find a recipe by ID or name (case-insensitive)
+    fn find_recipe_by_name_or_id(&self, search: &str) -> Option<crate::tmush::types::CraftingRecipe> {
+        let all_recipes = self.store().list_recipes(None).ok()?;
+        let search_lower = search.to_lowercase();
+        
+        // First try exact ID match
+        for recipe in &all_recipes {
+            if recipe.id == search_lower {
+                return Some(recipe.clone());
+            }
+        }
+        
+        // Then try case-insensitive name match
+        for recipe in &all_recipes {
+            if recipe.name.to_lowercase() == search_lower {
+                return Some(recipe.clone());
+            }
+        }
+        
+        None
     }
 
     /// Create a crafted item (Phase 4.4 helper)
@@ -6591,6 +6719,1867 @@ Not fancy, but it gets the job done.",
                     - TEST <topic> - Test conditions for current player",
                 subcommand
             )),
+        }
+    }
+
+    /// Handle @RECIPE command - manage crafting recipes (admin only)
+    async fn handle_recipe(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        // Check admin level (sysop = 3, admin = 2)
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Only admins can manage crafting recipes.".to_string());
+        }
+
+        let store = self.store();
+
+        match subcommand.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @RECIPE CREATE <id> <name>\nExample: @RECIPE CREATE goat_cheese \"Goat Milk Cheese\"".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                let recipe_name = args[1..].join(" ");
+
+                // Check if recipe already exists
+                if store.recipe_exists(&recipe_id)? {
+                    return Ok(format!("Recipe '{}' already exists. Use @RECIPE EDIT to modify it or @RECIPE DELETE to remove it first.", recipe_id));
+                }
+
+                // Create new recipe
+                let recipe = crate::tmush::types::CraftingRecipe::new(
+                    &recipe_id,
+                    &recipe_name,
+                    &recipe_id, // Default result item ID same as recipe ID
+                    &player.username,
+                );
+
+                store.put_recipe(recipe)?;
+
+                Ok(format!(
+                    "Recipe '{}' created.\n\nNext steps:\n\
+                    - @RECIPE EDIT {} MATERIAL ADD <item_id> <qty>\n\
+                    - @RECIPE EDIT {} RESULT <item_id> [qty]\n\
+                    - @RECIPE EDIT {} DESCRIPTION <text>\n\
+                    - @RECIPE EDIT {} STATION <station_id>",
+                    recipe_name, recipe_id, recipe_id, recipe_id, recipe_id
+                ))
+            }
+            "EDIT" => {
+                if args.is_empty() {
+                    return Ok("Usage: @RECIPE EDIT <id> <field> <value>\nFields: MATERIAL, RESULT, DESCRIPTION, STATION".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                let mut recipe = match store.get_recipe(&recipe_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Recipe '{}' not found.", recipe_id)),
+                };
+
+                if args.len() < 2 {
+                    return Ok("Usage: @RECIPE EDIT <id> <field> <value>".to_string());
+                }
+
+                let field = args[1].to_uppercase();
+                match field.as_str() {
+                    "MATERIAL" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> MATERIAL ADD/REMOVE <item_id> [qty]".to_string());
+                        }
+
+                        let action = args[2].to_uppercase();
+                        match action.as_str() {
+                            "ADD" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @RECIPE EDIT <id> MATERIAL ADD <item_id> <qty>".to_string());
+                                }
+
+                                let item_id = &args[3];
+                                let quantity: u32 = args[4].parse().unwrap_or(1);
+
+                                recipe.materials.push(crate::tmush::types::RecipeMaterial::new(item_id, quantity));
+                                store.put_recipe(recipe)?;
+
+                                Ok(format!("Added material: {} x{}", item_id, quantity))
+                            }
+                            "REMOVE" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @RECIPE EDIT <id> MATERIAL REMOVE <item_id>".to_string());
+                                }
+
+                                let item_id = &args[3];
+                                recipe.materials.retain(|m| m.item_id != *item_id);
+                                store.put_recipe(recipe)?;
+
+                                Ok(format!("Removed material: {}", item_id))
+                            }
+                            _ => Ok("Usage: @RECIPE EDIT <id> MATERIAL ADD/REMOVE <item_id> [qty]".to_string()),
+                        }
+                    }
+                    "RESULT" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> RESULT <item_id> [qty]".to_string());
+                        }
+
+                        recipe.result_item_id = args[2].clone();
+                        if args.len() >= 4 {
+                            recipe.result_quantity = args[3].parse().unwrap_or(1);
+                        }
+
+                        store.put_recipe(recipe.clone())?;
+
+                        Ok(format!(
+                            "Recipe will create: {} x{}",
+                            recipe.result_item_id, recipe.result_quantity
+                        ))
+                    }
+                    "DESCRIPTION" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> DESCRIPTION <text>".to_string());
+                        }
+
+                        recipe.description = args[2..].join(" ");
+                        store.put_recipe(recipe)?;
+
+                        Ok("Description updated.".to_string())
+                    }
+                    "STATION" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @RECIPE EDIT <id> STATION <station_id>\nExample: @RECIPE EDIT goat_cheese STATION cheese_press".to_string());
+                        }
+
+                        recipe.requires_station = Some(args[2].clone());
+                        store.put_recipe(recipe.clone())?;
+
+                        Ok(format!("Recipe requires crafting station: {}", args[2]))
+                    }
+                    _ => Ok("Unknown field. Use: MATERIAL, RESULT, DESCRIPTION, or STATION".to_string()),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @RECIPE DELETE <id>".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                match store.get_recipe(&recipe_id) {
+                    Ok(recipe) => {
+                        store.delete_recipe(&recipe_id)?;
+                        Ok(format!("Recipe '{}' has been deleted.", recipe.name))
+                    }
+                    Err(_) => Ok(format!("Recipe '{}' not found.", recipe_id)),
+                }
+            }
+            "LIST" => {
+                let station_filter = args.first().map(|s| s.as_str());
+                let recipes = store.list_recipes(station_filter)?;
+
+                if recipes.is_empty() {
+                    return Ok("No recipes found.".to_string());
+                }
+
+                let mut output = if let Some(station) = station_filter {
+                    format!("=== RECIPES FOR {} ===\n\n", station)
+                } else {
+                    "=== ALL RECIPES ===\n\n".to_string()
+                };
+
+                for (idx, recipe) in recipes.iter().enumerate() {
+                    output.push_str(&format!(
+                        "{}. {} (ID: {})\n",
+                        idx + 1,
+                        recipe.name,
+                        recipe.id
+                    ));
+
+                    if let Some(station) = &recipe.requires_station {
+                        output.push_str(&format!("   Station: {}\n", station));
+                    }
+
+                    output.push_str(&format!("   Materials: {}\n", recipe.materials.len()));
+                    output.push_str(&format!("   Creates: {} x{}\n\n", recipe.result_item_id, recipe.result_quantity));
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @RECIPE SHOW <id>".to_string());
+                }
+
+                let recipe_id = args[0].to_lowercase();
+                let recipe = match store.get_recipe(&recipe_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Recipe '{}' not found.", recipe_id)),
+                };
+
+                let mut output = format!(
+                    "=== RECIPE: {} ===\n\
+                    ID: {}\n\
+                    Description: {}\n\n\
+                    MATERIALS REQUIRED:\n",
+                    recipe.name,
+                    recipe.id,
+                    if recipe.description.is_empty() {
+                        "(no description)"
+                    } else {
+                        &recipe.description
+                    }
+                );
+
+                if recipe.materials.is_empty() {
+                    output.push_str("  (no materials set - use @RECIPE EDIT to add)\n");
+                } else {
+                    for material in &recipe.materials {
+                        let consumed = if material.consumed { "consumed" } else { "tool" };
+                        output.push_str(&format!(
+                            "  - {} x{} ({})\n",
+                            material.item_id, material.quantity, consumed
+                        ));
+                    }
+                }
+
+                output.push_str(&format!(
+                    "\nCREATES: {} x{}\n",
+                    recipe.result_item_id, recipe.result_quantity
+                ));
+
+                if let Some(station) = &recipe.requires_station {
+                    output.push_str(&format!("REQUIRES STATION: {}\n", station));
+                }
+
+                output.push_str(&format!(
+                    "\nCreated by: {} on {}\n",
+                    recipe.created_by,
+                    recipe.created_at.format("%Y-%m-%d")
+                ));
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @RECIPE subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle @QUEST command - manage quests (admin only)
+    async fn handle_quest_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        // Check admin level (sysop = 3, admin = 2)
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Only admins can manage quests.".to_string());
+        }
+
+        let store = self.store();
+
+        match subcommand.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @QUEST CREATE <id> <name>\nExample: @QUEST CREATE fetch_water \"Fetch Water for the Village\"".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                let quest_name = args[1..].join(" ");
+
+                // Check if quest already exists
+                if store.quest_exists(&quest_id)? {
+                    return Ok(format!("Quest '{}' already exists. Use @QUEST EDIT to modify it or @QUEST DELETE to remove it first.", quest_id));
+                }
+
+                // Create new quest with minimal defaults
+                let quest = crate::tmush::types::QuestRecord::new(
+                    &quest_id,
+                    &quest_name,
+                    "", // Empty description initially
+                    "system", // Default NPC
+                    1, // Default level
+                );
+
+                store.put_quest(quest)?;
+
+                Ok(format!(
+                    "Quest '{}' created.\n\nNext steps:\n\
+                    - @QUEST EDIT {} DESCRIPTION <text>\n\
+                    - @QUEST EDIT {} GIVER <npc_id>\n\
+                    - @QUEST EDIT {} LEVEL <num>\n\
+                    - @QUEST EDIT {} OBJECTIVE ADD <type> <details>\n\
+                    - @QUEST EDIT {} REWARD CURRENCY <amount>",
+                    quest_name, quest_id, quest_id, quest_id, quest_id, quest_id
+                ))
+            }
+            "EDIT" => {
+                if args.is_empty() {
+                    return Ok("Usage: @QUEST EDIT <id> <field> <value>\nFields: DESCRIPTION, GIVER, LEVEL, OBJECTIVE, REWARD, PREREQUISITE".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                let mut quest = match store.get_quest(&quest_id) {
+                    Ok(q) => q,
+                    Err(_) => return Ok(format!("Quest '{}' not found.", quest_id)),
+                };
+
+                if args.len() < 2 {
+                    return Ok("Usage: @QUEST EDIT <id> <field> <value>".to_string());
+                }
+
+                let field = args[1].to_uppercase();
+                match field.as_str() {
+                    "DESCRIPTION" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> DESCRIPTION <text>".to_string());
+                        }
+
+                        quest.description = args[2..].join(" ");
+                        store.put_quest(quest)?;
+
+                        Ok("Quest description updated.".to_string())
+                    }
+                    "GIVER" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> GIVER <npc_id>".to_string());
+                        }
+
+                        quest.quest_giver_npc = args[2].clone();
+                        store.put_quest(quest.clone())?;
+
+                        Ok(format!("Quest giver set to: {}", args[2]))
+                    }
+                    "LEVEL" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> LEVEL <num>".to_string());
+                        }
+
+                        match args[2].parse::<u8>() {
+                            Ok(level) if level >= 1 && level <= 5 => {
+                                quest.difficulty = level;
+                                store.put_quest(quest)?;
+                                Ok(format!("Quest difficulty set to: {}", level))
+                            }
+                            _ => Ok("Difficulty must be a number (1-5)".to_string()),
+                        }
+                    }
+                    "OBJECTIVE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> OBJECTIVE ADD/REMOVE <details>".to_string());
+                        }
+
+                        let action = args[2].to_uppercase();
+                        match action.as_str() {
+                            "ADD" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @QUEST EDIT <id> OBJECTIVE ADD <type> <target> [count]\nTypes: VISIT, TALK, KILL, COLLECT, USE".to_string());
+                                }
+
+                                let obj_type = args[3].to_uppercase();
+                                let target = args[4].clone();
+                                let count = if args.len() > 5 {
+                                    args[5].parse().unwrap_or(1)
+                                } else {
+                                    1
+                                };
+
+                                use crate::tmush::types::{ObjectiveType, QuestObjective};
+
+                                let objective = match obj_type.as_str() {
+                                    "VISIT" => QuestObjective::new(
+                                        &format!("Visit {}", target),
+                                        ObjectiveType::VisitLocation {
+                                            room_id: target,
+                                        },
+                                        count,
+                                    ),
+                                    "TALK" => QuestObjective::new(
+                                        &format!("Talk to {}", target),
+                                        ObjectiveType::TalkToNpc {
+                                            npc_id: target,
+                                        },
+                                        count,
+                                    ),
+                                    "KILL" => QuestObjective::new(
+                                        &format!("Defeat {} {}", count, target),
+                                        ObjectiveType::KillEnemy {
+                                            enemy_type: target,
+                                            count,
+                                        },
+                                        count,
+                                    ),
+                                    "COLLECT" => QuestObjective::new(
+                                        &format!("Collect {} {}", count, target),
+                                        ObjectiveType::CollectItem {
+                                            item_id: target,
+                                            count,
+                                        },
+                                        count,
+                                    ),
+                                    "USE" => QuestObjective::new(
+                                        &format!("Use {}", target),
+                                        ObjectiveType::UseItem {
+                                            item_id: target.clone(),
+                                            target,
+                                        },
+                                        count,
+                                    ),
+                                    _ => return Ok("Unknown objective type. Use: VISIT, TALK, KILL, COLLECT, or USE".to_string()),
+                                };
+
+                                quest.objectives.push(objective);
+                                store.put_quest(quest)?;
+
+                                Ok(format!("Added objective: {} {}", obj_type, args[4]))
+                            }
+                            "REMOVE" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> OBJECTIVE REMOVE <index>".to_string());
+                                }
+
+                                match args[3].parse::<usize>() {
+                                    Ok(index) if index > 0 && index <= quest.objectives.len() => {
+                                        quest.objectives.remove(index - 1);
+                                        store.put_quest(quest)?;
+                                        Ok(format!("Removed objective #{}", index))
+                                    }
+                                    _ => Ok(format!("Invalid index. Quest has {} objectives.", quest.objectives.len())),
+                                }
+                            }
+                            _ => Ok("Usage: @QUEST EDIT <id> OBJECTIVE ADD/REMOVE <details>".to_string()),
+                        }
+                    }
+                    "REWARD" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> REWARD CURRENCY/XP/ITEM <value>".to_string());
+                        }
+
+                        let reward_type = args[2].to_uppercase();
+                        match reward_type.as_str() {
+                            "CURRENCY" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> REWARD CURRENCY <amount>".to_string());
+                                }
+
+                                match args[3].parse::<i64>() {
+                                    Ok(amount) => {
+                                        use crate::tmush::types::CurrencyAmount;
+                                        quest.rewards.currency = Some(CurrencyAmount::Decimal { minor_units: amount });
+                                        store.put_quest(quest)?;
+                                        Ok(format!("Currency reward set to: {}", amount))
+                                    }
+                                    Err(_) => Ok("Amount must be a number".to_string()),
+                                }
+                            }
+                            "XP" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> REWARD XP <amount>".to_string());
+                                }
+
+                                match args[3].parse::<u32>() {
+                                    Ok(amount) => {
+                                        quest.rewards.experience = amount;
+                                        store.put_quest(quest)?;
+                                        Ok(format!("Experience reward set to: {} XP", amount))
+                                    }
+                                    Err(_) => Ok("Amount must be a number".to_string()),
+                                }
+                            }
+                            "ITEM" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> REWARD ITEM <item_id>".to_string());
+                                }
+
+                                quest.rewards.items.push(args[3].clone());
+                                store.put_quest(quest)?;
+                                Ok(format!("Added item reward: {}", args[3]))
+                            }
+                            _ => Ok("Unknown reward type. Use: CURRENCY, XP, or ITEM".to_string()),
+                        }
+                    }
+                    "PREREQUISITE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> PREREQUISITE <quest_id>".to_string());
+                        }
+
+                        let prereq_id = args[2].to_lowercase();
+                        
+                        // Verify prerequisite quest exists
+                        if !store.quest_exists(&prereq_id)? {
+                            return Ok(format!("Prerequisite quest '{}' does not exist.", prereq_id));
+                        }
+
+                        quest.prerequisites.push(prereq_id.clone());
+                        store.put_quest(quest)?;
+
+                        Ok(format!("Added prerequisite: {}", prereq_id))
+                    }
+                    _ => Ok("Unknown field. Use: DESCRIPTION, GIVER, LEVEL, OBJECTIVE, REWARD, or PREREQUISITE".to_string()),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @QUEST DELETE <id>".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                match store.get_quest(&quest_id) {
+                    Ok(quest) => {
+                        store.delete_quest(&quest_id)?;
+                        Ok(format!("Quest '{}' has been deleted.", quest.name))
+                    }
+                    Err(_) => Ok(format!("Quest '{}' not found.", quest_id)),
+                }
+            }
+            "LIST" => {
+                let quest_ids = store.list_quest_ids()?;
+
+                if quest_ids.is_empty() {
+                    return Ok("No quests found.".to_string());
+                }
+
+                let mut output = "=== ALL QUESTS ===\n\n".to_string();
+
+                for (idx, quest_id) in quest_ids.iter().enumerate() {
+                    if let Ok(quest) = store.get_quest(quest_id) {
+                        output.push_str(&format!(
+                            "{}. {} (ID: {})\n",
+                            idx + 1,
+                            quest.name,
+                            quest.id
+                        ));
+                        output.push_str(&format!("   Level: {} | Giver: {}\n", quest.difficulty, quest.quest_giver_npc));
+                        output.push_str(&format!("   Objectives: {} | Prerequisites: {}\n\n", quest.objectives.len(), quest.prerequisites.len()));
+                    }
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @QUEST SHOW <id>".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                let quest = match store.get_quest(&quest_id) {
+                    Ok(q) => q,
+                    Err(_) => return Ok(format!("Quest '{}' not found.", quest_id)),
+                };
+
+                let mut output = format!(
+                    "=== QUEST: {} ===\n\
+                    ID: {}\n\
+                    Description: {}\n\
+                    Quest Giver: {}\n\
+                    Difficulty: {}\n\n",
+                    quest.name,
+                    quest.id,
+                    if quest.description.is_empty() {
+                        "(no description)"
+                    } else {
+                        &quest.description
+                    },
+                    quest.quest_giver_npc,
+                    quest.difficulty
+                );
+
+                // Objectives
+                output.push_str("OBJECTIVES:\n");
+                if quest.objectives.is_empty() {
+                    output.push_str("  (no objectives set - use @QUEST EDIT to add)\n");
+                } else {
+                    for (idx, obj) in quest.objectives.iter().enumerate() {
+                        output.push_str(&format!("  {}. {} ({})\n", idx + 1, obj.description, obj.required));
+                    }
+                }
+
+                // Prerequisites
+                if !quest.prerequisites.is_empty() {
+                    output.push_str("\nPREREQUISITES:\n");
+                    for prereq in &quest.prerequisites {
+                        output.push_str(&format!("  - {}\n", prereq));
+                    }
+                }
+
+                // Rewards
+                output.push_str("\nREWARDS:\n");
+                if quest.rewards.experience > 0 {
+                    output.push_str(&format!("  - {} XP\n", quest.rewards.experience));
+                }
+                if let Some(crate::tmush::types::CurrencyAmount::Decimal { minor_units }) = &quest.rewards.currency {
+                    if *minor_units > 0 {
+                        output.push_str(&format!("  - {} currency\n", minor_units));
+                    }
+                }
+                if !quest.rewards.items.is_empty() {
+                    for item in &quest.rewards.items {
+                        output.push_str(&format!("  - Item: {}\n", item));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @QUEST subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle the ACHIEVEMENT admin command for data-driven achievement management.
+    async fn handle_achievement_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @ACHIEVEMENT commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ACHIEVEMENT CREATE <achievement_id> <name>\nExample: @ACHIEVEMENT CREATE combat_veteran \"Combat Veteran\"".to_string());
+                }
+                let achievement_id = &args[0];
+                let name = args[1..].join(" ");
+                if name.is_empty() {
+                    return Ok("Achievement name cannot be empty".to_string());
+                }
+
+                if store.achievement_exists(achievement_id)? {
+                    return Ok(format!("Achievement '{}' already exists", achievement_id));
+                }
+
+                let achievement = AchievementRecord::new(
+                    achievement_id,
+                    &name,
+                    "No description set yet",
+                    AchievementCategory::Special,
+                    AchievementTrigger::KillCount { required: 1 },
+                );
+
+                store.put_achievement(achievement)?;
+                Ok(format!("Created achievement '{}' with name \"{}\"", achievement_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 2 {
+                    return Ok(
+                        "Usage: @ACHIEVEMENT EDIT <achievement_id> <field> <value>\n\
+                        Fields: DESCRIPTION, CATEGORY, TRIGGER, TITLE, HIDDEN\n\
+                        Examples:\n\
+                        @ACHIEVEMENT EDIT first_blood DESCRIPTION You defeated your first enemy\n\
+                        @ACHIEVEMENT EDIT first_blood CATEGORY Combat\n\
+                        @ACHIEVEMENT EDIT first_blood TRIGGER KILLCOUNT 1\n\
+                        @ACHIEVEMENT EDIT first_blood TITLE \"Rookie Warrior\"\n\
+                        @ACHIEVEMENT EDIT first_blood HIDDEN false".to_string()
+                    );
+                }
+
+                let achievement_id = &args[0];
+                let field = args[1].to_uppercase();
+                let value_args = &args[2..];
+
+                let mut achievement = match store.get_achievement(achievement_id) {
+                    Ok(ach) => ach,
+                    Err(_) => return Ok(format!("Achievement '{}' does not exist", achievement_id)),
+                };
+
+                match field.as_str() {
+                    "DESCRIPTION" => {
+                        let description = value_args.join(" ");
+                        if description.is_empty() {
+                            return Ok("Description cannot be empty".to_string());
+                        }
+                        achievement.description = description.clone();
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated description for '{}'", achievement_id))
+                    }
+                    "CATEGORY" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @ACHIEVEMENT EDIT <id> CATEGORY <category>\nCategories: Combat, Exploration, Social, Economic, Quest, Special".to_string());
+                        }
+                        let category_str = value_args[0].to_uppercase();
+                        let category = match category_str.as_str() {
+                            "COMBAT" => AchievementCategory::Combat,
+                            "EXPLORATION" => AchievementCategory::Exploration,
+                            "SOCIAL" => AchievementCategory::Social,
+                            "ECONOMIC" => AchievementCategory::Economic,
+                            "QUEST" => AchievementCategory::Quest,
+                            "SPECIAL" => AchievementCategory::Special,
+                            _ => return Ok(format!("Invalid category: {}\nValid categories: Combat, Exploration, Social, Economic, Quest, Special", value_args[0])),
+                        };
+                        achievement.category = category;
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated category for '{}' to {:?}", achievement_id, achievement.category))
+                    }
+                    "TRIGGER" => {
+                        if value_args.len() < 2 {
+                            return Ok(
+                                "Usage: @ACHIEVEMENT EDIT <id> TRIGGER <type> <params>\n\
+                                Trigger types:\n\
+                                  KILLCOUNT <required>\n\
+                                  ROOMVISITS <required>\n\
+                                  FRIENDCOUNT <required>\n\
+                                  MESSAGESSENT <required>\n\
+                                  TRADECOUNT <required>\n\
+                                  CURRENCYEARNED <amount>\n\
+                                  QUESTCOMPLETION <required>\n\
+                                  VISITLOCATION <room_id>\n\
+                                  COMPLETEQUEST <quest_id>".to_string()
+                            );
+                        }
+
+                        let trigger_type = value_args[0].to_uppercase();
+                        let trigger = match trigger_type.as_str() {
+                            "KILLCOUNT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required kills"))?;
+                                AchievementTrigger::KillCount { required }
+                            }
+                            "ROOMVISITS" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required room visits"))?;
+                                AchievementTrigger::RoomVisits { required }
+                            }
+                            "FRIENDCOUNT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required friends"))?;
+                                AchievementTrigger::FriendCount { required }
+                            }
+                            "MESSAGESSENT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required messages"))?;
+                                AchievementTrigger::MessagesSent { required }
+                            }
+                            "TRADECOUNT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required trades"))?;
+                                AchievementTrigger::TradeCount { required }
+                            }
+                            "CURRENCYEARNED" => {
+                                let amount = value_args.get(1)
+                                    .and_then(|s| s.parse::<i64>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid currency amount"))?;
+                                AchievementTrigger::CurrencyEarned { amount }
+                            }
+                            "QUESTCOMPLETION" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required quests"))?;
+                                AchievementTrigger::QuestCompletion { required }
+                            }
+                            "VISITLOCATION" => {
+                                let room_id = value_args.get(1)
+                                    .ok_or_else(|| anyhow::anyhow!("Missing room_id for VISITLOCATION trigger"))?
+                                    .to_string();
+                                AchievementTrigger::VisitLocation { room_id }
+                            }
+                            "COMPLETEQUEST" => {
+                                let quest_id = value_args.get(1)
+                                    .ok_or_else(|| anyhow::anyhow!("Missing quest_id for COMPLETEQUEST trigger"))?
+                                    .to_string();
+                                AchievementTrigger::CompleteQuest { quest_id }
+                            }
+                            _ => return Ok(format!("Invalid trigger type: {}\nSee @ACHIEVEMENT EDIT for valid trigger types", value_args[0])),
+                        };
+
+                        achievement.trigger = trigger;
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated trigger for '{}' to {:?}", achievement_id, achievement.trigger))
+                    }
+                    "TITLE" => {
+                        let title = value_args.join(" ");
+                        if title.is_empty() {
+                            achievement.title = None;
+                            store.put_achievement(achievement.clone())?;
+                            Ok(format!("Cleared title for '{}'", achievement_id))
+                        } else {
+                            achievement.title = Some(title.clone());
+                            store.put_achievement(achievement.clone())?;
+                            Ok(format!("Updated title for '{}' to \"{}\"", achievement_id, title))
+                        }
+                    }
+                    "HIDDEN" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @ACHIEVEMENT EDIT <id> HIDDEN <true|false>".to_string());
+                        }
+                        let hidden_str = value_args[0].to_lowercase();
+                        let hidden = match hidden_str.as_str() {
+                            "true" | "yes" | "1" => true,
+                            "false" | "no" | "0" => false,
+                            _ => return Ok(format!("Invalid hidden value: {}\nUse: true or false", value_args[0])),
+                        };
+                        achievement.hidden = hidden;
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated hidden status for '{}' to {}", achievement_id, hidden))
+                    }
+                    _ => Ok(format!(
+                        "Unknown field: {}\nValid fields: DESCRIPTION, CATEGORY, TRIGGER, TITLE, HIDDEN",
+                        field
+                    )),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ACHIEVEMENT DELETE <achievement_id>".to_string());
+                }
+                let achievement_id = &args[0];
+
+                if !store.achievement_exists(achievement_id)? {
+                    return Ok(format!("Achievement '{}' does not exist", achievement_id));
+                }
+
+                store.delete_achievement(achievement_id)?;
+                Ok(format!("Deleted achievement '{}'", achievement_id))
+            }
+            "LIST" => {
+                let category_filter = args.get(0).map(|s| s.to_uppercase());
+                
+                let achievements = if let Some(cat_str) = category_filter {
+                    let category = match cat_str.as_str() {
+                        "COMBAT" => AchievementCategory::Combat,
+                        "EXPLORATION" => AchievementCategory::Exploration,
+                        "SOCIAL" => AchievementCategory::Social,
+                        "ECONOMIC" => AchievementCategory::Economic,
+                        "QUEST" => AchievementCategory::Quest,
+                        "SPECIAL" => AchievementCategory::Special,
+                        _ => return Ok(format!("Invalid category: {}\nValid categories: Combat, Exploration, Social, Economic, Quest, Special", args[0])),
+                    };
+                    store.get_achievements_by_category(&category)?
+                } else {
+                    let ids = store.list_achievement_ids()?;
+                    let mut achs = Vec::new();
+                    for id in ids {
+                        if let Ok(ach) = store.get_achievement(&id) {
+                            achs.push(ach);
+                        }
+                    }
+                    achs
+                };
+
+                if achievements.is_empty() {
+                    return Ok("No achievements found".to_string());
+                }
+
+                let mut output = format!("Achievements ({})\n", achievements.len());
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                for ach in achievements {
+                    let hidden_str = if ach.hidden { " [HIDDEN]" } else { "" };
+                    output.push_str(&format!("• {} - \"{}\" [{:?}]{}\n", ach.id, ach.name, ach.category, hidden_str));
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ACHIEVEMENT SHOW <achievement_id>".to_string());
+                }
+                let achievement_id = &args[0];
+
+                let achievement = match store.get_achievement(achievement_id) {
+                    Ok(ach) => ach,
+                    Err(_) => return Ok(format!("Achievement '{}' does not exist", achievement_id)),
+                };
+
+                let mut output = format!("Achievement: {}\n", achievement.id);
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                output.push_str(&format!("Name: {}\n", achievement.name));
+                output.push_str(&format!("Description: {}\n", achievement.description));
+                output.push_str(&format!("Category: {:?}\n", achievement.category));
+                output.push_str(&format!("Trigger: {:?}\n", achievement.trigger));
+                if let Some(title) = &achievement.title {
+                    output.push_str(&format!("Title Reward: \"{}\"\n", title));
+                } else {
+                    output.push_str("Title Reward: None\n");
+                }
+                output.push_str(&format!("Hidden: {}\n", achievement.hidden));
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @ACHIEVEMENT subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle the NPC admin command for data-driven NPC management.
+    async fn handle_npc_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @NPC commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @NPC CREATE <npc_id> <name>\nExample: @NPC CREATE blacksmith \"Forge Master Grimm\"".to_string());
+                }
+                let npc_id = &args[0];
+                let name = args[1..].join(" ");
+                if name.is_empty() {
+                    return Ok("NPC name cannot be empty".to_string());
+                }
+
+                if store.npc_exists(npc_id)? {
+                    return Ok(format!("NPC '{}' already exists", npc_id));
+                }
+
+                use crate::tmush::types::NpcRecord;
+                let npc = NpcRecord::new(
+                    npc_id,
+                    &name,
+                    "No title set",
+                    "No description set yet",
+                    "starting_room", // Default room
+                );
+
+                store.put_npc(npc)?;
+                Ok(format!("Created NPC '{}' with name \"{}\"", npc_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 2 {
+                    return Ok(
+                        "Usage: @NPC EDIT <npc_id> <field> <value>\n\
+                        Fields: NAME, TITLE, DESCRIPTION, ROOM, DIALOG, FLAG\n\
+                        Examples:\n\
+                        @NPC EDIT blacksmith NAME Forge Master Grimm\n\
+                        @NPC EDIT blacksmith TITLE Master Blacksmith\n\
+                        @NPC EDIT blacksmith DESCRIPTION A burly dwarf with...\n\
+                        @NPC EDIT blacksmith ROOM town_forge\n\
+                        @NPC EDIT blacksmith DIALOG greeting Welcome to my forge!\n\
+                        @NPC EDIT blacksmith FLAG VENDOR".to_string()
+                    );
+                }
+
+                let npc_id = &args[0];
+                let field = args[1].to_uppercase();
+                let value_args = &args[2..];
+
+                let mut npc = match store.get_npc(npc_id) {
+                    Ok(n) => n,
+                    Err(_) => return Ok(format!("NPC '{}' does not exist", npc_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        let name = value_args.join(" ");
+                        if name.is_empty() {
+                            return Ok("Name cannot be empty".to_string());
+                        }
+                        npc.name = name.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Updated name for '{}'", npc_id))
+                    }
+                    "TITLE" => {
+                        let title = value_args.join(" ");
+                        if title.is_empty() {
+                            return Ok("Title cannot be empty".to_string());
+                        }
+                        npc.title = title.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Updated title for '{}'", npc_id))
+                    }
+                    "DESCRIPTION" | "DESC" => {
+                        let description = value_args.join(" ");
+                        if description.is_empty() {
+                            return Ok("Description cannot be empty".to_string());
+                        }
+                        npc.description = description.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Updated description for '{}'", npc_id))
+                    }
+                    "ROOM" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @NPC EDIT <id> ROOM <room_id>".to_string());
+                        }
+                        let room_id = value_args[0].to_string();
+                        npc.room_id = room_id.clone();
+                        store.put_npc(npc)?;
+                        Ok(format!("Moved '{}' to room '{}'", npc_id, room_id))
+                    }
+                    "DIALOG" | "DIALOGUE" => {
+                        if value_args.len() < 2 {
+                            return Ok("Usage: @NPC EDIT <id> DIALOG <key> <response>\nExample: @NPC EDIT blacksmith DIALOG greeting Welcome traveler!".to_string());
+                        }
+                        let key = value_args[0].to_lowercase();
+                        let response = value_args[1..].join(" ");
+                        npc.dialog.insert(key.clone(), response.clone());
+                        store.put_npc(npc)?;
+                        Ok(format!("Added dialog '{}' to '{}'", key, npc_id))
+                    }
+                    "FLAG" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @NPC EDIT <id> FLAG <flag>\nFlags: VENDOR, GUARD, TUTORIALNPC, QUESTGIVER, IMMORTAL".to_string());
+                        }
+                        use crate::tmush::types::NpcFlag;
+                        let flag_str = value_args[0].to_uppercase();
+                        let flag = match flag_str.as_str() {
+                            "VENDOR" => NpcFlag::Vendor,
+                            "GUARD" => NpcFlag::Guard,
+                            "TUTORIALNPC" | "TUTORIAL" => NpcFlag::TutorialNpc,
+                            "QUESTGIVER" | "QUEST" => NpcFlag::QuestGiver,
+                            "IMMORTAL" => NpcFlag::Immortal,
+                            _ => return Ok(format!("Invalid flag: {}\nValid flags: VENDOR, GUARD, TUTORIALNPC, QUESTGIVER, IMMORTAL", value_args[0])),
+                        };
+                        
+                        if !npc.flags.contains(&flag) {
+                            npc.flags.push(flag.clone());
+                            store.put_npc(npc)?;
+                            Ok(format!("Added flag {:?} to '{}'", flag, npc_id))
+                        } else {
+                            Ok(format!("NPC '{}' already has flag {:?}", npc_id, flag))
+                        }
+                    }
+                    _ => Ok(format!(
+                        "Unknown field: {}\nValid fields: NAME, TITLE, DESCRIPTION, ROOM, DIALOG, FLAG",
+                        field
+                    )),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @NPC DELETE <npc_id>".to_string());
+                }
+                let npc_id = &args[0];
+
+                if !store.npc_exists(npc_id)? {
+                    return Ok(format!("NPC '{}' does not exist", npc_id));
+                }
+
+                store.delete_npc(npc_id)?;
+                Ok(format!("Deleted NPC '{}'", npc_id))
+            }
+            "LIST" => {
+                let ids = store.list_npc_ids()?;
+                
+                if ids.is_empty() {
+                    return Ok("No NPCs found".to_string());
+                }
+
+                let mut output = format!("NPCs ({})\n", ids.len());
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                
+                for id in ids {
+                    if let Ok(npc) = store.get_npc(&id) {
+                        let flags_str = if !npc.flags.is_empty() {
+                            format!(" [{:?}]", npc.flags)
+                        } else {
+                            String::new()
+                        };
+                        output.push_str(&format!("• {} - \"{}\" ({}){}\n", npc.id, npc.name, npc.room_id, flags_str));
+                    }
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @NPC SHOW <npc_id>".to_string());
+                }
+                let npc_id = &args[0];
+
+                let npc = match store.get_npc(npc_id) {
+                    Ok(n) => n,
+                    Err(_) => return Ok(format!("NPC '{}' does not exist", npc_id)),
+                };
+
+                let mut output = format!("NPC: {}\n", npc.id);
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                output.push_str(&format!("Name: {}\n", npc.name));
+                output.push_str(&format!("Title: {}\n", npc.title));
+                output.push_str(&format!("Description: {}\n", npc.description));
+                output.push_str(&format!("Location: {}\n", npc.room_id));
+                
+                if !npc.flags.is_empty() {
+                    output.push_str(&format!("Flags: {:?}\n", npc.flags));
+                }
+                
+                if !npc.dialog.is_empty() {
+                    output.push_str("\nDialogue responses:\n");
+                    for (key, response) in &npc.dialog {
+                        output.push_str(&format!("  {}: {}\n", key, response));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @NPC subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle @COMPANION command - manage companions (admin level 2+)
+    async fn handle_companion_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @COMPANION commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @COMPANION CREATE <id> <name>\nExample: @COMPANION CREATE war_horse \"Battle Steed\"".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+                let name = args[1..].join(" ");
+
+                // Check if companion already exists
+                if store.companion_exists(&companion_id)? {
+                    return Ok(format!("Companion '{}' already exists. Use @COMPANION EDIT to modify it.", companion_id));
+                }
+
+                // Create companion with default type (Dog) and default room (starting_room)
+                use crate::tmush::types::{CompanionRecord, CompanionType};
+                let companion = CompanionRecord::new(&companion_id, &name, CompanionType::Dog, "starting_room");
+                store.put_companion(companion)?;
+
+                Ok(format!("Created companion '{}' ({}). Use @COMPANION EDIT to customize.", companion_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 3 {
+                    return Ok("Usage: @COMPANION EDIT <id> <field> <value>\nFields: NAME, DESCRIPTION, TYPE, ROOM, BEHAVIOR\nExample: @COMPANION EDIT war_horse TYPE HORSE".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+                let field = args[1].to_uppercase();
+                let value = args[2..].join(" ");
+
+                let mut companion = match store.get_companion(&companion_id) {
+                    Ok(c) => c,
+                    Err(_) => return Ok(format!("Companion '{}' not found. Use @COMPANION CREATE to create it.", companion_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        companion.name = value.clone();
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' name to '{}'", companion_id, value))
+                    }
+                    "DESCRIPTION" => {
+                        companion.description = value.clone();
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' description", companion_id))
+                    }
+                    "TYPE" => {
+                        use crate::tmush::types::CompanionType;
+                        let companion_type = match value.to_uppercase().as_str() {
+                            "HORSE" => CompanionType::Horse,
+                            "DOG" => CompanionType::Dog,
+                            "CAT" => CompanionType::Cat,
+                            "FAMILIAR" => CompanionType::Familiar,
+                            "MERCENARY" => CompanionType::Mercenary,
+                            "CONSTRUCT" => CompanionType::Construct,
+                            _ => return Ok(format!("Invalid companion type '{}'. Valid types: HORSE, DOG, CAT, FAMILIAR, MERCENARY, CONSTRUCT", value)),
+                        };
+                        companion.companion_type = companion_type;
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' type to {}", companion_id, value.to_uppercase()))
+                    }
+                    "ROOM" => {
+                        companion.room_id = value.clone();
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' location to room '{}'", companion_id, value))
+                    }
+                    "BEHAVIOR" => {
+                        use crate::tmush::types::CompanionBehavior;
+                        
+                        // Parse behavior from args[2..]
+                        if args.len() < 3 {
+                            return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR <behavior> [params]\nBehaviors:\n  AutoFollow\n  AlertDanger\n  ExtraStorage <capacity>\n  CombatAssist <damage_bonus>\n  Healing <heal_amount> <cooldown_seconds>\n  SkillBoost <skill> <bonus>\n  IdleChatter <message1> [message2...]\nExample: @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30".to_string());
+                        }
+
+                        let behavior_type = args[2].to_uppercase();
+                        let behavior = match behavior_type.as_str() {
+                            "AUTOFOLLOW" => CompanionBehavior::AutoFollow,
+                            "ALERTDANGER" => CompanionBehavior::AlertDanger,
+                            "EXTRASTORAGE" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR ExtraStorage <capacity>\nExample: @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30".to_string());
+                                }
+                                let capacity: u32 = args[3].parse().unwrap_or(20);
+                                CompanionBehavior::ExtraStorage { capacity }
+                            }
+                            "COMBATASSIST" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR CombatAssist <damage_bonus>\nExample: @COMPANION EDIT guard_dog BEHAVIOR CombatAssist 5".to_string());
+                                }
+                                let damage_bonus: u32 = args[3].parse().unwrap_or(5);
+                                CompanionBehavior::CombatAssist { damage_bonus }
+                            }
+                            "HEALING" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR Healing <heal_amount> <cooldown_seconds>\nExample: @COMPANION EDIT healing_cat BEHAVIOR Healing 10 300".to_string());
+                                }
+                                let heal_amount: u32 = args[3].parse().unwrap_or(10);
+                                let cooldown_seconds: u64 = args[4].parse().unwrap_or(300);
+                                CompanionBehavior::Healing { heal_amount, cooldown_seconds }
+                            }
+                            "SKILLBOOST" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR SkillBoost <skill> <bonus>\nExample: @COMPANION EDIT magic_cat BEHAVIOR SkillBoost magic 3".to_string());
+                                }
+                                let skill = args[3].clone();
+                                let bonus: u32 = args[4].parse().unwrap_or(2);
+                                CompanionBehavior::SkillBoost { skill, bonus }
+                            }
+                            "IDLECHATTER" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR IdleChatter <message1> [message2...]\nExample: @COMPANION EDIT friendly_dog BEHAVIOR IdleChatter \"*wags tail*\" \"*barks happily*\"".to_string());
+                                }
+                                let messages: Vec<String> = args[3..].iter().map(|s| s.to_string()).collect();
+                                CompanionBehavior::IdleChatter { messages }
+                            }
+                            _ => return Ok(format!("Invalid behavior type '{}'. Valid types: AutoFollow, AlertDanger, ExtraStorage, CombatAssist, Healing, SkillBoost, IdleChatter", behavior_type)),
+                        };
+
+                        companion.behaviors.push(behavior);
+                        store.put_companion(companion)?;
+                        Ok(format!("Added behavior '{}' to companion '{}'", behavior_type, companion_id))
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, TYPE, ROOM, BEHAVIOR", field)),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @COMPANION DELETE <id>\nExample: @COMPANION DELETE war_horse".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+
+                if !store.companion_exists(&companion_id)? {
+                    return Ok(format!("Companion '{}' not found.", companion_id));
+                }
+
+                store.delete_companion(&companion_id)?;
+                Ok(format!("Deleted companion '{}'", companion_id))
+            }
+            "LIST" => {
+                let companion_ids = store.list_companion_ids()?;
+                if companion_ids.is_empty() {
+                    return Ok("No companions found.".to_string());
+                }
+
+                let mut output = format!("Companions ({})\n", companion_ids.len());
+                output.push_str("─────────────────────────────────────────────────────\n");
+                for companion_id in companion_ids {
+                    match store.get_companion(&companion_id) {
+                        Ok(companion) => {
+                            let type_str = format!("{:?}", companion.companion_type);
+                            let owner_str = companion.owner.as_ref().map(|o| format!(" [Owner: {}]", o)).unwrap_or_default();
+                            output.push_str(&format!("  {} ({}): {} - {}{}\n", 
+                                companion.id, type_str, companion.name, companion.room_id, owner_str));
+                        }
+                        Err(_) => {} // Skip if companion can't be loaded
+                    }
+                }
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @COMPANION SHOW <id>\nExample: @COMPANION SHOW war_horse".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+
+                let companion = match store.get_companion(&companion_id) {
+                    Ok(c) => c,
+                    Err(_) => return Ok(format!("Companion '{}' not found.", companion_id)),
+                };
+
+                let mut output = format!("Companion Details: {}\n", companion.id);
+                output.push_str("═════════════════════════════════════════════════════\n");
+                output.push_str(&format!("Name: {}\n", companion.name));
+                output.push_str(&format!("Type: {:?}\n", companion.companion_type));
+                output.push_str(&format!("Description: {}\n", companion.description));
+                output.push_str(&format!("Room: {}\n", companion.room_id));
+                output.push_str(&format!("Owner: {}\n", companion.owner.as_ref().unwrap_or(&"None".to_string())));
+                output.push_str(&format!("Loyalty: {} | Happiness: {}\n", companion.loyalty, companion.happiness));
+                output.push_str(&format!("Mounted: {}\n", if companion.is_mounted { "Yes" } else { "No" }));
+                
+                if !companion.behaviors.is_empty() {
+                    output.push_str("\nBehaviors:\n");
+                    for behavior in &companion.behaviors {
+                        output.push_str(&format!("  - {:?}\n", behavior));
+                    }
+                }
+                
+                if !companion.inventory.is_empty() {
+                    output.push_str(&format!("\nInventory ({} items):\n", companion.inventory.len()));
+                    for item in &companion.inventory {
+                        output.push_str(&format!("  - {}\n", item));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
+        }
+    }
+
+    /// Handle @ROOM command - manage rooms (admin level 2+)
+    async fn handle_room_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @ROOM commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @ROOM CREATE <id> <name>\nExample: @ROOM CREATE dark_cave \"Mysterious Cave\"".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+                let name = args[1..].join(" ");
+
+                // Check if room already exists
+                if store.room_exists(&room_id)? {
+                    return Ok(format!("Room '{}' already exists. Use @ROOM EDIT to modify it.", room_id));
+                }
+
+                // Create room with default settings
+                use crate::tmush::types::RoomRecord;
+                let room = RoomRecord::world(&room_id, &name, "A new location.", "This area has not been fully described yet.");
+                store.put_room(room)?;
+
+                Ok(format!("Created room '{}' ({}). Use @ROOM EDIT to customize.", room_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 3 {
+                    return Ok("Usage: @ROOM EDIT <id> <field> <value>\nFields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY\nExample: @ROOM EDIT dark_cave NAME \"Dark Cavern\"".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+                let field = args[1].to_uppercase();
+
+                let mut room = match store.get_room(&room_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Room '{}' not found. Use @ROOM CREATE to create it.", room_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        let name = args[2..].join(" ");
+                        if name.is_empty() {
+                            return Ok("Name cannot be empty".to_string());
+                        }
+                        room.name = name.clone();
+                        store.put_room(room)?;
+                        Ok(format!("Updated room '{}' name to '{}'", room_id, name))
+                    }
+                    "SHORTDESC" | "SHORT" => {
+                        let desc = args[2..].join(" ");
+                        if desc.is_empty() {
+                            return Ok("Short description cannot be empty".to_string());
+                        }
+                        room.short_desc = desc;
+                        store.put_room(room)?;
+                        Ok(format!("Updated room '{}' short description", room_id))
+                    }
+                    "LONGDESC" | "LONG" | "DESCRIPTION" => {
+                        let desc = args[2..].join(" ");
+                        if desc.is_empty() {
+                            return Ok("Long description cannot be empty".to_string());
+                        }
+                        room.long_desc = desc;
+                        store.put_room(room)?;
+                        Ok(format!("Updated room '{}' long description", room_id))
+                    }
+                    "EXIT" => {
+                        if args.len() < 4 {
+                            return Ok("Usage: @ROOM EDIT <id> EXIT <direction> <dest_room>\nDirections: N, S, E, W, U, D, NE, NW, SE, SW\nExample: @ROOM EDIT tavern EXIT NORTH town_square".to_string());
+                        }
+                        let direction_str = args[2].to_uppercase();
+                        let dest_room = args[3].to_lowercase();
+
+                        // Parse direction
+                        use crate::tmush::types::Direction;
+                        let direction = match direction_str.as_str() {
+                            "N" | "NORTH" => Direction::North,
+                            "S" | "SOUTH" => Direction::South,
+                            "E" | "EAST" => Direction::East,
+                            "W" | "WEST" => Direction::West,
+                            "U" | "UP" => Direction::Up,
+                            "D" | "DOWN" => Direction::Down,
+                            "NE" | "NORTHEAST" => Direction::Northeast,
+                            "NW" | "NORTHWEST" => Direction::Northwest,
+                            "SE" | "SOUTHEAST" => Direction::Southeast,
+                            "SW" | "SOUTHWEST" => Direction::Southwest,
+                            _ => return Ok(format!("Invalid direction '{}'. Valid: N, S, E, W, U, D, NE, NW, SE, SW", direction_str)),
+                        };
+
+                        // Check if destination room exists
+                        if !store.room_exists(&dest_room)? {
+                            return Ok(format!("Destination room '{}' does not exist. Create it first with @ROOM CREATE.", dest_room));
+                        }
+
+                        room.exits.insert(direction, dest_room.clone());
+                        store.put_room(room)?;
+                        Ok(format!("Added exit {} from '{}' to '{}'", direction_str, room_id, dest_room))
+                    }
+                    "FLAG" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> FLAG <flag>\nExample: @ROOM EDIT dark_cave FLAG DARK".to_string());
+                        }
+                        let flag_str = args[2].to_uppercase();
+
+                        use crate::tmush::types::RoomFlag;
+                        let flag = match flag_str.as_str() {
+                            "SAFE" => RoomFlag::Safe,
+                            "DARK" => RoomFlag::Dark,
+                            "INDOOR" => RoomFlag::Indoor,
+                            "SHOP" => RoomFlag::Shop,
+                            "QUESTLOCATION" => RoomFlag::QuestLocation,
+                            "PVPENABLED" => RoomFlag::PvpEnabled,
+                            "PLAYERCREATED" => RoomFlag::PlayerCreated,
+                            "PRIVATE" => RoomFlag::Private,
+                            "MODERATED" => RoomFlag::Moderated,
+                            "INSTANCED" => RoomFlag::Instanced,
+                            "CROWDED" => RoomFlag::Crowded,
+                            "HOUSINGOFFICE" => RoomFlag::HousingOffice,
+                            "NOTELEPORTOUT" => RoomFlag::NoTeleportOut,
+                            _ => return Ok(format!("Invalid flag '{}'. Valid flags: SAFE, DARK, INDOOR, SHOP, QUESTLOCATION, PVPENABLED, PLAYERCREATED, PRIVATE, MODERATED, INSTANCED, CROWDED, HOUSINGOFFICE, NOTELEPORTOUT", flag_str)),
+                        };
+
+                        if !room.flags.contains(&flag) {
+                            room.flags.push(flag);
+                            store.put_room(room)?;
+                            Ok(format!("Added flag {} to room '{}'", flag_str, room_id))
+                        } else {
+                            Ok(format!("Room '{}' already has flag {}", room_id, flag_str))
+                        }
+                    }
+                    "CAPACITY" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> CAPACITY <number>\nExample: @ROOM EDIT tavern CAPACITY 50".to_string());
+                        }
+                        let capacity: u16 = match args[2].parse() {
+                            Ok(c) => c,
+                            Err(_) => return Ok("Capacity must be a number between 1 and 65535".to_string()),
+                        };
+                        if capacity == 0 {
+                            return Ok("Capacity must be at least 1".to_string());
+                        }
+                        room.max_capacity = capacity;
+                        store.put_room(room)?;
+                        Ok(format!("Set room '{}' capacity to {}", room_id, capacity))
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY", field)),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ROOM DELETE <id>\nExample: @ROOM DELETE dark_cave".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+
+                if !store.room_exists(&room_id)? {
+                    return Ok(format!("Room '{}' not found.", room_id));
+                }
+
+                store.delete_room(&room_id)?;
+                Ok(format!("Deleted room '{}'", room_id))
+            }
+            "LIST" => {
+                let room_ids = store.list_room_ids()?;
+                if room_ids.is_empty() {
+                    return Ok("No rooms found.".to_string());
+                }
+
+                let mut output = format!("Rooms ({})\n", room_ids.len());
+                output.push_str("─────────────────────────────────────────────────────\n");
+                for room_id in room_ids {
+                    match store.get_room(&room_id) {
+                        Ok(room) => {
+                            let flags_str = if room.flags.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" [{}]", room.flags.iter().map(|f| format!("{:?}", f)).collect::<Vec<_>>().join(", "))
+                            };
+                            let exits_count = room.exits.len();
+                            output.push_str(&format!("  {}: {} ({} exits){}\n", 
+                                room.id, room.name, exits_count, flags_str));
+                        }
+                        Err(_) => {} // Skip if room can't be loaded
+                    }
+                }
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ROOM SHOW <id>\nExample: @ROOM SHOW dark_cave".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+
+                let room = match store.get_room(&room_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Room '{}' not found.", room_id)),
+                };
+
+                let mut output = format!("Room Details: {}\n", room.id);
+                output.push_str("═════════════════════════════════════════════════════\n");
+                output.push_str(&format!("Name: {}\n", room.name));
+                output.push_str(&format!("Short: {}\n", room.short_desc));
+                output.push_str(&format!("Long: {}\n", room.long_desc));
+                output.push_str(&format!("Owner: {:?}\n", room.owner));
+                output.push_str(&format!("Capacity: {}\n", room.max_capacity));
+                output.push_str(&format!("Visibility: {:?}\n", room.visibility));
+                output.push_str(&format!("Locked: {}\n", if room.locked { "Yes" } else { "No" }));
+
+                if !room.flags.is_empty() {
+                    output.push_str("\nFlags:\n");
+                    for flag in &room.flags {
+                        output.push_str(&format!("  - {:?}\n", flag));
+                    }
+                }
+
+                if !room.exits.is_empty() {
+                    output.push_str("\nExits:\n");
+                    for (direction, dest) in &room.exits {
+                        output.push_str(&format!("  {:?} -> {}\n", direction, dest));
+                    }
+                }
+
+                if !room.items.is_empty() {
+                    output.push_str(&format!("\nItems ({}):\n", room.items.len()));
+                    for item in &room.items {
+                        output.push_str(&format!("  - {}\n", item));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
+        }
+    }
+
+    /// Handle @OBJECT command - manage world objects (admin level 2+)
+    async fn handle_object_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @OBJECT commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @OBJECT CREATE <id> <name>\nExample: @OBJECT CREATE basic_torch \"Wooden Torch\"".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+                let name = args[1..].join(" ");
+
+                // Check if object already exists
+                if store.object_exists(&object_id)? {
+                    return Ok(format!("Object '{}' already exists. Use @OBJECT EDIT to modify it.", object_id));
+                }
+
+                // Create object with default settings
+                use crate::tmush::types::ObjectRecord;
+                let object = ObjectRecord::new_world(&object_id, &name, "A new object.");
+                store.put_object(object)?;
+
+                Ok(format!("Created object '{}' ({}). Use @OBJECT EDIT to customize.", object_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 3 {
+                    return Ok("Usage: @OBJECT EDIT <id> <field> <value>\nFields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED\nExample: @OBJECT EDIT basic_torch NAME \"Bright Torch\"".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+                let field = args[1].to_uppercase();
+
+                let mut object = match store.get_object(&object_id) {
+                    Ok(o) => o,
+                    Err(_) => return Ok(format!("Object '{}' not found. Use @OBJECT CREATE to create it.", object_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        let name = args[2..].join(" ");
+                        object.name = name.clone();
+                        store.put_object(object)?;
+                        Ok(format!("Set object name to '{}'.", name))
+                    }
+                    "DESCRIPTION" | "DESC" => {
+                        let description = args[2..].join(" ");
+                        object.description = description.clone();
+                        store.put_object(object)?;
+                        Ok(format!("Set object description to '{}'.", description))
+                    }
+                    "WEIGHT" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> WEIGHT <number>\nExample: @OBJECT EDIT torch WEIGHT 5".to_string());
+                        }
+                        match args[2].parse::<u8>() {
+                            Ok(weight) => {
+                                object.weight = weight;
+                                store.put_object(object)?;
+                                Ok(format!("Set object weight to {}.", weight))
+                            }
+                            Err(_) => Ok("Weight must be a number between 0 and 255.".to_string()),
+                        }
+                    }
+                    "VALUE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> VALUE <number>\nExample: @OBJECT EDIT sword VALUE 100\nSets the currency value in base units.".to_string());
+                        }
+                        let value_str = &args[2];
+                        match value_str.parse::<i64>() {
+                            Ok(value) => {
+                                use crate::tmush::types::CurrencyAmount;
+                                object.currency_value = CurrencyAmount::multi_tier(value);
+                                store.put_object(object)?;
+                                Ok(format!("Set object value to {}.", value))
+                            }
+                            Err(_) => Ok("Value must be a number (base currency units).".to_string()),
+                        }
+                    }
+                    "FLAG" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> FLAG <flag>\nFlags: QUESTITEM, CONSUMABLE, EQUIPMENT, KEYITEM, CONTAINER, MAGICAL, COMPANION, CLONABLE, UNIQUE, NOVALUE, NOCLONECHILDREN, LIGHTSOURCE\nExample: @OBJECT EDIT torch FLAG LIGHTSOURCE".to_string());
+                        }
+                        use crate::tmush::types::ObjectFlag;
+                        let flag_str = args[2].to_uppercase();
+                        let flag = match flag_str.as_str() {
+                            "QUESTITEM" => ObjectFlag::QuestItem,
+                            "CONSUMABLE" => ObjectFlag::Consumable,
+                            "EQUIPMENT" => ObjectFlag::Equipment,
+                            "KEYITEM" => ObjectFlag::KeyItem,
+                            "CONTAINER" => ObjectFlag::Container,
+                            "MAGICAL" => ObjectFlag::Magical,
+                            "COMPANION" => ObjectFlag::Companion,
+                            "CLONABLE" => ObjectFlag::Clonable,
+                            "UNIQUE" => ObjectFlag::Unique,
+                            "NOVALUE" => ObjectFlag::NoValue,
+                            "NOCLONECHILDREN" => ObjectFlag::NoCloneChildren,
+                            "LIGHTSOURCE" => ObjectFlag::LightSource,
+                            _ => return Ok(format!("Unknown flag '{}'. Valid flags: QUESTITEM, CONSUMABLE, EQUIPMENT, KEYITEM, CONTAINER, MAGICAL, COMPANION, CLONABLE, UNIQUE, NOVALUE, NOCLONECHILDREN, LIGHTSOURCE", flag_str)),
+                        };
+                        
+                        if !object.flags.contains(&flag) {
+                            object.flags.push(flag);
+                            store.put_object(object)?;
+                            Ok(format!("Added flag {} to object.", flag_str))
+                        } else {
+                            Ok(format!("Object already has flag {}.", flag_str))
+                        }
+                    }
+                    "TAKEABLE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> TAKEABLE <true|false>\nExample: @OBJECT EDIT torch TAKEABLE true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                object.takeable = true;
+                                store.put_object(object)?;
+                                Ok("Set object as takeable.".to_string())
+                            }
+                            "false" | "no" | "0" => {
+                                object.takeable = false;
+                                store.put_object(object)?;
+                                Ok("Set object as not takeable.".to_string())
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    "USABLE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> USABLE <true|false>\nExample: @OBJECT EDIT potion USABLE true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                object.usable = true;
+                                store.put_object(object)?;
+                                Ok("Set object as usable.".to_string())
+                            }
+                            "false" | "no" | "0" => {
+                                object.usable = false;
+                                store.put_object(object)?;
+                                Ok("Set object as not usable.".to_string())
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    "LOCKED" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> LOCKED <true|false>\nExample: @OBJECT EDIT statue LOCKED true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                object.locked = true;
+                                store.put_object(object)?;
+                                Ok("Set object as locked (cannot be taken).".to_string())
+                            }
+                            "false" | "no" | "0" => {
+                                object.locked = false;
+                                store.put_object(object)?;
+                                Ok("Set object as unlocked.".to_string())
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED", field)),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @OBJECT DELETE <id>\nExample: @OBJECT DELETE old_torch".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+
+                // Check if object exists
+                if !store.object_exists(&object_id)? {
+                    return Ok(format!("Object '{}' not found.", object_id));
+                }
+
+                // Use the storage method for deleting world objects
+                store.delete_object_world(&object_id)?;
+
+                Ok(format!("Deleted object '{}'.", object_id))
+            }
+            "LIST" => {
+                let object_ids = store.list_object_ids()?;
+                
+                if object_ids.is_empty() {
+                    return Ok("No world objects found. Use @OBJECT CREATE to create objects.".to_string());
+                }
+
+                let mut output = format!("World Objects ({} total):\n", object_ids.len());
+                for id in object_ids {
+                    if let Ok(object) = store.get_object(&id) {
+                        let flags_str = if object.flags.is_empty() {
+                            "none".to_string()
+                        } else {
+                            object.flags.iter()
+                                .map(|f| format!("{:?}", f))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        };
+                        let takeable = if object.takeable { "takeable" } else { "fixed" };
+                        let usable = if object.usable { "usable" } else { "not-usable" };
+                        output.push_str(&format!(
+                            "  {} - {} (weight: {}, value: {:?}, {}, {}, flags: {})\n",
+                            id, object.name, object.weight, object.currency_value, takeable, usable, flags_str
+                        ));
+                    }
+                }
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @OBJECT SHOW <id>\nExample: @OBJECT SHOW basic_torch".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+
+                let object = match store.get_object(&object_id) {
+                    Ok(o) => o,
+                    Err(_) => return Ok(format!("Object '{}' not found.", object_id)),
+                };
+
+                let flags_str = if object.flags.is_empty() {
+                    "none".to_string()
+                } else {
+                    object.flags.iter()
+                        .map(|f| format!("{:?}", f))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+
+                let owner_str = match &object.owner {
+                    crate::tmush::types::ObjectOwner::World => "World".to_string(),
+                    crate::tmush::types::ObjectOwner::Player { username } => format!("Player: {}", username),
+                };
+
+                let mut output = format!("Object: {} ({})\n", object.id, object.name);
+                output.push_str(&format!("Description: {}\n", object.description));
+                output.push_str(&format!("Owner: {}\n", owner_str));
+                output.push_str(&format!("Weight: {}\n", object.weight));
+                output.push_str(&format!("Value: {:?}\n", object.currency_value));
+                output.push_str(&format!("Takeable: {}\n", if object.takeable { "yes" } else { "no" }));
+                output.push_str(&format!("Usable: {}\n", if object.usable { "yes" } else { "no" }));
+                output.push_str(&format!("Locked: {}\n", if object.locked { "yes" } else { "no" }));
+                output.push_str(&format!("Flags: {}\n", flags_str));
+                output.push_str(&format!("Created: {}\n", object.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+                output.push_str(&format!("Created by: {}\n", object.created_by));
+                
+                if let Some(ref source) = object.clone_source_id {
+                    output.push_str(&format!("Clone source: {} (depth: {})\n", source, object.clone_depth));
+                }
+                output.push_str(&format!("Times cloned: {}\n", object.clone_count));
+
+                Ok(output)
+            }
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
         }
     }
 

@@ -115,6 +115,9 @@ pub struct TinyMushStore {
     player_trades: sled::Tree,      // ptrade:{username} → session_id
     template_instances: sled::Tree, // tpl:{template_id}:{instance_id} → ""
 
+    // Data directory path for seed files and other data
+    data_dir: PathBuf,
+
     // In-memory instanced room cache (not persisted across restarts)
     instanced_rooms: Arc<RwLock<HashMap<String, RoomRecord>>>,
     landing_instances: Arc<RwLock<HashMap<String, String>>>,
@@ -153,6 +156,14 @@ impl TinyMushStore {
     ) -> Result<Self, TinyMushError> {
         let path_ref = path.as_ref();
         std::fs::create_dir_all(path_ref)?;
+
+        // Calculate data directory for seed files (parent of database path)
+        // Database is typically at data/tinymush, seeds are at data/seeds/
+        let data_dir = path_ref
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+
         let db = sled::open(path_ref)?;
         let primary = db.open_tree(TREE_PRIMARY)?;
         let objects = db.open_tree(TREE_OBJECTS)?;
@@ -195,6 +206,7 @@ impl TinyMushStore {
             housing_guests,
             player_trades,
             template_instances,
+            data_dir,
             instanced_rooms: Arc::new(RwLock::new(HashMap::new())),
             landing_instances: Arc::new(RwLock::new(HashMap::new())),
         };
@@ -204,6 +216,7 @@ impl TinyMushStore {
             store.seed_quests_if_needed()?;
             store.seed_achievements_if_needed()?;
             store.seed_companions_if_needed()?;
+            store.seed_recipes_if_needed()?;
             store.seed_npcs_if_needed()?;
 
             // Seed full dialogue trees for NPCs
@@ -521,6 +534,60 @@ impl TinyMushStore {
         if let Some(room_id) = room_id {
             self.instanced_rooms.write().unwrap().remove(&room_id);
         }
+    }
+
+    /// List all world room IDs
+    pub fn list_room_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        let prefix = b"rooms:world:";
+        for kv in self.primary.scan_prefix(prefix) {
+            let (key_bytes, _) = kv?;
+            if let Ok(key_str) = std::str::from_utf8(&key_bytes) {
+                if let Some(id) = key_str.strip_prefix("rooms:world:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    /// Delete a world room
+    pub fn delete_room(&self, room_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("rooms:world:{}", room_id).into_bytes();
+        self.primary.remove(key)?;
+        self.primary.flush()?;
+        Ok(())
+    }
+
+    /// List all world object IDs
+    pub fn list_object_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        let prefix = b"objects:world:";
+        for kv in self.objects.scan_prefix(prefix) {
+            let (key_bytes, _) = kv?;
+            if let Ok(key_str) = std::str::from_utf8(&key_bytes) {
+                if let Some(id) = key_str.strip_prefix("objects:world:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    /// Delete a world object by ID
+    pub fn delete_object_world(&self, object_id: &str) -> Result<(), TinyMushError> {
+        // Remove from primary object tree
+        let key = format!("objects:world:{}", object_id).into_bytes();
+        self.objects.remove(key)?;
+        
+        // Remove from index
+        let index_key = format!("oid:{}", object_id);
+        self.object_index.remove(index_key.as_bytes())?;
+        
+        self.objects.flush()?;
+        Ok(())
     }
 
     /// Resolve a room destination for a player, cloning the landing gazebo when required.
@@ -903,6 +970,37 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Check if an NPC exists
+    pub fn npc_exists(&self, npc_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("npcs:{}", npc_id);
+        Ok(self.npcs.contains_key(key.as_bytes())?)
+    }
+
+    /// Check if a companion exists
+    pub fn companion_exists(&self, companion_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("companion:{}", companion_id);
+        Ok(self.companions.contains_key(key.as_bytes())?)
+    }
+
+    /// Check if a room exists
+    pub fn room_exists(&self, room_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("rooms:world:{}", room_id);
+        Ok(self.primary.contains_key(key.as_bytes())?)
+    }
+
+    /// Check if an object exists (world objects only)
+    pub fn object_exists(&self, object_id: &str) -> Result<bool, TinyMushError> {
+        // Check secondary index first for O(1) lookup
+        let index_key = format!("oid:{}", object_id);
+        if self.object_index.contains_key(index_key.as_bytes())? {
+            return Ok(true);
+        }
+        
+        // Fallback: check world objects tree directly
+        let key = format!("objects:world:{}", object_id);
+        Ok(self.objects.contains_key(key.as_bytes())?)
+    }
+
     // ============================================================================
     // Conversation State Storage (Phase 8.5)
     // ============================================================================
@@ -1091,8 +1189,23 @@ impl TinyMushStore {
         {
             return Ok(0);
         }
-        let now = Utc::now();
-        let rooms = canonical_world_seed(now);
+
+        // Load rooms from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/rooms.json");
+        let rooms = match crate::tmush::load_rooms_from_json(&seed_path) {
+            Ok(rooms) => rooms,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load rooms from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                let now = Utc::now();
+                canonical_world_seed(now)
+            }
+        };
+
         let mut inserted = 0usize;
         for room in rooms {
             self.put_room(room)?;
@@ -1105,7 +1218,22 @@ impl TinyMushStore {
         if self.quests.iter().next().is_some() {
             return Ok(0);
         }
-        let quests = crate::tmush::seed_starter_quests();
+
+        // Load quests from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/quests.json");
+        let quests = match crate::tmush::load_quests_from_json(&seed_path) {
+            Ok(quests) => quests,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load quests from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_quests()
+            }
+        };
+
         let mut inserted = 0usize;
         for quest in quests {
             self.put_quest(quest)?;
@@ -2317,6 +2445,12 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Check if a quest exists
+    pub fn quest_exists(&self, quest_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("quest:{}", quest_id);
+        Ok(self.quests.contains_key(key.as_bytes())?)
+    }
+
     // ========================================================================
     // Achievement Storage
     // ========================================================================
@@ -2385,12 +2519,33 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Check if an achievement exists
+    pub fn achievement_exists(&self, achievement_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("achievement:{}", achievement_id);
+        Ok(self.achievements.contains_key(key.as_bytes())?)
+    }
+
     /// Seed achievements if none exist
     pub fn seed_achievements_if_needed(&self) -> Result<usize, TinyMushError> {
         if self.achievements.iter().next().is_some() {
             return Ok(0);
         }
-        let achievements = crate::tmush::seed_starter_achievements();
+
+        // Load achievements from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/achievements.json");
+        let achievements = match crate::tmush::load_achievements_from_json(&seed_path) {
+            Ok(achievements) => achievements,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load achievements from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_achievements()
+            }
+        };
+
         let mut inserted = 0usize;
         for achievement in achievements {
             self.put_achievement(achievement)?;
@@ -2498,7 +2653,22 @@ impl TinyMushStore {
         if self.companions.iter().next().is_some() {
             return Ok(0);
         }
-        let companions = crate::tmush::seed_starter_companions();
+
+        // Load companions from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/companions.json");
+        let companions = match crate::tmush::load_companions_from_json(&seed_path) {
+            Ok(companions) => companions,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load companions from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_companions()
+            }
+        };
+
         let mut inserted = 0usize;
         for companion in companions {
             self.put_companion(companion)?;
@@ -2506,6 +2676,106 @@ impl TinyMushStore {
         }
         Ok(inserted)
     }
+
+    // ========================================================================
+    // Crafting Recipe Management (Data-Driven System)
+    // ========================================================================
+
+    /// Store or update a crafting recipe
+    pub fn put_recipe(
+        &self,
+        recipe: crate::tmush::types::CraftingRecipe,
+    ) -> Result<(), TinyMushError> {
+        let key = format!("recipe:{}", recipe.id);
+        let value = Self::serialize(&recipe)?;
+        self.objects.insert(key.as_bytes(), value)?;
+        self.objects.flush()?;
+        Ok(())
+    }
+
+    /// Get a recipe by ID
+    pub fn get_recipe(&self, recipe_id: &str) -> Result<crate::tmush::types::CraftingRecipe, TinyMushError> {
+        let key = format!("recipe:{}", recipe_id);
+        let bytes = self
+            .objects
+            .get(key.as_bytes())?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Recipe not found: {}", recipe_id)))?;
+        Self::deserialize(bytes)
+    }
+
+    /// List all recipes, optionally filtered by crafting station
+    pub fn list_recipes(
+        &self,
+        station_filter: Option<&str>,
+    ) -> Result<Vec<crate::tmush::types::CraftingRecipe>, TinyMushError> {
+        let prefix = b"recipe:";
+        let mut recipes = Vec::new();
+
+        for result in self.objects.scan_prefix(prefix) {
+            let (_, value) = result?;
+            let recipe: crate::tmush::types::CraftingRecipe = Self::deserialize(value)?;
+
+            if let Some(station) = station_filter {
+                if recipe.requires_station.as_deref() == Some(station) {
+                    recipes.push(recipe);
+                }
+            } else {
+                recipes.push(recipe);
+            }
+        }
+
+        // Sort by name for consistent ordering
+        recipes.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(recipes)
+    }
+
+    /// Delete a recipe by ID
+    pub fn delete_recipe(&self, recipe_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("recipe:{}", recipe_id);
+        self.objects.remove(key.as_bytes())?;
+        self.objects.flush()?;
+        Ok(())
+    }
+
+    /// Check if a recipe exists
+    pub fn recipe_exists(&self, recipe_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("recipe:{}", recipe_id);
+        Ok(self.objects.contains_key(key.as_bytes())?)
+    }
+
+    /// Seed default crafting recipes if none exist
+    pub fn seed_recipes_if_needed(&self) -> Result<usize, TinyMushError> {
+        // Check if any recipes exist
+        if self.objects.scan_prefix(b"recipe:").next().is_some() {
+            return Ok(0);
+        }
+
+        // Load recipes from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/recipes.json");
+        let recipes = match crate::tmush::load_recipes_from_json(&seed_path) {
+            Ok(recipes) => recipes,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load recipes from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::state::seed_default_recipes()
+            }
+        };
+
+        let mut inserted = 0usize;
+        for recipe in recipes {
+            self.put_recipe(recipe)?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
+    // ========================================================================
+    // NPC and World Seeding
+    // ========================================================================
 
     pub fn seed_npcs_if_needed(&self) -> Result<usize, TinyMushError> {
         // Check if NPCs exist by trying to iterate the tree
@@ -2527,7 +2797,21 @@ impl TinyMushStore {
             }
         }
 
-        let npcs = crate::tmush::seed_starter_npcs();
+        // Load NPCs from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/npcs.json");
+        let npcs = match crate::tmush::load_npcs_from_json(&seed_path) {
+            Ok(npcs) => npcs,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load NPCs from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_npcs()
+            }
+        };
+
         let mut inserted = 0usize;
         for npc in npcs {
             self.put_npc(npc)?;

@@ -832,6 +832,43 @@ pub fn seed_starter_companions() -> Vec<crate::tmush::types::CompanionRecord> {
     companions
 }
 
+/// Seed default crafting recipes for the world
+/// Converts hardcoded recipes from the old system to data-driven database entries
+pub fn seed_default_recipes() -> Vec<crate::tmush::types::CraftingRecipe> {
+    use crate::tmush::types::CraftingRecipe;
+
+    let mut recipes = Vec::new();
+
+    // Recipe 1: Signal Booster (original hardcoded recipe)
+    let signal_booster = CraftingRecipe::new(
+        "signal_booster",
+        "Signal Booster",
+        "signal_booster",
+        "world",
+    )
+    .with_description("A powerful signal booster for extended mesh range.")
+    .with_material("copper_wire", 2)
+    .with_material("circuit_board", 1)
+    .with_material("antenna_rod", 1)
+    .with_station("crafting_bench");
+    recipes.push(signal_booster);
+
+    // Recipe 2: Basic Antenna (original hardcoded recipe)
+    let basic_antenna = CraftingRecipe::new(
+        "basic_antenna",
+        "Basic Antenna",
+        "basic_antenna",
+        "world",
+    )
+    .with_description("A simple antenna for basic mesh connectivity.")
+    .with_material("copper_wire", 2)
+    .with_material("antenna_rod", 1)
+    .with_station("crafting_bench");
+    recipes.push(basic_antenna);
+
+    recipes
+}
+
 /// Seed starter NPCs for Old Towne Mesh
 pub fn seed_starter_npcs() -> Vec<crate::tmush::types::NpcRecord> {
     use crate::tmush::types::NpcRecord;

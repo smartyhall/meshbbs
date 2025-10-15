@@ -71,11 +71,18 @@ mkdir -p "$INSTALL_PATH/data/users"
 mkdir -p "$INSTALL_PATH/data/files"
 mkdir -p "$INSTALL_PATH/data/tinymush"
 mkdir -p "$INSTALL_PATH/data/backups"
+mkdir -p "$INSTALL_PATH/data/seeds"
 
 # Copy binary
 echo -e "${YELLOW}Installing binary${NC}"
 cp target/release/meshbbs "$INSTALL_PATH/bin/meshbbs"
 chmod 755 "$INSTALL_PATH/bin/meshbbs"
+
+# Copy seed data files
+echo -e "${YELLOW}Installing seed data files${NC}"
+if [ -d "data/seeds" ]; then
+    cp -r data/seeds/*.json "$INSTALL_PATH/data/seeds/" 2>/dev/null || true
+fi
 
 # Copy daemon helper script
 if [ -f "scripts/meshbbs-daemon.sh" ]; then

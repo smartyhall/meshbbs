@@ -17,6 +17,7 @@ pub mod migration;
 pub mod quest;
 pub mod resolver;
 pub mod room_manager;
+pub mod seed_loader;
 pub mod shop;
 pub mod state;
 pub mod storage;
@@ -62,6 +63,10 @@ pub use quest::{
     update_quest_objective,
 };
 pub use resolver::{format_disambiguation_prompt, resolve_object_name, ObjectMatch, ResolveResult};
+pub use seed_loader::{
+    load_achievements_from_json, load_companions_from_json, load_npcs_from_json,
+    load_quests_from_json, load_recipes_from_json, load_rooms_from_json,
+};
 pub use shop::{format_shop_item_detail, format_shop_listing, ShopConfig, ShopItem, ShopRecord};
 pub use state::{
     canonical_world_seed, seed_starter_achievements, seed_starter_companions, seed_starter_npcs,

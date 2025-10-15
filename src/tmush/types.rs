@@ -917,6 +917,131 @@ impl RoomRecord {
 }
 
 // ============================================================================
+// Crafting System (Data-Driven Recipes)
+// ============================================================================
+
+pub const RECIPE_SCHEMA_VERSION: u8 = 1;
+
+/// Material required for a crafting recipe
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RecipeMaterial {
+    /// Item ID required (e.g., "copper_wire", "goat_milk")
+    pub item_id: String,
+    /// Quantity needed
+    pub quantity: u32,
+    /// Whether this material is consumed (true) or just required like a tool (false)
+    #[serde(default = "default_consumed")]
+    pub consumed: bool,
+}
+
+fn default_consumed() -> bool {
+    true
+}
+
+impl RecipeMaterial {
+    pub fn new(item_id: &str, quantity: u32) -> Self {
+        Self {
+            item_id: item_id.to_string(),
+            quantity,
+            consumed: true,
+        }
+    }
+
+    pub fn tool(item_id: &str) -> Self {
+        Self {
+            item_id: item_id.to_string(),
+            quantity: 1,
+            consumed: false,
+        }
+    }
+}
+
+/// Crafting recipe stored in database
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CraftingRecipe {
+    /// Unique recipe ID (e.g., "goat_cheese", "signal_booster")
+    pub id: String,
+    /// Display name (e.g., "Goat Milk Cheese")
+    pub name: String,
+    /// Description shown on successful craft
+    pub description: String,
+    /// Item ID to create when crafted
+    pub result_item_id: String,
+    /// How many items created per craft (default: 1)
+    #[serde(default = "default_result_quantity")]
+    pub result_quantity: u32,
+    /// Materials required
+    pub materials: Vec<RecipeMaterial>,
+    /// Optional skill required (future feature)
+    #[serde(default)]
+    pub skill_required: Option<String>,
+    /// Minimum skill level (future feature)
+    #[serde(default)]
+    pub skill_level: u8,
+    /// Crafting time in seconds (0 = instant, >0 = async future feature)
+    #[serde(default)]
+    pub crafting_time_seconds: u32,
+    /// Required crafting station object ID (e.g., "crafting_bench", "cheese_press")
+    #[serde(default)]
+    pub requires_station: Option<String>,
+    /// Admin username who created this recipe
+    pub created_by: String,
+    /// Creation timestamp
+    pub created_at: DateTime<Utc>,
+    /// Schema version for migrations
+    pub schema_version: u8,
+}
+
+fn default_result_quantity() -> u32 {
+    1
+}
+
+impl CraftingRecipe {
+    pub fn new(id: &str, name: &str, result_item_id: &str, created_by: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: String::new(),
+            result_item_id: result_item_id.to_string(),
+            result_quantity: 1,
+            materials: Vec::new(),
+            skill_required: None,
+            skill_level: 0,
+            crafting_time_seconds: 0,
+            requires_station: None,
+            created_by: created_by.to_string(),
+            created_at: Utc::now(),
+            schema_version: RECIPE_SCHEMA_VERSION,
+        }
+    }
+
+    pub fn with_description(mut self, description: &str) -> Self {
+        self.description = description.to_string();
+        self
+    }
+
+    pub fn with_material(mut self, item_id: &str, quantity: u32) -> Self {
+        self.materials.push(RecipeMaterial::new(item_id, quantity));
+        self
+    }
+
+    pub fn with_tool(mut self, item_id: &str) -> Self {
+        self.materials.push(RecipeMaterial::tool(item_id));
+        self
+    }
+
+    pub fn with_station(mut self, station_id: &str) -> Self {
+        self.requires_station = Some(station_id.to_string());
+        self
+    }
+
+    pub fn with_result_quantity(mut self, quantity: u32) -> Self {
+        self.result_quantity = quantity;
+        self
+    }
+}
+
+// ============================================================================
 // Housing System (Phase 7 Week 1-2)
 // ============================================================================
 
