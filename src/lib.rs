@@ -8,10 +8,13 @@
 //! - **Compact Command UI**: Single-letter navigation optimized for ≤230-byte frames, including contextual prompts and inline help.
 //! - **Meshtastic Integration**: Direct communication with Meshtastic devices over USB/UART serial links, with optional protobuf packet decoding.
 //! - **Message Boards**: Topic and subtopic hierarchy with paged threads, filters, and UTF-8 safe rendering.
+//! - **TinyMUSH Game Engine**: Complete MUD/MUSH engine with 20+ rooms, NPCs, companions, quests, crafting, and achievements.
+//! - **Data-Driven Content**: All game content loaded from JSON files in `data/seeds/` with admin commands for runtime editing.
 //! - **Optional Mini-Games**: Public-channel Slot, Magic 8-Ball, and Fortune commands, plus the TinyHack DM roguelike when enabled.
 //! - **User Management**: Role-based access control (User, Moderator, Sysop) with granular topic permissions.
 //! - **Security**: Argon2id password hashing, input sanitization, and UTF-8 safe truncation helpers.
 //! - **Daemon Mode**: Production-ready background service support (Linux/macOS) with graceful shutdown and TTY-aware logging.
+//! - **Welcome System**: Automated greeting system for new mesh nodes with personalized name suggestions.
 //! - **Async Design**: Built with Tokio for high performance on constrained hardware.
 //!
 //! ## Quick Start
@@ -39,7 +42,10 @@
 //! - [`meshtastic`] - Meshtastic device communication and protocol handling
 //! - [`storage`] - Message and user data persistence layer
 //! - [`config`] - Configuration management and validation
+//! - [`tmush`] - TinyMUSH game engine with rooms, NPCs, quests, and crafting
 //! - [`validation`] - Input validation and sanitization utilities
+//! - [`logutil`] - Logging utilities with TTY detection
+//! - [`metrics`] - Performance metrics and monitoring
 //! - [`protobuf`] - Protocol buffer definitions for Meshtastic integration
 //!
 //! ## Architecture

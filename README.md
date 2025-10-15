@@ -23,112 +23,13 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
-## 📝 Release notes
+## 📝 Release Notes
 
-- **1.0.900 (2025-10-15): Complete Data-Driven Content Management** 🎯✨
-   - **Data-Driven Admin Commands**: Six comprehensive command systems for managing all game content
-     * @ACHIEVEMENT: Manage achievements, triggers, rewards, and hidden unlocks
-     * @NPC: Create and modify NPCs with dialogues, titles, and flags
-     * @COMPANION: Manage tameable companions with types and locations
-     * @ROOM: Build world rooms with exits, flags, and capacity management
-     * @OBJECT: Create objects with properties, flags, and currency values
-     * @QUEST & @RECIPE: Manage quests and crafting recipes (existing systems)
-   - **JSON Seed Content**: All initial game content now loads from editable JSON files
-     * 6 seed files in data/seeds/: npcs.json, companions.json, rooms.json, achievements.json, quests.json, recipes.json
-     * Admins can customize starter content without recompiling
-     * Fallback to hardcoded seeds ensures backwards compatibility
-   - **Installation Updates**: install.sh and cargo-deb packaging updated for seed file distribution
-   - **Testing**: 636 tests passing (+49 new integration tests for admin commands)
-   - **Benefits**: Full content customization, version control friendly, modding support, no compilation required
+**Version 1.1.0** represents a major milestone of development of meshbbs for me... completing the transformation from a basic bulletin board system into a fully data-driven, production-ready platform. This release encompasses both significant **core BBS infrastructure improvements** and a complete **TinyMUSH game engine** with comprehensive content management capabilities. It also measn that I've completely ported the BBS for the third time. In the 90's it was written in Pascal, then I ported it to Java, and now in its third iteration it has been fully ported to Rust!
 
-- **1.0.115-beta (2025-10-14): Phase 4 & Phase 5 Content Complete** 🎮✨
-   - **Phase 4 Quests**: Four new epic quests with 87,000+ currency and 1,950 XP rewards
-     * The Cipher: Symbol sequence puzzle (Phase 4.2)
-     * Into the Depths: Dark cavern exploration with light sources (Phase 4.3)
-     * Master Artisan: Advanced crafting chain (Phase 4.4)
-     * The Lost Artifact: Epic quest combining all Phase 4 mechanics
-   - **World Expansion**: 7 new locations (Cipher Chamber, Deep Caverns, Forgotten Ruins, etc.)
-   - **Phase 5 Reputation System**: 6 factions, 7 reputation levels, quest integration
-   - **Documentation**: Quest solutions guide, world map with 23 locations, dark navigation technical docs
-   - **Testing**: 9 new integration tests, all 246 tests passing
+**Core BBS Platform:** The infrastructure matured significantly with production-ready daemon mode featuring cross-platform graceful shutdown (SIGTERM/SIGHUP/SIGINT on Unix, Ctrl+C/Ctrl+Break on Windows), TTY-aware logging that eliminates duplicate output, and systemd/launchd integration. The automated welcome system greets new mesh nodes with personalized name suggestions (2,500+ combinations of adjectives, animals, and emojis) using a reliable TEXT_MESSAGE_APP ping system with routing ACK verification. Message replication infrastructure was added with unique 6-byte message IDs and CRC-16 integrity checksums, laying the groundwork for future inter-BBS synchronization. Additional improvements include optimized welcome queue processing (10× faster, completing 17-node startup in ~8.5 minutes instead of ~85 minutes), UTF-8 safe message chunking that prevents crashes with multi-byte characters, configurable ident beacons for station identification (5min to 4hour intervals), installation script enhancements with proper password hashing and path layout (`/opt/meshbbs/bin/` and `/opt/meshbbs/scripts/`), and comprehensive configuration validation preventing silent failures.
 
-- **1.0.110-beta (2025-10-13): Tutorial Completion & Mayor Dialog Fix** 🎓
-   - **Tutorial Flow**: Final tutorial step now requires explicit TALK interaction with Mayor Thompson—no more auto-completion just by entering the room
-   - **Mayor Accessibility**: Mayor Thompson's dialog tree is now accessible after tutorial completion, offering branching conversations and lore
-   - **Borrow Checker Fix**: Resolved compilation error in movement handler by restructuring destination resolution
-   - **Test Coverage**: Added comprehensive integration tests for tutorial completion and Mayor dialog behavior
-
-- **1.0.106 (2025-10-13): Personal TinyMUSH Landings** 🪂
-   - **Per-Player Gazebos**: Landing rooms are now cloned per player, ensuring isolated onboarding spaces that clean up automatically once you leave.
-   - **Movement Awareness**: Travel commands, teleportation, and tutorial advancement all resolve to the right personal instance, preventing players from colliding in shared staging areas.
-   - **Provisioning Safety Nets**: Admin, guest, and helper utilities guarantee that every freshly minted TinyMUSH character starts in their personalized gazebo.
-
-- **1.0.105-beta (2025-10-13): TinyMUSH Overhaul & Installer Layout Update** 🧱
-   - **Installer**: Binary now installs to `/opt/meshbbs/bin/meshbbs` with helper scripts in `/opt/meshbbs/scripts/`, aligning with systemd expectations and keeping runtime assets isolated.
-   - **TinyMUSH Engine**: Refactored storage, triggers, builder/companion flows, and migrations; admin seeding now ensures both the configured sysop and legacy `admin` accounts retain proper privileges.
-   - **Game UX**: TinyHack and TinyMUSH sessions suppress the BBS prompt while in-game, restoring it as soon as players return to the main menu.
-
-- **1.0.102-beta (2025-10-13): Message Chunking Fix** 🐛
-   - **Critical Fix**: Fixed message chunking for TinyMUSH welcome messages
-   - **Root Cause**: Session borrow conflict prevented chunking logic from accessing session state
-   - **Solution**: Explicitly drop mutable session borrow before calling send_session_message()
-   - **Impact**: Large messages (>230 bytes) now properly split into multiple chunks
-   - **Verified**: All 237 tests passing, chunking now works correctly
-
-- **1.0.101-beta (2025-10-12): Schema Alignment & Constructor Improvements** 🔧
-   - **Schema Version Fix**: Corrected demo trigger objects from v1 to v2 schema
-   - **Constructor Future-Proofing**: All constructors now use schema version constants
-   - **Code Quality**: Eliminated magic numbers in favor of named constants
-   - **Bug Fix**: Removed archived binary reference from Cargo.toml
-
-- **1.0.100-beta (2025-10-12): TinyMUSH Game Engine - Production Ready** 🎮
-   - **Complete MUD/MUSH Engine**: Interactive text-based adventure game with 20+ rooms
-   - **Interactive NPCs**: 5 NPCs with dialogue trees, quests, and dynamic interactions
-   - **Player Progression**: Inventory system, skills, achievements, and quest tracking
-   - **Advanced Triggers**: 14 action types with conditional logic and rate limiting
-   - **Economy System**: Currency, shops, trading, and item management
-   - **5 Games**: 8ball, fortune, slots, tinyhack (dungeon crawler), tinymush (MUD)
-   - **Production Infrastructure**: 
-     - Automated install/uninstall scripts
-     - Systemd service configuration
-     - Raspberry Pi deployment guide
-     - Backup system with retention policies
-     - Security hardening (zero critical vulnerabilities)
-   - **Test Coverage**: 237 tests passing (98% coverage)
-   - **Performance**: 458 db ops/sec, 14.58 concurrent users/sec
-   - **Documentation**: 73 markdown files with complete API reference
-
-- 1.0.65-beta (2025-10-05): **Production-Ready Daemon Mode & Graceful Shutdown**
-   - **🔧 Daemon Mode**: Run meshbbs as a background service on Linux/macOS with `--daemon` flag
-   - **⚡ Graceful Shutdown**: Cross-platform signal handling (SIGTERM, SIGHUP, SIGINT, Ctrl+C/Break)
-   - **📝 Smart Logging**: TTY-aware logging - file-only in daemon mode, console+file in foreground
-   - **🧹 Dependency Cleanup**: Removed 5 unused crates (220 fewer lines in Cargo.lock)
-   - **🎯 Custom Implementation**: No external daemon dependencies, works perfectly on macOS/Linux
-   - Includes management script (`scripts/meshbbs-daemon.sh`) for start/stop/restart/status/logs
-
-- 1.0.60-beta (2025-10-05): **Welcome Queue Rate Limiting Optimization**
-   - Startup welcome queue now processes every 30 seconds (10× faster than before)
-   - Real-time node detections still rate-limited at 5 minutes to prevent spam
-   - **Impact**: 17-node startup queue completes in ~8.5 minutes instead of ~85 minutes
-   - Queue monitoring available via `data/welcome_queue.json` with real-time countdown
-   - Bifurcated rate limiting: planned queue welcomes bypass cooldown, spontaneous detections enforce it
-
-- 1.0.55-beta (2025-10-04): **Message Replication Infrastructure**
-   - Added `message_id` (6-byte unique identifier) and `crc16` (integrity checksum) to all messages
-   - Foundation for future inter-BBS message distribution and synchronization
-   - Migration tool (`migrate_messages`) for updating existing message archives
-   - Fully backward compatible with existing messages
-
-- 1.0.50-beta (2025-10-04): **Welcome System & Reliable Ping Implementation**
-   - Automatic welcome messages for new nodes with default "Meshtastic XXXX" names
-   - Private DM with setup instructions and fun personalized name suggestions (e.g., "🦊 Clever Fox")
-   - Reliable ping system using TEXT_MESSAGE_APP with routing ACK confirmation
-   - 50 adjectives × 50 animals × emojis = 2,500+ possible name combinations
-
-- 1.0.44-beta (2025-10-03): **TinyHack Mini-Map Feature**
-   - Added **M** command to display compact ASCII mini-map with fog of war
-   - 6×6 grid showing player position, unexplored areas, and room types
-   - Persistent exploration tracking across game sessions
+**TinyMUSH Game Engine:** The centerpiece of 1.1.0 is the complete MUD/MUSH engine with **data-driven content management**, featuring six comprehensive admin command interfaces (@ACHIEVEMENT, @NPC, @COMPANION, @ROOM, @OBJECT, @QUEST/@RECIPE) that enable runtime modification of all game content without recompilation. All seed content now loads from editable JSON files in `data/seeds/` (npcs.json, companions.json, rooms.json, achievements.json, quests.json, recipes.json), supporting modding, version control, and easy customization while maintaining backwards compatibility through hardcoded fallbacks. The game features 20+ interactive rooms, 5 NPCs with dialogue trees, personal per-player landing rooms that prevent collision in shared spaces, tutorial flow improvements requiring explicit NPC interaction, expanded quest content with Phase 4 epic quests (The Cipher, Into the Depths, Master Artisan, The Lost Artifact) offering 87,000+ currency and 1,950 XP rewards, Phase 5 reputation system with 6 factions and 7 levels, advanced trigger system (14 action types with conditional logic), complete economy with currency/shops/trading, companion system with tameable creatures, crafting recipes, and achievement tracking across 6 categories.
 
 ## 📚 Documentation
 
@@ -250,71 +151,101 @@ nano config.toml
 ```
 ### ⚙️ Configure Your BBS
 
-After initialization, edit the `config.toml` file to set up your BBS:
+**Automated Installation (Linux/Raspberry Pi):**
+The `install.sh` script handles most configuration automatically during installation:
+- ✅ Sysop password (prompted during install, securely hashed)
+- ✅ Serial port selection (interactive menu)
+- ✅ Basic BBS settings with sensible defaults
+- ✅ Data directories and permissions
+- ✅ Systemd service configuration
 
-```bash
-# Open config.toml in your preferred editor
-nano config.toml  # or vim, code, etc.
-```
+**Post-Installation Customization:**
+After running the installer, you should customize these settings in `/opt/meshbbs/config.toml`:
 
-**Critical settings to configure:**
-
-1. **📡 Meshtastic Connection** - Update your serial port:
-   ```toml
-   [meshtastic]
-   port = "/dev/ttyUSB0"  # Change to your device port
-   # macOS: often /dev/tty.usbserial-*
-   # Windows: often COM3, COM4, etc.
-   # Linux: often /dev/ttyUSB0, /dev/ttyACM0
-   ```
-
-2. **👑 Sysop Information** - Set your admin details:
+1. **🎯 BBS Identity** - Personalize your BBS:
    ```toml
    [bbs]
-   name = "Your BBS Name"
-   sysop = "sysop"  # This becomes your admin username
-   location = "Your Location"
+   name = "Your BBS Name"         # Change from default
+   location = "Your Location"     # Update location
+   description = "Your BBS info"  # Add description
+   welcome_message = "Welcome!"   # Customize welcome
    ```
 
-4. **🌤️ Weather Setup** - Configure OpenWeatherMap integration:
+2. **🌤️ Weather Setup** - Enable weather features (optional):
    ```toml
    [weather]
-   api_key = "your_openweathermap_api_key"  # Get free at openweathermap.org
-   default_location = "Portland"            # City name, zipcode, or city ID
-   location_type = "city"                   # "city", "zipcode", or "city_id"
-   country_code = "US"                      # Optional country code
-   enabled = true                           # Enable weather functionality
+   api_key = "your_api_key_here"  # Get free at openweathermap.org
+   enabled = true                 # Set to true after adding API key
+   default_location = "Portland"  # Your default city
+   location_type = "city"         # "city", "zipcode", or "city_id"
+   country_code = "US"           # Optional country code
    ```
 
-3. **🔐 Set Sysop Password** - Secure your admin account:
+3. **📡 Fine-tune Meshtastic** - Adjust timing if needed:
+   ```toml
+   [meshtastic]
+   port = "/dev/ttyUSB0"          # Already set by installer
+   min_send_gap_ms = 2000         # Minimum gap between sends
+   dm_resend_backoff_seconds = [4, 8, 16]  # DM retry timing
+   ```
+
+**Manual Installation (All Platforms):**
+If you didn't use the installer, configure these critical settings:
+
+```bash
+# Copy example configuration
+cp config.example.toml config.toml
+nano config.toml
+```
+
+1. **📡 Serial Port** - Set your Meshtastic device port:
+   ```toml
+   [meshtastic]
+   port = "/dev/ttyUSB0"    # Linux: /dev/ttyUSB0 or /dev/ttyACM0
+                            # macOS: /dev/tty.usbserial-*
+                            # Windows: COM3, COM4, etc.
+   ```
+
+2. **🔐 Sysop Password** - Set your admin password:
    ```bash
    ./target/release/meshbbs sysop-passwd
    ```
+   This will prompt for a password and update the `sysop_password_hash` field in config.toml.
 
 ### 🚀 Start Your BBS
 
+**Automated Installation (systemd):**
 ```bash
-# Start the BBS server (use your configured port)
-./target/release/meshbbs start
+# Enable and start the service
+sudo systemctl enable --now meshbbs
 
-# Or specify port if different from config
-./target/release/meshbbs start --port /dev/ttyUSB0
+# Check status and view logs
+sudo systemctl status meshbbs
+sudo journalctl -u meshbbs -f
 ```
 
-### ⚡ Quick Commands
+**Manual Installation:**
+```bash
+# Start the BBS server
+./target/release/meshbbs start
 
-| Command | Description |
-|---------|-------------|
-| `meshbbs sysop-passwd` | Set/update sysop password interactively |
-| `meshbbs hash-password` | Hash a password from stdin (for scripts) |
-| `meshbbs start` | Start BBS server with config.toml settings |
-| `meshbbs start --port /dev/ttyUSB0` | Override port from command line |
-| `meshbbs status` | Show server statistics and status |
-| `meshbbs check-device --port <PORT>` | Verify Meshtastic device connectivity |
+# Or run in daemon mode (background)
+./target/release/meshbbs start --daemon
+```
+
+> For complete command reference, see the [Command Line Interface](#command-line-interface) section below.
 
 ## ⚙️ Configuration
 
-Meshbbs uses a `config.toml` file for all settings. For automated setup, use `install.sh` (Linux/Raspberry Pi). For manual setup, copy `config.example.toml` to `config.toml` and edit as needed.
+Meshbbs uses a `config.toml` file for all settings.
+
+**Configuration File Locations:**
+- **Installed via install.sh:** `/opt/meshbbs/config.toml`
+- **Manual installation:** `./config.toml` (in project directory)
+
+**Setup Methods:**
+- **Automated:** Use `install.sh` (Linux/Raspberry Pi) - creates config with interactive prompts
+- **Manual:** Copy `config.example.toml` to `config.toml` and edit as needed
 
 Topics are managed in `data/topics.json` (runtime store) and are seeded automatically on first startup. Manage topics interactively from within the BBS; existing installations with `[message_topics.*]` in TOML remain supported for backward compatibility (they'll be merged into the runtime store at startup).
 
@@ -365,47 +296,114 @@ file = "meshbbs.log"
 
 | Section | Purpose | Key Settings |
 |---------|---------|--------------|
-| `[bbs]` | Basic BBS settings | `name`, `sysop`, `max_users`, `session_timeout` |
-| `[meshtastic]` | Device connection | `port`, `baud_rate`, `channel` |
-| `[weather]` | OpenWeatherMap integration | `api_key`, `default_location`, `enabled` |
-### Fairness / Writer Tuning Fields
+| `[bbs]` | Basic BBS settings | `name`, `sysop`, `sysop_password_hash`, `max_users`, `session_timeout`, `welcome_message`, `public_command_prefix`, `allow_public_login` |
+| `[meshtastic]` | Device connection & timing | `port`, `baud_rate`, `channel`, `min_send_gap_ms`, `dm_resend_backoff_seconds` |
+| `[ident_beacon]` | Station identification | `enabled`, `frequency` (5min to 4hours) |
+| `[storage]` | Data management | `data_dir`, `max_message_size` |
+| `[logging]` | Log configuration | `level` (trace/debug/info/warn/error), `file` |
+| `[games]` | Game features | `tinyhack_enabled`, `tinymush_enabled`, `tinymush_db_path` |
+| `[weather]` | OpenWeatherMap integration | `api_key`, `enabled`, `default_location`, `location_type`, `country_code` |
+| `[welcome]` | Automated welcomes | `enabled`, `public_greeting`, `private_guide`, `cooldown_minutes`, `max_welcomes_per_node` |
 
-These pacing controls reduce airtime contention and avoid triggering device / network rate limits:
+#### 📡 Critical BBS Settings
 
-* `min_send_gap_ms` – Global enforced minimum between any two text sends (hard floor 2000ms)
-* `dm_resend_backoff_seconds` – Retry schedule for reliable DM ACKs (default `[4,8,16]` seconds)
-* `post_dm_broadcast_gap_ms` – Additional gap before a broadcast that immediately follows a reliable DM
-* `dm_to_dm_gap_ms` – Gap enforced between consecutive reliable DMs
-* `help_broadcast_delay_ms` – Higher-level scheduling delay for the public HELP notice after its DM reply; effective delay is `max(help_broadcast_delay_ms, min_send_gap_ms + post_dm_broadcast_gap_ms)` (default 3500ms) to prevent an immediate broadcast rate-limit right after a DM
+**`[bbs]` section:**
+- **`name`**: Your BBS display name (shown to users)
+- **`sysop`**: Admin username (created automatically with admin privileges)
+- **`sysop_password_hash`**: Argon2id hash (set by installer or `meshbbs sysop-passwd`)
+- **`public_command_prefix`**: Single character for public commands (default `^`)
+- **`allow_public_login`**: Security setting - false requires DM-only login
+- **`max_users`**: Maximum concurrent sessions
+- **`session_timeout`**: Minutes of inactivity before auto-logout
 
-Metrics (preview):
+#### ⚡ Meshtastic Timing Controls
 
-- Reliable DMs: `reliable_sent`, `reliable_acked`, `reliable_failed`, `reliable_retries`, `ack_latency_avg_ms`
-- Broadcasts: `broadcast_ack_confirmed` (at least one ACK observed), `broadcast_ack_expired` (no ACK before TTL)
+**Fairness / Writer Tuning Fields** in `[meshtastic]`:
 
-| `[storage]` | Data management | `max_message_size` |
-| `topics.json` | Forum topics (runtime) | Create/manage interactively; persisted to `data/topics.json` |
+These pacing controls reduce airtime contention and avoid triggering device/network rate limits:
+
+* **`min_send_gap_ms`**: Global enforced minimum between any two text sends (hard floor 2000ms)
+* **`dm_resend_backoff_seconds`**: Retry schedule for reliable DM ACKs (default `[4,8,16]` seconds)
+* **`post_dm_broadcast_gap_ms`**: Additional gap before broadcast after DM (default 1200ms)
+* **`dm_to_dm_gap_ms`**: Gap enforced between consecutive DMs (default 600ms)
+* **`help_broadcast_delay_ms`**: Delay for public HELP notice after DM reply (default 3500ms)
+
+#### 🎮 Game Configuration
+
+**`[games]` section:**
+- **`tinyhack_enabled`**: Enable TinyHack roguelike (accessible via Games menu)
+- **`tinymush_enabled`**: Enable TinyMUSH MUD/MUSH engine
+- **`tinymush_db_path`**: Optional override for TinyMUSH database location
+
+#### 📻 Ident Beacon
+
+**`[ident_beacon]` section:**
+- **`enabled`**: Periodic station identification broadcasts
+- **`frequency`**: Options: "5min", "15min", "30min", "1hour", "2hours", "4hours"
+
+#### 👋 Welcome System
+
+**`[welcome]` section:**
+- **`enabled`**: Auto-greet new nodes with default "Meshtastic XXXX" names
+- **`public_greeting`**: Broadcast welcome on public channel
+- **`private_guide`**: Send setup instructions via DM
+- **`cooldown_minutes`**: Global rate limit between any welcomes (prevents spam)
+- **`max_welcomes_per_node`**: Maximum times to welcome the same node
+
+#### 📊 Storage & Logging
+
+**`[storage]` section:**
+- **`data_dir`**: Directory for all runtime data (messages, users, backups)
+- **`max_message_size`**: Protocol hard cap in bytes (230 for Meshtastic)
+
+**`[logging]` section:**
+- **`level`**: Log verbosity (trace, debug, info, warn, error)
+- **`file`**: Log file path (recommended for production)
+
+**Note:** Topics are managed in `data/topics.json` (runtime store) and seeded automatically on first startup. Manage topics interactively from within the BBS.
 
 ## 📖 Usage
 
 ### 🎮 Command Line Interface
 
+**Service Management (Installed via install.sh):**
 ```bash
-# Start the BBS server
-meshbbs start --port /dev/ttyUSB0
+# Start/stop/restart service
+sudo systemctl start meshbbs
+sudo systemctl stop meshbbs
+sudo systemctl restart meshbbs
 
-# Show status and statistics
-meshbbs status
+# Enable auto-start on boot
+sudo systemctl enable meshbbs
 
-# Check Meshtastic device connectivity
-meshbbs check-device --port /dev/ttyUSB0
+# Check status
+sudo systemctl status meshbbs
 
-# Set/update sysop password
-meshbbs sysop-passwd
+# View logs (live)
+sudo journalctl -u meshbbs -f
 
-# Enable verbose logging
-meshbbs -vv start
+# View recent logs
+sudo journalctl -u meshbbs -n 100
 ```
+
+**Direct Commands:**
+```bash
+# Manual start (without systemd)
+meshbbs start                              # Use config.toml settings
+meshbbs start --port /dev/ttyUSB0          # Override serial port
+meshbbs start --daemon                     # Run in background (Linux/macOS)
+
+# Administration
+meshbbs sysop-passwd                       # Set/update sysop password
+meshbbs hash-password                      # Hash password from stdin (scripts)
+
+# Diagnostics
+meshbbs check-device --port /dev/ttyUSB0   # Test device connectivity
+meshbbs status                             # Show server statistics
+meshbbs -vv start                          # Enable verbose logging
+```
+
+> **Note for installed systems:** Use full paths like `/opt/meshbbs/bin/meshbbs` when the service is running, and stop the service first before running diagnostic commands.
 
 ### 📡 Connecting via Meshtastic
 
@@ -543,20 +541,47 @@ graph TD
    SIO --> R
    W --> SIO
 
-   R -- "TextEvent (mpsc)" --> SV["BBS Server"]
+   R -- "TextEvent (mpsc)" --> SV["BBS Server Core"]
+   R -- "NodeDetection (mpsc)" --> SV
    R -- "our_node_id (mpsc)" --> SV
 
-   SV -- "Outgoing (mpsc)" --> SCH["Scheduler"]
-   SCH -- dispatch --> W
+   SV -- "Outgoing (mpsc)" --> SCH["Message Scheduler"]
+   SCH -- "dispatch" --> W
 
-   SV --> SESS["Sessions"]
-   SESS -->|per-node| SV
+   SV --> SESS["Session Manager"]
+   SESS -->|"per-node state"| SV
+   
    SV --> PST["Public State"]
+   PST --> PCOM["Public Commands"]
+   
    SV --> STOR["Storage Layer"]
    STOR --> MSGDB["Message DB"]
    STOR --> USERDB["User DB"]
+   STOR --> TOPICDB["Topics DB"]
+   
+   SV --> GREG["Game Registry"]
+   GREG --> TH["TinyHack"]
+   GREG --> TMUSH["TinyMUSH Store"]
+   TMUSH --> TMDB["TinyMUSH DB"]
+   TMDB --> NPC["NPCs/Companions"]
+   TMDB --> ROOMS["Rooms/Objects"]
+   TMDB --> QUESTS["Quests/Achievements"]
+   
+   SV --> WEL["Welcome System"]
+   WEL --> WELQ["Welcome Queue"]
+   
+   SV --> IB["Ident Beacon"]
+   
+   SV --> BSCH["Backup Scheduler"]
+   BSCH --> STOR
+   
    SV --> CFG["Configuration"]
    SV --> WX["Weather Service"]
+   
+   SV --> GAMES["Games Module"]
+   GAMES --> SLOT["Slot Machine"]
+   GAMES --> BALL["8-Ball"]
+   GAMES --> FORT["Fortune"]
 ```
 
 ### 📁 Module Structure
@@ -646,21 +671,54 @@ meshbbs/
 ├── 📄 src/
 │   ├── main.rs             # Application entry point
 │   ├── lib.rs              # Library exports
+│   ├── logutil.rs          # Logging utilities
+│   ├── metrics.rs          # Performance metrics
 │   ├── validation.rs       # Input validation helpers
 │   ├── 🎮 bbs/             # Core BBS functionality
 │   │   ├── server.rs       # BBS server implementation
 │   │   ├── session.rs      # User session management
 │   │   ├── commands.rs     # BBS command processing
+│   │   ├── dispatch.rs     # Command routing
 │   │   ├── public.rs       # Public channel command parsing
-│   │   └── roles.rs        # User role definitions
+│   │   ├── roles.rs        # User role definitions
+│   │   ├── games.rs        # Game system integration
+│   │   ├── game_registry.rs # Game registration system
+│   │   ├── tinyhack.rs     # TinyHack roguelike game
+│   │   ├── slotmachine.rs  # Slot machine mini-game
+│   │   ├── eightball.rs    # Magic 8-Ball game
+│   │   ├── fortune.rs      # Fortune cookie system
+│   │   ├── weather.rs      # Weather service integration
+│   │   └── welcome.rs      # Welcome message system
 │   ├── 📡 meshtastic/      # Meshtastic integration
-│   │   ├── framer.rs
-│   │   ├── slip.rs
-│   │   └── mod.rs
+│   │   ├── framer.rs       # Frame protocol handling
+│   │   ├── slip.rs         # SLIP encoding
+│   │   └── mod.rs          # Meshtastic module
 │   ├── 💾 storage/
-│   │   └── mod.rs          # Data persistence
+│   │   └── mod.rs          # Data persistence layer
 │   ├── ⚙️ config/
 │   │   └── mod.rs          # Configuration management
+│   ├── 🎭 tmush/           # TinyMUSH game engine
+│   │   ├── mod.rs          # TinyMUSH module
+│   │   ├── types.rs        # Core data types
+│   │   ├── state.rs        # Game state management
+│   │   ├── storage.rs      # TinyMUSH data persistence
+│   │   ├── commands.rs     # Player commands
+│   │   ├── builder_commands.rs # World-building commands
+│   │   ├── resolver.rs     # Object resolution
+│   │   ├── room_manager.rs # Room management
+│   │   ├── inventory.rs    # Inventory system
+│   │   ├── achievement.rs  # Achievement tracking
+│   │   ├── companion.rs    # Companion system
+│   │   ├── quest.rs        # Quest system
+│   │   ├── shop.rs         # Shop/trading system
+│   │   ├── currency.rs     # Currency management
+│   │   ├── housing_cleanup.rs # Housing lifecycle
+│   │   ├── clone.rs        # Object cloning
+│   │   ├── tutorial.rs     # Tutorial system
+│   │   ├── migration.rs    # Data migration
+│   │   ├── seed_loader.rs  # JSON seed content loader
+│   │   ├── errors.rs       # Error types
+│   │   └── trigger/        # Trigger system
 │   └── 📋 protobuf/
 │       └── mod.rs          # Protobuf definitions
 ├── 📚 docs/                # Project documentation (GitHub Pages)
@@ -673,22 +731,60 @@ meshbbs/
 ├── 🖼️ images/
 │   └── meshbbs_logo.png
 ├── 🧰 scripts/
-│   └── clean_workspace.sh
+│   ├── meshbbs-daemon.sh   # Daemon management script
+│   ├── clean_workspace.sh  # Workspace cleanup
+│   ├── init_npc_dialogues.sh # NPC dialogue initialization
+│   └── check_utf8_budget.py  # UTF-8 budget validation
 ├── 🔧 third_party/
-│   └── meshtastic-protobufs/
+│   └── meshtastic-protobufs/ # Upstream protobuf definitions
 ├── 📦 protos/              # Local proto placeholders
 │   ├── meshtastic_placeholder.proto
 │   └── README.md
 ├── 🧪 tests/               # Integration tests
-│   └── test-data-int/      # Integration test fixtures used by Cargo tests
-├── 📊 data/                # Runtime data (topics, messages, users)
-├── 🛠️ build.rs
-├── 📦 Cargo.toml
-├── 📦 Cargo.lock
-├── ⚙️ config.toml
-├── 📝 config.example.toml
-├── 🗒️ CHANGELOG.md
-└── 📘 README.md
+│   ├── achievement_*.rs    # Achievement system tests
+│   ├── admin_commands.rs   # Admin command tests
+│   ├── auth_password.rs    # Authentication tests
+│   ├── bulletin_board_*.rs # BBS functionality tests
+│   ├── companion_*.rs      # Companion system tests
+│   ├── eightball_behavior.rs # 8ball game tests
+│   ├── fortune_behavior.rs # Fortune game tests
+│   ├── tinyhack_*.rs       # TinyHack game tests
+│   ├── tinymush_*.rs       # TinyMUSH integration tests
+│   ├── common.rs           # Shared test utilities
+│   └── test_data/          # Test fixtures and data
+├── 📊 data/                # Runtime data (auto-created)
+│   ├── topics.json         # Forum topics (runtime)
+│   ├── users/              # User accounts
+│   ├── messages/           # Message storage
+│   ├── files/              # File attachments
+│   ├── tinymush/           # TinyMUSH database
+│   └── seeds/              # Seed content (JSON)
+│       ├── npcs.json       # NPC definitions
+│       ├── companions.json # Companion definitions
+│       ├── rooms.json      # Room definitions
+│       ├── achievements.json # Achievement definitions
+│       ├── quests.json     # Quest definitions
+│       └── recipes.json    # Crafting recipe definitions
+├── 📦 packaging/           # Distribution packaging
+│   └── runtime-skel/       # Runtime skeleton structure
+├── 📋 examples/
+│   └── test_weather.rs     # Weather API example
+├── �️ archive/            # Historical artifacts
+│   ├── development-logs/
+│   └── one-time-scripts/
+├── �🛠️ build.rs            # Build script
+├── 📦 Cargo.toml          # Rust package manifest
+├── 📦 Cargo.lock          # Dependency lock file
+├── ⚙️ config.example.toml # Example configuration
+├── �️ topics.example.json # Example topics
+├── 🚀 install.sh          # Installation script
+├── 🗑️ uninstall.sh        # Uninstallation script
+├── 🗒️ CHANGELOG.md        # Version history
+├── 📘 README.md           # This file
+├── 📋 CONTRIBUTING.md     # Contribution guidelines
+├── 📝 LICENSE             # License information
+├── 📋 Justfile            # Just command runner config
+└── 📋 Cross.toml          # Cross-compilation config
 ```
 
 ## 🗺️ Roadmap

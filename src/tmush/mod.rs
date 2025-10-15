@@ -1,7 +1,59 @@
-//! TinyMUSH data model and persistence scaffolding.
-//! Phase 1 introduces foundational data types, Sled-backed storage, and
-//! canonical world seeding helpers so higher phases can focus on command
-//! routing and session plumbing.
+//! # TinyMUSH Game Engine
+//!
+//! A complete MUD/MUSH (Multi-User Shared Hallucination) engine integrated into meshbbs.
+//! This module provides a rich text-based adventure game experience with persistent world
+//! state, NPCs, quests, crafting, and achievement systems.
+//!
+//! ## Features
+//!
+//! - **20+ Interactive Rooms**: Explore a detailed world with multiple zones
+//! - **NPC System**: 5+ NPCs with dialogue trees and quest givers
+//! - **Companion System**: Tameable creatures with loyalty, stats, and abilities
+//! - **Quest System**: Epic multi-stage quests with reputation rewards
+//! - **Crafting System**: Recipe-based item creation with material requirements
+//! - **Achievement System**: 17+ achievements across 6 categories
+//! - **Economy**: Multi-tier currency system with shops and trading
+//! - **Trigger System**: Event-driven actions with conditional logic
+//! - **Builder Commands**: Runtime world editing with @ROOM, @OBJECT, @NPC, etc.
+//! - **Data-Driven**: All content loaded from JSON files in `data/seeds/`
+//!
+//! ## Admin Commands
+//!
+//! - `@ACHIEVEMENT` - Manage achievements (create, list, award)
+//! - `@NPC` - NPC management (create, edit, dialogue)
+//! - `@COMPANION` - Companion definitions and spawning
+//! - `@ROOM` - Room creation and editing
+//! - `@OBJECT` - Object management
+//! - `@QUEST` - Quest creation and assignment
+//! - `@RECIPE` - Crafting recipe management
+//!
+//! ## Storage
+//!
+//! All game state is persisted in a Sled-backed database at `data/tinymush/`.
+//! Seed content is loaded from JSON files in `data/seeds/` on first startup,
+//! with backwards compatibility to hardcoded fallbacks.
+//!
+//! ## Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────┐
+//! │      TinyMUSH Command Handler       │
+//! └─────────────────────────────────────┘
+//!                  │
+//!     ┌────────────┴────────────┐
+//!     ▼                         ▼
+//! ┌─────────┐            ┌──────────┐
+//! │  State  │            │ Storage  │
+//! │ Manager │◄───────────┤  Layer   │
+//! └─────────┘            └──────────┘
+//!     │                         │
+//!     ├─► NPCs                  ├─► Sled DB
+//!     ├─► Companions            ├─► JSON Seeds
+//!     ├─► Quests                └─► Migrations
+//!     ├─► Achievements
+//!     ├─► Inventory
+//!     └─► Currency
+//! ```
 
 pub mod achievement;
 pub mod builder_commands;

@@ -1,8 +1,8 @@
 //! Admin commands for trigger management (Phase 10)
 //!
 //! Commands for managing the trigger system:
-//! - @trigger/disable <object> - Disable trigger on an object
-//! - @trigger/enable <object> - Re-enable trigger on an object
+//! - @trigger/disable \<object\> - Disable trigger on an object
+//! - @trigger/enable \<object\> - Re-enable trigger on an object
 //! - @trigger/list - List all disabled objects
 //! - @trigger/stats - Show rate limiter statistics
 //! - @trigger/global off - Emergency shutoff
