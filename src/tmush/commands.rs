@@ -18,8 +18,9 @@ use crate::tmush::trigger::{
     execute_on_look, execute_on_poke, execute_on_use, execute_room_on_enter,
 };
 use crate::tmush::types::{
-    BulletinBoard, BulletinMessage, CurrencyAmount, Direction as TmushDirection, ObjectRecord,
-    RoomFlag, TutorialState, TutorialStep,
+    AchievementCategory, AchievementRecord, AchievementTrigger, BulletinBoard, BulletinMessage,
+    CurrencyAmount, Direction as TmushDirection, ObjectRecord, RoomFlag, TutorialState,
+    TutorialStep,
 };
 use crate::tmush::{PlayerRecord, TinyMushError, TinyMushStore};
 
@@ -173,6 +174,7 @@ pub enum TinyMushCommand {
     Dialog(String, String, Option<String>), // @DIALOG <npc> <subcommand> [args] - manage NPC dialogue trees (admin only)
     Recipe(String, Vec<String>), // @RECIPE <subcommand> [args] - manage crafting recipes (admin only)
     QuestAdmin(String, Vec<String>), // @QUEST <subcommand> [args] - manage quests (admin only)
+    AchievementAdmin(String, Vec<String>), // @ACHIEVEMENT <subcommand> [args] - manage achievements (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -623,6 +625,9 @@ impl TinyMushProcessor {
             }
             TinyMushCommand::QuestAdmin(subcommand, args) => {
                 self.handle_quest_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::AchievementAdmin(subcommand, args) => {
+                self.handle_achievement_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1258,6 +1263,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::QuestAdmin(subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @QUEST <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new quest\n  EDIT <id> DESCRIPTION <text> - Set description\n  EDIT <id> GIVER <npc_id> - Set quest giver NPC\n  EDIT <id> LEVEL <num> - Set recommended level\n  EDIT <id> OBJECTIVE ADD <type> <details> - Add objective\n  EDIT <id> OBJECTIVE REMOVE <index> - Remove objective\n  EDIT <id> REWARD CURRENCY <amount> - Set currency reward\n  EDIT <id> REWARD XP <amount> - Set experience reward\n  EDIT <id> REWARD ITEM <item_id> - Set item reward\n  EDIT <id> PREREQUISITE <quest_id> - Set prerequisite quest\n  DELETE <id> - Delete quest\n  LIST - List all quests\n  SHOW <id> - Show quest details\n\nExample: @QUEST CREATE fetch_water \"Fetch Water for the Village\"".to_string())
+                }
+            }
+            "@ACHIEVEMENT" | "@ACH" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::AchievementAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @ACHIEVEMENT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new achievement\n  EDIT <id> DESCRIPTION <text> - Set description\n  EDIT <id> CATEGORY <type> - Set category (Combat/Exploration/Social/Economic/Quest/Special)\n  EDIT <id> TRIGGER <type> <params> - Set trigger condition\n    Trigger types:\n      KILLCOUNT <num> - Defeat N enemies\n      ROOMVISITS <num> - Visit N unique rooms\n      FRIENDCOUNT <num> - Make N friends\n      MESSAGESSENT <num> - Send N messages\n      TRADECOUNT <num> - Complete N trades\n      CURRENCYEARNED <amount> - Earn X currency\n      QUESTCOMPLETION <num> - Complete N quests\n      VISITLOCATION <room_id> - Visit specific location\n      COMPLETEQUEST <quest_id> - Complete specific quest\n  EDIT <id> TITLE <text> - Set title reward (optional)\n  EDIT <id> HIDDEN <true|false> - Toggle hidden status\n  DELETE <id> - Delete achievement\n  LIST [category] - List achievements (optional filter)\n  SHOW <id> - Show achievement details\n\nExample: @ACHIEVEMENT CREATE first_kill \"First Blood\"".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -7266,6 +7280,298 @@ Not fancy, but it gets the job done.",
             }
             _ => Ok(format!(
                 "Unknown @QUEST subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle the ACHIEVEMENT admin command for data-driven achievement management.
+    async fn handle_achievement_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @ACHIEVEMENT commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ACHIEVEMENT CREATE <achievement_id> <name>\nExample: @ACHIEVEMENT CREATE combat_veteran \"Combat Veteran\"".to_string());
+                }
+                let achievement_id = &args[0];
+                let name = args[1..].join(" ");
+                if name.is_empty() {
+                    return Ok("Achievement name cannot be empty".to_string());
+                }
+
+                if store.achievement_exists(achievement_id)? {
+                    return Ok(format!("Achievement '{}' already exists", achievement_id));
+                }
+
+                let achievement = AchievementRecord::new(
+                    achievement_id,
+                    &name,
+                    "No description set yet",
+                    AchievementCategory::Special,
+                    AchievementTrigger::KillCount { required: 1 },
+                );
+
+                store.put_achievement(achievement)?;
+                Ok(format!("Created achievement '{}' with name \"{}\"", achievement_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 2 {
+                    return Ok(
+                        "Usage: @ACHIEVEMENT EDIT <achievement_id> <field> <value>\n\
+                        Fields: DESCRIPTION, CATEGORY, TRIGGER, TITLE, HIDDEN\n\
+                        Examples:\n\
+                        @ACHIEVEMENT EDIT first_blood DESCRIPTION You defeated your first enemy\n\
+                        @ACHIEVEMENT EDIT first_blood CATEGORY Combat\n\
+                        @ACHIEVEMENT EDIT first_blood TRIGGER KILLCOUNT 1\n\
+                        @ACHIEVEMENT EDIT first_blood TITLE \"Rookie Warrior\"\n\
+                        @ACHIEVEMENT EDIT first_blood HIDDEN false".to_string()
+                    );
+                }
+
+                let achievement_id = &args[0];
+                let field = args[1].to_uppercase();
+                let value_args = &args[2..];
+
+                let mut achievement = match store.get_achievement(achievement_id) {
+                    Ok(ach) => ach,
+                    Err(_) => return Ok(format!("Achievement '{}' does not exist", achievement_id)),
+                };
+
+                match field.as_str() {
+                    "DESCRIPTION" => {
+                        let description = value_args.join(" ");
+                        if description.is_empty() {
+                            return Ok("Description cannot be empty".to_string());
+                        }
+                        achievement.description = description.clone();
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated description for '{}'", achievement_id))
+                    }
+                    "CATEGORY" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @ACHIEVEMENT EDIT <id> CATEGORY <category>\nCategories: Combat, Exploration, Social, Economic, Quest, Special".to_string());
+                        }
+                        let category_str = value_args[0].to_uppercase();
+                        let category = match category_str.as_str() {
+                            "COMBAT" => AchievementCategory::Combat,
+                            "EXPLORATION" => AchievementCategory::Exploration,
+                            "SOCIAL" => AchievementCategory::Social,
+                            "ECONOMIC" => AchievementCategory::Economic,
+                            "QUEST" => AchievementCategory::Quest,
+                            "SPECIAL" => AchievementCategory::Special,
+                            _ => return Ok(format!("Invalid category: {}\nValid categories: Combat, Exploration, Social, Economic, Quest, Special", value_args[0])),
+                        };
+                        achievement.category = category;
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated category for '{}' to {:?}", achievement_id, achievement.category))
+                    }
+                    "TRIGGER" => {
+                        if value_args.len() < 2 {
+                            return Ok(
+                                "Usage: @ACHIEVEMENT EDIT <id> TRIGGER <type> <params>\n\
+                                Trigger types:\n\
+                                  KILLCOUNT <required>\n\
+                                  ROOMVISITS <required>\n\
+                                  FRIENDCOUNT <required>\n\
+                                  MESSAGESSENT <required>\n\
+                                  TRADECOUNT <required>\n\
+                                  CURRENCYEARNED <amount>\n\
+                                  QUESTCOMPLETION <required>\n\
+                                  VISITLOCATION <room_id>\n\
+                                  COMPLETEQUEST <quest_id>".to_string()
+                            );
+                        }
+
+                        let trigger_type = value_args[0].to_uppercase();
+                        let trigger = match trigger_type.as_str() {
+                            "KILLCOUNT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required kills"))?;
+                                AchievementTrigger::KillCount { required }
+                            }
+                            "ROOMVISITS" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required room visits"))?;
+                                AchievementTrigger::RoomVisits { required }
+                            }
+                            "FRIENDCOUNT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required friends"))?;
+                                AchievementTrigger::FriendCount { required }
+                            }
+                            "MESSAGESSENT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required messages"))?;
+                                AchievementTrigger::MessagesSent { required }
+                            }
+                            "TRADECOUNT" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required trades"))?;
+                                AchievementTrigger::TradeCount { required }
+                            }
+                            "CURRENCYEARNED" => {
+                                let amount = value_args.get(1)
+                                    .and_then(|s| s.parse::<i64>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid currency amount"))?;
+                                AchievementTrigger::CurrencyEarned { amount }
+                            }
+                            "QUESTCOMPLETION" => {
+                                let required = value_args.get(1)
+                                    .and_then(|s| s.parse::<u32>().ok())
+                                    .ok_or_else(|| anyhow::anyhow!("Invalid number for required quests"))?;
+                                AchievementTrigger::QuestCompletion { required }
+                            }
+                            "VISITLOCATION" => {
+                                let room_id = value_args.get(1)
+                                    .ok_or_else(|| anyhow::anyhow!("Missing room_id for VISITLOCATION trigger"))?
+                                    .to_string();
+                                AchievementTrigger::VisitLocation { room_id }
+                            }
+                            "COMPLETEQUEST" => {
+                                let quest_id = value_args.get(1)
+                                    .ok_or_else(|| anyhow::anyhow!("Missing quest_id for COMPLETEQUEST trigger"))?
+                                    .to_string();
+                                AchievementTrigger::CompleteQuest { quest_id }
+                            }
+                            _ => return Ok(format!("Invalid trigger type: {}\nSee @ACHIEVEMENT EDIT for valid trigger types", value_args[0])),
+                        };
+
+                        achievement.trigger = trigger;
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated trigger for '{}' to {:?}", achievement_id, achievement.trigger))
+                    }
+                    "TITLE" => {
+                        let title = value_args.join(" ");
+                        if title.is_empty() {
+                            achievement.title = None;
+                            store.put_achievement(achievement.clone())?;
+                            Ok(format!("Cleared title for '{}'", achievement_id))
+                        } else {
+                            achievement.title = Some(title.clone());
+                            store.put_achievement(achievement.clone())?;
+                            Ok(format!("Updated title for '{}' to \"{}\"", achievement_id, title))
+                        }
+                    }
+                    "HIDDEN" => {
+                        if value_args.is_empty() {
+                            return Ok("Usage: @ACHIEVEMENT EDIT <id> HIDDEN <true|false>".to_string());
+                        }
+                        let hidden_str = value_args[0].to_lowercase();
+                        let hidden = match hidden_str.as_str() {
+                            "true" | "yes" | "1" => true,
+                            "false" | "no" | "0" => false,
+                            _ => return Ok(format!("Invalid hidden value: {}\nUse: true or false", value_args[0])),
+                        };
+                        achievement.hidden = hidden;
+                        store.put_achievement(achievement.clone())?;
+                        Ok(format!("Updated hidden status for '{}' to {}", achievement_id, hidden))
+                    }
+                    _ => Ok(format!(
+                        "Unknown field: {}\nValid fields: DESCRIPTION, CATEGORY, TRIGGER, TITLE, HIDDEN",
+                        field
+                    )),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ACHIEVEMENT DELETE <achievement_id>".to_string());
+                }
+                let achievement_id = &args[0];
+
+                if !store.achievement_exists(achievement_id)? {
+                    return Ok(format!("Achievement '{}' does not exist", achievement_id));
+                }
+
+                store.delete_achievement(achievement_id)?;
+                Ok(format!("Deleted achievement '{}'", achievement_id))
+            }
+            "LIST" => {
+                let category_filter = args.get(0).map(|s| s.to_uppercase());
+                
+                let achievements = if let Some(cat_str) = category_filter {
+                    let category = match cat_str.as_str() {
+                        "COMBAT" => AchievementCategory::Combat,
+                        "EXPLORATION" => AchievementCategory::Exploration,
+                        "SOCIAL" => AchievementCategory::Social,
+                        "ECONOMIC" => AchievementCategory::Economic,
+                        "QUEST" => AchievementCategory::Quest,
+                        "SPECIAL" => AchievementCategory::Special,
+                        _ => return Ok(format!("Invalid category: {}\nValid categories: Combat, Exploration, Social, Economic, Quest, Special", args[0])),
+                    };
+                    store.get_achievements_by_category(&category)?
+                } else {
+                    let ids = store.list_achievement_ids()?;
+                    let mut achs = Vec::new();
+                    for id in ids {
+                        if let Ok(ach) = store.get_achievement(&id) {
+                            achs.push(ach);
+                        }
+                    }
+                    achs
+                };
+
+                if achievements.is_empty() {
+                    return Ok("No achievements found".to_string());
+                }
+
+                let mut output = format!("Achievements ({})\n", achievements.len());
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                for ach in achievements {
+                    let hidden_str = if ach.hidden { " [HIDDEN]" } else { "" };
+                    output.push_str(&format!("• {} - \"{}\" [{:?}]{}\n", ach.id, ach.name, ach.category, hidden_str));
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ACHIEVEMENT SHOW <achievement_id>".to_string());
+                }
+                let achievement_id = &args[0];
+
+                let achievement = match store.get_achievement(achievement_id) {
+                    Ok(ach) => ach,
+                    Err(_) => return Ok(format!("Achievement '{}' does not exist", achievement_id)),
+                };
+
+                let mut output = format!("Achievement: {}\n", achievement.id);
+                output.push_str("─".repeat(60).as_str());
+                output.push('\n');
+                output.push_str(&format!("Name: {}\n", achievement.name));
+                output.push_str(&format!("Description: {}\n", achievement.description));
+                output.push_str(&format!("Category: {:?}\n", achievement.category));
+                output.push_str(&format!("Trigger: {:?}\n", achievement.trigger));
+                if let Some(title) = &achievement.title {
+                    output.push_str(&format!("Title Reward: \"{}\"\n", title));
+                } else {
+                    output.push_str("Title Reward: None\n");
+                }
+                output.push_str(&format!("Hidden: {}\n", achievement.hidden));
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @ACHIEVEMENT subcommand: {}\n\
                 Use: CREATE, EDIT, DELETE, LIST, SHOW",
                 subcommand
             )),

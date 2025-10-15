@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added - Data-Driven Achievement Management
+
+#### Phase 1: Achievement System (@ACHIEVEMENT Command)
+- **@ACHIEVEMENT command**: Complete admin interface for data-driven achievement management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new achievements with default settings
+  - `EDIT <id> DESCRIPTION <text>`: Set achievement description
+  - `EDIT <id> CATEGORY <category>`: Set category (Combat, Exploration, Social, Economic, Quest, Special)
+  - `EDIT <id> TRIGGER <type> <params>`: Configure trigger conditions (9 trigger types supported)
+  - `EDIT <id> TITLE <text>`: Set optional title reward
+  - `EDIT <id> HIDDEN <true|false>`: Toggle hidden achievement visibility
+  - `DELETE <id>`: Remove achievement from database
+  - `LIST [category]`: List all achievements or filter by category
+  - `SHOW <id>`: Display detailed achievement information
+  - Alias: `@ACH` for shorter command usage
+
+#### Achievement Trigger Types (9 variants)
+- **KILLCOUNT <required>**: Track enemy defeats
+- **ROOMVISITS <required>**: Track room exploration
+- **FRIENDCOUNT <required>**: Track social connections
+- **MESSAGESSENT <required>**: Track message activity
+- **TRADECOUNT <required>**: Track trading activity
+- **CURRENCYEARNED <amount>**: Track currency accumulation
+- **QUESTCOMPLETION <required>**: Track quest completions
+- **VISITLOCATION <room_id>**: Require visiting specific location
+- **COMPLETEQUEST <quest_id>**: Require completing specific quest
+
+#### Storage Layer Enhancements
+- `achievement_exists()`: Fast existence check for achievements
+- Achievement CRUD operations integrated with TinyMushStore
+- Full support for all 6 achievement categories and 9 trigger types
+
+#### Testing
+- **7 new integration tests** in `tests/achievement_management.rs`:
+  - CRUD operations validation
+  - All field editing (description, category, trigger, title, hidden)
+  - All 9 trigger type parsing and validation
+  - Category validation for all 6 categories
+  - Existence checks and error handling
+  - List filtering by category
+  - Seeded starter achievements verification
+- **608 total tests passing** (including new achievement tests)
+
+### Developer Notes
+- **Pattern**: Achievement system follows proven @QUEST/@RECIPE command structure
+- **Migration Status**: Phase 1 of 6-phase data-driven content migration (see TODO.md)
+- **Next Steps**: Phase 2 (NPC system), Phase 3 (Companions), Phase 4 (Rooms), Phase 5 (Objects), Phase 6 (Polish)
+
 ## [1.0.115-beta] - 2025-10-14
 
 ### Added - Phase 4 Quest Content & Phase 5 Features

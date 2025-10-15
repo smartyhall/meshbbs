@@ -2392,6 +2392,12 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Check if an achievement exists
+    pub fn achievement_exists(&self, achievement_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("achievement:{}", achievement_id);
+        Ok(self.achievements.contains_key(key.as_bytes())?)
+    }
+
     /// Seed achievements if none exist
     pub fn seed_achievements_if_needed(&self) -> Result<usize, TinyMushError> {
         if self.achievements.iter().next().is_some() {
