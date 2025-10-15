@@ -19,7 +19,7 @@ use crate::tmush::trigger::{
 };
 use crate::tmush::types::{
     AchievementCategory, AchievementRecord, AchievementTrigger, BulletinBoard, BulletinMessage,
-    CurrencyAmount, Direction as TmushDirection, ObjectRecord, RoomFlag, TutorialState,
+    CurrencyAmount, Direction as TmushDirection, ObjectRecord, ObjectTrigger, RoomFlag, TutorialState,
     TutorialStep,
 };
 use crate::tmush::{PlayerRecord, TinyMushError, TinyMushStore};
@@ -1323,7 +1323,7 @@ impl TinyMushProcessor {
                     let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
                     TinyMushCommand::ObjectAdmin(subcommand, args)
                 } else {
-                    TinyMushCommand::Unknown("Usage: @OBJECT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new world object\n  EDIT <id> NAME <text> - Set object name\n  EDIT <id> DESCRIPTION <text> - Set object description\n  EDIT <id> WEIGHT <number> - Set weight (0-255)\n  EDIT <id> VALUE <amount> - Set currency value\n  EDIT <id> FLAG <flag> - Add object flag\n  EDIT <id> TAKEABLE <true|false> - Set takeable property\n  EDIT <id> USABLE <true|false> - Set usable property\n  EDIT <id> LOCKED <true|false> - Lock to prevent taking\n  DELETE <id> - Delete object\n  LIST - List all world objects\n  SHOW <id> - Show object details\n\nObject Flags:\n  QUESTITEM - Required for quests\n  CONSUMABLE - Single-use item\n  EQUIPMENT - Can be equipped\n  KEYITEM - Important story item\n  CONTAINER - Can hold other items\n  MAGICAL - Has magical properties\n  COMPANION - Companion pet/ally\n  CLONABLE - Can be cloned by players\n  UNIQUE - Cannot be cloned\n  NOVALUE - Strip value on clone\n  NOCLONECHILDREN - Cannot clone with contents\n  LIGHTSOURCE - Provides light in dark rooms\n\nValue Examples:\n  @OBJECT EDIT torch VALUE 5gc - Sets value to 5 gold, 0 silver, 0 copper\n  @OBJECT EDIT sword VALUE 2gc,50sc - Sets value to 2 gold, 50 silver, 0 copper\n\nExample: @OBJECT CREATE basic_torch \"Wooden Torch\"\nExample: @OBJECT EDIT basic_torch DESCRIPTION \"A simple torch that provides light.\"\nExample: @OBJECT EDIT basic_torch FLAG LIGHTSOURCE\nExample: @OBJECT EDIT basic_torch TAKEABLE true\nExample: @OBJECT EDIT basic_torch WEIGHT 5".to_string())
+                    TinyMushCommand::Unknown("Usage: @OBJECT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new world object\n  EDIT <id> NAME <text> - Set object name\n  EDIT <id> DESCRIPTION <text> - Set object description\n  EDIT <id> WEIGHT <number> - Set weight (0-255)\n  EDIT <id> VALUE <amount> - Set currency value\n  EDIT <id> FLAG <flag> - Add object flag\n  EDIT <id> TAKEABLE <true|false> - Set takeable property\n  EDIT <id> USABLE <true|false> - Set usable property\n  EDIT <id> LOCKED <true|false> - Lock to prevent taking\n  EDIT <id> TRIGGER <type> <script> - Set object trigger\n  EDIT <id> TRIGGER <type> REMOVE - Remove object trigger\n  DELETE <id> - Delete object\n  LIST - List all world objects\n  SHOW <id> - Show object details\n\nObject Flags:\n  QUESTITEM - Required for quests\n  CONSUMABLE - Single-use item\n  EQUIPMENT - Can be equipped\n  KEYITEM - Important story item\n  CONTAINER - Can hold other items\n  MAGICAL - Has magical properties\n  COMPANION - Companion pet/ally\n  CLONABLE - Can be cloned by players\n  UNIQUE - Cannot be cloned\n  NOVALUE - Strip value on clone\n  NOCLONECHILDREN - Cannot clone with contents\n  LIGHTSOURCE - Provides light in dark rooms\n\nTrigger Types:\n  ONENTER - Fires when player enters room with object\n  ONLOOK - Fires when player examines object\n  ONTAKE - Fires when player takes object\n  ONDROP - Fires when player drops object\n  ONUSE - Fires when player uses object\n  ONPOKE - Fires when player pokes object\n  ONFOLLOW - Fires when player follows something\n  ONIDLE - Fires periodically when idle\n  ONCOMBAT - Fires during combat\n  ONHEAL - Fires when healing occurs\n\nTrigger Script Commands:\n  message(\"text\") - Display message to player\n  heal(amount) - Heal the player\n  consume() - Destroy object after use\n  teleport(\"room_id\") - Move player to room\n  random_chance(percent) - Probability gate\n  has_quest(\"quest_id\") - Check quest status\n  unlock_exit(\"direction\") - Unlock exit\n  Multiple commands: cmd1 && cmd2 && cmd3\n\nValue Examples:\n  @OBJECT EDIT torch VALUE 5gc - Sets value to 5 gold, 0 silver, 0 copper\n  @OBJECT EDIT sword VALUE 2gc,50sc - Sets value to 2 gold, 50 silver, 0 copper\n\nExamples:\n  @OBJECT CREATE basic_torch \"Wooden Torch\"\n  @OBJECT EDIT basic_torch DESCRIPTION \"A simple torch that provides light.\"\n  @OBJECT EDIT basic_torch FLAG LIGHTSOURCE\n  @OBJECT EDIT basic_torch TAKEABLE true\n  @OBJECT EDIT basic_torch WEIGHT 5\n  @OBJECT EDIT singing_mushroom TRIGGER ONENTER message(\"🍄 Chimes!\")\n  @OBJECT EDIT healing_potion TRIGGER ONUSE heal(50) && consume()\n  @OBJECT EDIT mystery_box TRIGGER ONPOKE random_chance(50) && message(\"✨ Click!\")\n  @OBJECT EDIT singing_mushroom TRIGGER ONENTER REMOVE".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -8364,7 +8364,7 @@ Not fancy, but it gets the job done.",
             }
             "EDIT" => {
                 if args.len() < 3 {
-                    return Ok("Usage: @OBJECT EDIT <id> <field> <value>\nFields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED\nExample: @OBJECT EDIT basic_torch NAME \"Bright Torch\"".to_string());
+                    return Ok("Usage: @OBJECT EDIT <id> <field> <value>\nFields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED, TRIGGER\nExample: @OBJECT EDIT basic_torch NAME \"Bright Torch\"\nExample: @OBJECT EDIT mushroom TRIGGER ONENTER message(\"Chimes!\")".to_string());
                 }
                 let object_id = args[0].to_lowercase();
                 let field = args[1].to_uppercase();
@@ -8562,7 +8562,63 @@ Not fancy, but it gets the job done.",
                             _ => Ok("Value must be 'true' or 'false'.".to_string()),
                         }
                     }
-                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED", field)),
+                    "TRIGGER" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> TRIGGER <type> <script>\n       @OBJECT EDIT <id> TRIGGER <type> REMOVE\n\nTrigger Types: ONENTER, ONLOOK, ONTAKE, ONDROP, ONUSE, ONPOKE, ONFOLLOW, ONIDLE, ONCOMBAT, ONHEAL\n\nExamples:\n  @OBJECT EDIT mushroom TRIGGER ONENTER message(\"🍄 The mushroom chimes!\")\n  @OBJECT EDIT potion TRIGGER ONUSE heal(50) && consume()\n  @OBJECT EDIT box TRIGGER ONPOKE random_chance(50) && message(\"Click!\")\n  @OBJECT EDIT mushroom TRIGGER ONENTER REMOVE".to_string());
+                        }
+                        
+                        let trigger_type_str = args[2].to_uppercase();
+                        
+                        // Parse trigger type
+                        let trigger_type = match trigger_type_str.as_str() {
+                            "ONENTER" => ObjectTrigger::OnEnter,
+                            "ONLOOK" => ObjectTrigger::OnLook,
+                            "ONTAKE" => ObjectTrigger::OnTake,
+                            "ONDROP" => ObjectTrigger::OnDrop,
+                            "ONUSE" => ObjectTrigger::OnUse,
+                            "ONPOKE" => ObjectTrigger::OnPoke,
+                            "ONFOLLOW" => ObjectTrigger::OnFollow,
+                            "ONIDLE" => ObjectTrigger::OnIdle,
+                            "ONCOMBAT" => ObjectTrigger::OnCombat,
+                            "ONHEAL" => ObjectTrigger::OnHeal,
+                            _ => return Ok(format!("Unknown trigger type '{}'. Valid types: ONENTER, ONLOOK, ONTAKE, ONDROP, ONUSE, ONPOKE, ONFOLLOW, ONIDLE, ONCOMBAT, ONHEAL", trigger_type_str)),
+                        };
+                        
+                        // Check if this is a REMOVE command
+                        if args.len() > 3 && args[3].to_uppercase() == "REMOVE" {
+                            // Remove the trigger
+                            if object.actions.remove(&trigger_type).is_some() {
+                                store.put_object(object)?;
+                                Ok(format!("{}Removed {} trigger from object.", warning_message, trigger_type_str))
+                            } else {
+                                Ok(format!("Object does not have a {} trigger.", trigger_type_str))
+                            }
+                        } else {
+                            // Set the trigger - rest of args is the script
+                            if args.len() < 4 {
+                                return Ok("Usage: @OBJECT EDIT <id> TRIGGER <type> <script>\nExample: @OBJECT EDIT mushroom TRIGGER ONENTER message(\"Hello!\")".to_string());
+                            }
+                            
+                            let script = args[3..].join(" ");
+                            
+                            // Validate script is not empty
+                            if script.trim().is_empty() {
+                                return Ok("Trigger script cannot be empty. Use 'REMOVE' to delete a trigger.".to_string());
+                            }
+                            
+                            // Set the trigger
+                            let was_update = object.actions.contains_key(&trigger_type);
+                            object.actions.insert(trigger_type, script.clone());
+                            store.put_object(object)?;
+                            
+                            if was_update {
+                                Ok(format!("{}Updated {} trigger:\n  {}", warning_message, trigger_type_str, script))
+                            } else {
+                                Ok(format!("{}Added {} trigger:\n  {}", warning_message, trigger_type_str, script))
+                            }
+                        }
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED, TRIGGER", field)),
                 }
             }
             "DELETE" => {
@@ -8846,6 +8902,20 @@ Not fancy, but it gets the job done.",
                 output.push_str(&format!("Usable: {}\n", if object.usable { "yes" } else { "no" }));
                 output.push_str(&format!("Locked: {}\n", if object.locked { "yes" } else { "no" }));
                 output.push_str(&format!("Flags: {}\n", flags_str));
+                
+                // Display triggers
+                if object.actions.is_empty() {
+                    output.push_str("Triggers: none\n");
+                } else {
+                    output.push_str(&format!("Triggers: ({})\n", object.actions.len()));
+                    // Sort triggers for consistent display
+                    let mut trigger_list: Vec<_> = object.actions.iter().collect();
+                    trigger_list.sort_by_key(|(trigger, _)| format!("{:?}", trigger));
+                    for (trigger, script) in trigger_list {
+                        output.push_str(&format!("  {:?}: {}\n", trigger, script));
+                    }
+                }
+                
                 output.push_str(&format!("Created: {}\n", object.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
                 output.push_str(&format!("Created by: {}\n", object.created_by));
                 
