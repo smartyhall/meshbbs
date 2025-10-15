@@ -486,6 +486,17 @@ impl CommandProcessor {
         config: &Config,
         game_registry: &crate::bbs::GameRegistry,
     ) -> Result<String> {
+        // Security: Check authentication before allowing access to BBS functions
+        // Only HELP and QUIT commands are allowed for unauthenticated users
+        if !session.is_logged_in() && cmd != "H" && cmd != "?" && cmd != "Q" {
+            return Ok(
+                "Authentication required.\n\
+                Please REGISTER <username> <password> or LOGIN <username> [password]\n\
+                Type H for help.\n"
+                    .to_string(),
+            );
+        }
+
         let game_doors = games::enabled_doors(&config.games);
         if cmd == "G" || cmd == "GAMES" {
             if game_doors.is_empty() {

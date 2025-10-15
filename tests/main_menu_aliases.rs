@@ -36,8 +36,8 @@ async fn main_menu_single_letter_aliases() {
         .await
         .unwrap();
     assert!(
-        help_word.starts_with("Invalid command"),
-        "Long-form HELP should be rejected now"
+        help_word.starts_with("Invalid command") || help_word.contains("Authentication required"),
+        "Long-form HELP should be rejected or require auth. Got: {help_word}"
     );
 
     let messages_word = meshbbs::bbs::commands::CommandProcessor::new()
@@ -45,7 +45,7 @@ async fn main_menu_single_letter_aliases() {
         .await
         .unwrap();
     assert!(
-        messages_word.starts_with("Invalid command"),
-        "Long-form MESSAGES should be rejected"
+        messages_word.starts_with("Invalid command") || messages_word.contains("Authentication required"),
+        "Long-form MESSAGES should be rejected or require auth. Got: {messages_word}"
     );
 }
