@@ -19,7 +19,7 @@ Type=simple
 User=bbs
 Group=bbs
 WorkingDirectory=/opt/meshbbs
-ExecStart=/opt/meshbbs/meshbbs
+ExecStart=/opt/meshbbs/meshbbs start
 Restart=always
 RestartSec=10
 
@@ -261,7 +261,7 @@ Type=simple
 User=bbs
 Group=bbs
 WorkingDirectory=/opt/meshbbs
-ExecStart=/opt/meshbbs/meshbbs
+ExecStart=/opt/meshbbs/meshbbs start
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
