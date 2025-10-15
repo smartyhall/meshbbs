@@ -435,6 +435,39 @@ impl TinyMushProcessor {
         if let Ok(username) = session.username.as_deref().ok_or("no username") {
             let trimmed = command.trim().to_uppercase();
             
+            // First, check for disambiguation session (highest priority for numeric input)
+            if let Ok(Some(disambiguation)) = self.store().get_disambiguation_session(username) {
+                if let Ok(choice) = trimmed.parse::<usize>() {
+                    // User selected a number - process the disambiguation
+                    if let Some((object_id, _object_name)) = disambiguation.get_selection(choice) {
+                        // Delete the disambiguation session
+                        let _ = self.store().delete_disambiguation_session(username);
+                        
+                        // Route back to the original command with the specific object ID
+                        match disambiguation.command.as_str() {
+                            "take" => {
+                                // Execute take command with the selected object ID
+                                return self.handle_take_by_id(session, object_id, config).await;
+                            }
+                            "drop" => {
+                                return self.handle_drop_by_id(session, object_id, config).await;
+                            }
+                            "use" => {
+                                return self.handle_use_by_id(session, object_id, config).await;
+                            }
+                            "examine" => {
+                                return self.handle_examine_by_id(session, object_id, config).await;
+                            }
+                            _ => {
+                                return Ok(format!("Unknown disambiguation command: {}", disambiguation.command));
+                            }
+                        }
+                    } else {
+                        return Ok(format!("Invalid selection. Please choose a number between 1 and {}.", disambiguation.matched_ids.len()));
+                    }
+                }
+            }
+            
             // Check if input looks like dialog navigation
             let is_dialog_input = trimmed.parse::<usize>().is_ok() 
                 || trimmed == "EXIT" 
@@ -1900,10 +1933,34 @@ impl TinyMushProcessor {
             Err(_) => return Ok("Error: Cannot access current room.".to_string()),
         };
 
-        // Find object in room by name
-        let object = match self.find_object_by_name(&item_name, &room.items) {
-            Some(obj) => obj,
-            None => return Ok(format!("There is no '{}' here to take.", item_name)),
+        // Use fuzzy matching to find objects
+        let matches = self.find_objects_by_partial_name(&item_name, &room.items);
+
+        // Handle different match scenarios
+        let object = match matches.len() {
+            0 => return Ok(format!("There is no '{}' here to take.", item_name)),
+            1 => matches.into_iter().next().unwrap(), // Auto-select single match
+            _ => {
+                // Multiple matches - create disambiguation session
+                let matched_ids: Vec<String> = matches.iter().map(|o| o.id.clone()).collect();
+                let matched_names: Vec<String> = matches.iter().map(|o| o.name.clone()).collect();
+
+                let disambiguation = crate::tmush::types::DisambiguationSession::new(
+                    &player.username,
+                    "take",
+                    &item_name,
+                    matched_ids,
+                    matched_names,
+                    crate::tmush::types::DisambiguationContext::Room,
+                );
+
+                // Store session
+                if let Err(e) = self.store().put_disambiguation_session(disambiguation.clone()) {
+                    return Ok(format!("Error creating disambiguation: {}", e));
+                }
+
+                return Ok(disambiguation.format_prompt());
+            }
         };
 
         // Check if object is takeable
@@ -1977,6 +2034,103 @@ impl TinyMushProcessor {
         Ok(response)
     }
 
+    /// Handle TAKE command with specific object ID (used after disambiguation)
+    async fn handle_take_by_id(
+        &mut self,
+        session: &Session,
+        object_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::trigger::integration::execute_on_take;
+
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let room_id = player.current_room.clone();
+
+        // Get current room
+        let mut room = match self.store().get_room(&room_id) {
+            Ok(r) => r,
+            Err(_) => return Ok("Error: Cannot access current room.".to_string()),
+        };
+
+        // Verify object is in the room
+        if !room.items.contains(&object_id) {
+            return Ok("That object is no longer here.".to_string());
+        }
+
+        // Get the object
+        let object = match self.store().get_object(&object_id) {
+            Ok(obj) => obj,
+            Err(_) => return Ok("Error loading object.".to_string()),
+        };
+
+        // Check if object is takeable
+        if !object.takeable {
+            return Ok(format!("You cannot take the {}.", object.name));
+        }
+
+        // Check if locked by another player
+        if object.locked {
+            if let crate::tmush::types::ObjectOwner::Player {
+                username: ref owner,
+            } = object.owner
+            {
+                if owner != &player.username {
+                    return Ok(format!("The {} is locked by its owner.", object.name));
+                }
+            }
+        }
+
+        // Check inventory capacity
+        if player.inventory.len() >= 100 {
+            return Ok("Your inventory is full! (Max 100 items)".to_string());
+        }
+
+        // Fire OnTake trigger
+        let trigger_messages = execute_on_take(&object, &player.username, &room_id, self.store());
+
+        // Remove from room
+        room.items.retain(|id| id != &object.id);
+        if let Err(e) = self.store().put_room(room) {
+            return Ok(format!("Error updating room: {}", e));
+        }
+
+        // Add to player inventory
+        player.inventory.push(object.id.clone());
+
+        // Record ownership transfer
+        let mut updated_object = object.clone();
+        Self::record_ownership_transfer(
+            &mut updated_object,
+            Some(format!("{:?}", object.owner)),
+            player.username.clone(),
+            crate::tmush::types::OwnershipReason::PickedUp,
+        );
+        updated_object.owner = crate::tmush::types::ObjectOwner::Player {
+            username: player.username.clone(),
+        };
+
+        // Save updated object and player
+        if let Err(e) = self.store().put_object(updated_object) {
+            return Ok(format!("Error saving object: {}", e));
+        }
+        if let Err(e) = self.store().put_player(player) {
+            return Ok(format!("Error saving player: {}", e));
+        }
+
+        // Build response with trigger messages
+        let mut response = format!("You take the {}.", object.name);
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+
+        Ok(response)
+    }
+
     /// Handle DROP command - drop items into current room
     async fn handle_drop(
         &mut self,
@@ -2008,10 +2162,34 @@ impl TinyMushProcessor {
 
         let room_id = player.current_room.clone();
 
-        // Find object in player's inventory by name
-        let object = match self.find_object_by_name(&item_name, &player.inventory) {
-            Some(obj) => obj,
-            None => return Ok(format!("You don't have a '{}' to drop.", item_name)),
+        // Use fuzzy matching to find objects in inventory
+        let matches = self.find_objects_by_partial_name(&item_name, &player.inventory);
+
+        // Handle different match scenarios
+        let object = match matches.len() {
+            0 => return Ok(format!("You don't have a '{}' to drop.", item_name)),
+            1 => matches.into_iter().next().unwrap(), // Auto-select single match
+            _ => {
+                // Multiple matches - create disambiguation session
+                let matched_ids: Vec<String> = matches.iter().map(|o| o.id.clone()).collect();
+                let matched_names: Vec<String> = matches.iter().map(|o| o.name.clone()).collect();
+
+                let disambiguation = crate::tmush::types::DisambiguationSession::new(
+                    &player.username,
+                    "drop",
+                    &item_name,
+                    matched_ids,
+                    matched_names,
+                    crate::tmush::types::DisambiguationContext::Inventory,
+                );
+
+                // Store session
+                if let Err(e) = self.store().put_disambiguation_session(disambiguation.clone()) {
+                    return Ok(format!("Error creating disambiguation: {}", e));
+                }
+
+                return Ok(disambiguation.format_prompt());
+            }
         };
 
         // Get current room
@@ -2067,6 +2245,79 @@ impl TinyMushProcessor {
         Ok(response)
     }
 
+    /// Handle DROP command with specific object ID (used after disambiguation)
+    async fn handle_drop_by_id(
+        &mut self,
+        session: &Session,
+        object_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::trigger::integration::execute_on_drop;
+
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        let room_id = player.current_room.clone();
+
+        // Verify object is in player's inventory
+        if !player.inventory.contains(&object_id) {
+            return Ok("You don't have that item anymore.".to_string());
+        }
+
+        // Get the object
+        let object = match self.store().get_object(&object_id) {
+            Ok(obj) => obj,
+            Err(_) => return Ok("Error loading object.".to_string()),
+        };
+
+        // Get current room
+        let mut room = match self.store().get_room(&room_id) {
+            Ok(r) => r,
+            Err(_) => return Ok("Error: Cannot access current room.".to_string()),
+        };
+
+        // Fire OnDrop trigger
+        let trigger_messages = execute_on_drop(&object, &player.username, &room_id, self.store());
+
+        // Remove from player inventory
+        player.inventory.retain(|id| id != &object.id);
+
+        // Add to room
+        room.items.push(object.id.clone());
+        if let Err(e) = self.store().put_room(room) {
+            return Ok(format!("Error updating room: {}", e));
+        }
+
+        // Record ownership transfer
+        let mut updated_object = object.clone();
+        Self::record_ownership_transfer(
+            &mut updated_object,
+            Some(format!("Player:{}", player.username)),
+            "World".to_string(),
+            crate::tmush::types::OwnershipReason::Dropped,
+        );
+        updated_object.owner = crate::tmush::types::ObjectOwner::World;
+
+        // Save updated object and player
+        if let Err(e) = self.store().put_object(updated_object) {
+            return Ok(format!("Error saving object: {}", e));
+        }
+        if let Err(e) = self.store().put_player(player) {
+            return Ok(format!("Error saving player: {}", e));
+        }
+
+        // Build response with trigger messages
+        let mut response = format!("You drop the {}.", object.name);
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+
+        Ok(response)
+    }
+
     /// Handle EXAMINE command - show detailed item information
     async fn handle_examine(
         &mut self,
@@ -2083,40 +2334,130 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // First, try to find object in player's inventory
-        if let Some(object) = self.find_object_by_name(&target, &player.inventory) {
-            let quantity = get_item_quantity(&player, &object.id);
-            let examination = format_item_examination(&object, quantity);
-            
-            // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
-            if object.id.starts_with("carved_symbol_") {
-                self.track_symbol_examination(&mut player, &object.id).await?;
+        // First, try inventory with fuzzy matching
+        let inv_matches = self.find_objects_by_partial_name(&target, &player.inventory);
+        
+        if !inv_matches.is_empty() {
+            match inv_matches.len() {
+                1 => {
+                    let object = inv_matches.into_iter().next().unwrap();
+                    let quantity = get_item_quantity(&player, &object.id);
+                    let examination = format_item_examination(&object, quantity);
+                    
+                    // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+                    if object.id.starts_with("carved_symbol_") {
+                        self.track_symbol_examination(&mut player, &object.id).await?;
+                    }
+                    
+                    return Ok(examination.join("\n"));
+                }
+                _ => {
+                    // Multiple matches in inventory
+                    let matched_ids: Vec<String> = inv_matches.iter().map(|o| o.id.clone()).collect();
+                    let matched_names: Vec<String> = inv_matches.iter().map(|o| o.name.clone()).collect();
+
+                    let disambiguation = crate::tmush::types::DisambiguationSession::new(
+                        &player.username,
+                        "examine",
+                        &target,
+                        matched_ids,
+                        matched_names,
+                        crate::tmush::types::DisambiguationContext::Inventory,
+                    );
+
+                    if let Err(e) = self.store().put_disambiguation_session(disambiguation.clone()) {
+                        return Ok(format!("Error creating disambiguation: {}", e));
+                    }
+
+                    return Ok(disambiguation.format_prompt());
+                }
             }
-            
-            return Ok(examination.join("\n"));
         }
 
-        // Then try to find object in current room
+        // Then try to find object in current room with fuzzy matching
         let room = match self.store().get_room(&player.current_room) {
             Ok(r) => r,
             Err(_) => return Ok("Error: Cannot access current room.".to_string()),
         };
 
-        if let Some(object) = self.find_object_by_name(&target, &room.items) {
-            let examination = format_item_examination(&object, 1);
-            
-            // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
-            if object.id.starts_with("carved_symbol_") {
-                self.track_symbol_examination(&mut player, &object.id).await?;
+        let room_matches = self.find_objects_by_partial_name(&target, &room.items);
+        
+        match room_matches.len() {
+            0 => {
+                return Ok(format!(
+                    "You don't see '{}' here.\nType LOOK to see the room, or INVENTORY to check what you're carrying.",
+                    target
+                ));
             }
-            
-            return Ok(examination.join("\n"));
-        }
+            1 => {
+                let object = room_matches.into_iter().next().unwrap();
+                let examination = format_item_examination(&object, 1);
+                
+                // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+                if object.id.starts_with("carved_symbol_") {
+                    self.track_symbol_examination(&mut player, &object.id).await?;
+                }
+                
+                return Ok(examination.join("\n"));
+            }
+            _ => {
+                // Multiple matches in room
+                let matched_ids: Vec<String> = room_matches.iter().map(|o| o.id.clone()).collect();
+                let matched_names: Vec<String> = room_matches.iter().map(|o| o.name.clone()).collect();
 
-        Ok(format!(
-            "You don't see '{}' here.\nType LOOK to see the room, or INVENTORY to check what you're carrying.",
-            target
-        ))
+                let disambiguation = crate::tmush::types::DisambiguationSession::new(
+                    &player.username,
+                    "examine",
+                    &target,
+                    matched_ids,
+                    matched_names,
+                    crate::tmush::types::DisambiguationContext::Room,
+                );
+
+                if let Err(e) = self.store().put_disambiguation_session(disambiguation.clone()) {
+                    return Ok(format!("Error creating disambiguation: {}", e));
+                }
+
+                return Ok(disambiguation.format_prompt());
+            }
+        }
+    }
+
+    /// Handle EXAMINE command with specific object ID (used after disambiguation)
+    async fn handle_examine_by_id(
+        &mut self,
+        session: &Session,
+        object_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        use crate::tmush::inventory::{format_item_examination, get_item_quantity};
+
+        let mut player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Get the object
+        let object = match self.store().get_object(&object_id) {
+            Ok(obj) => obj,
+            Err(_) => return Ok("Error loading object.".to_string()),
+        };
+
+        // Determine quantity if in inventory
+        let quantity = if player.inventory.contains(&object_id) {
+            get_item_quantity(&player, &object_id)
+        } else {
+            1
+        };
+
+        let examination = format_item_examination(&object, quantity);
+        
+        // Track carved symbol examination for grove mystery puzzle (Phase 4.2)
+        if object.id.starts_with("carved_symbol_") {
+            self.track_symbol_examination(&mut player, &object.id).await?;
+        }
+        
+        Ok(examination.join("\n"))
     }
 
     /// Handle CRAFT command - craft items from materials (Phase 4.4)
@@ -2419,12 +2760,82 @@ Not fancy, but it gets the job done.",
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
-        // Search for object in inventory by name
-        let object = match self.find_object_by_name(&item_name, &player.inventory) {
-            Some(obj) => obj,
-            None => {
-                return Ok(format!("You don't have '{}' in your inventory.", item_name));
+        // Use fuzzy matching to find objects in inventory
+        let matches = self.find_objects_by_partial_name(&item_name, &player.inventory);
+
+        // Handle different match scenarios
+        let object = match matches.len() {
+            0 => return Ok(format!("You don't have '{}' in your inventory.", item_name)),
+            1 => matches.into_iter().next().unwrap(), // Auto-select single match
+            _ => {
+                // Multiple matches - create disambiguation session
+                let matched_ids: Vec<String> = matches.iter().map(|o| o.id.clone()).collect();
+                let matched_names: Vec<String> = matches.iter().map(|o| o.name.clone()).collect();
+
+                let disambiguation = crate::tmush::types::DisambiguationSession::new(
+                    &player.username,
+                    "use",
+                    &item_name,
+                    matched_ids,
+                    matched_names,
+                    crate::tmush::types::DisambiguationContext::Inventory,
+                );
+
+                // Store session
+                if let Err(e) = self.store().put_disambiguation_session(disambiguation.clone()) {
+                    return Ok(format!("Error creating disambiguation: {}", e));
+                }
+
+                return Ok(disambiguation.format_prompt());
             }
+        };
+
+        // Check if object is usable
+        if !object.usable {
+            return Ok(format!("{} cannot be used.", object.name));
+        }
+
+        // Execute OnUse trigger if present
+        let trigger_messages = execute_on_use(
+            &object,
+            &session.display_name(),
+            &player.current_room,
+            self.store(),
+        );
+
+        // Build response
+        let mut response = format!("You use {}.", object.name);
+
+        // Add trigger messages
+        for msg in trigger_messages {
+            response.push_str("\n");
+            response.push_str(&msg);
+        }
+
+        Ok(response)
+    }
+
+    /// Handle USE command with specific object ID (used after disambiguation)
+    async fn handle_use_by_id(
+        &mut self,
+        session: &Session,
+        object_id: String,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(p) => p,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Verify object is in player's inventory
+        if !player.inventory.contains(&object_id) {
+            return Ok("You don't have that item anymore.".to_string());
+        }
+
+        // Get the object
+        let object = match self.store().get_object(&object_id) {
+            Ok(obj) => obj,
+            Err(_) => return Ok("Error loading object.".to_string()),
         };
 
         // Check if object is usable
@@ -8880,6 +9291,30 @@ Not fancy, but it gets the job done.",
         }
 
         None
+    }
+
+    /// Find objects by partial name match (fuzzy matching)
+    /// Returns all objects whose display names contain the search term (case-insensitive)
+    fn find_objects_by_partial_name(
+        &self,
+        search_term: &str,
+        object_ids: &[String],
+    ) -> Vec<ObjectRecord> {
+        let search_upper = search_term.to_uppercase();
+        let mut matches = Vec::new();
+
+        for object_id in object_ids {
+            if let Ok(object) = self.store().get_object(object_id) {
+                let name_upper = object.name.to_uppercase();
+                
+                // Check if the object name contains the search term
+                if name_upper.contains(&search_upper) {
+                    matches.push(object);
+                }
+            }
+        }
+
+        matches
     }
 
     /// Helper: Record ownership transfer in item's history (Phase 5)

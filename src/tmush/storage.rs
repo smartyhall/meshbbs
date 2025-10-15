@@ -1043,6 +1043,45 @@ impl TinyMushStore {
         Ok(None)
     }
 
+    // ============================================================================
+    // Disambiguation Session Storage (Fuzzy Object Matching)
+    // ============================================================================
+
+    /// Store a disambiguation session for fuzzy object matching
+    pub fn put_disambiguation_session(
+        &self,
+        session: crate::tmush::types::DisambiguationSession,
+    ) -> Result<(), TinyMushError> {
+        let key = format!("disambiguation_session:{}", session.player_id).into_bytes();
+        let value = Self::serialize(&session)?;
+        self.npcs.insert(key, value)?;
+        self.npcs.flush()?;
+        Ok(())
+    }
+
+    /// Get active disambiguation session for player
+    pub fn get_disambiguation_session(
+        &self,
+        player_id: &str,
+    ) -> Result<Option<crate::tmush::types::DisambiguationSession>, TinyMushError> {
+        let key = format!("disambiguation_session:{}", player_id).into_bytes();
+        match self.npcs.get(key)? {
+            Some(data) => {
+                let session: crate::tmush::types::DisambiguationSession = Self::deserialize(data)?;
+                Ok(Some(session))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Delete a disambiguation session (after choice made or timeout)
+    pub fn delete_disambiguation_session(&self, player_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("disambiguation_session:{}", player_id).into_bytes();
+        self.npcs.remove(key)?;
+        self.npcs.flush()?;
+        Ok(())
+    }
+
     pub fn seed_world_if_needed(&self) -> Result<usize, TinyMushError> {
         if self
             .primary

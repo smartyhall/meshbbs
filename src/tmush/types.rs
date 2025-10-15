@@ -582,6 +582,65 @@ impl DialogSession {
     }
 }
 
+/// Disambiguation session for fuzzy object/NPC matching
+/// When multiple items match a partial search, store the matches and let user pick by number
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DisambiguationSession {
+    pub player_id: String,
+    pub command: String,         // Original command (e.g., "take", "examine", "use")
+    pub search_term: String,     // What the user typed (e.g., "potion", "key")
+    pub matched_ids: Vec<String>, // Object IDs that matched
+    pub matched_names: Vec<String>, // Display names for the matches
+    pub context: DisambiguationContext, // Where to search (room vs inventory)
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum DisambiguationContext {
+    Room,
+    Inventory,
+    Both,
+}
+
+impl DisambiguationSession {
+    pub fn new(
+        player_id: &str,
+        command: &str,
+        search_term: &str,
+        matched_ids: Vec<String>,
+        matched_names: Vec<String>,
+        context: DisambiguationContext,
+    ) -> Self {
+        Self {
+            player_id: player_id.to_string(),
+            command: command.to_string(),
+            search_term: search_term.to_string(),
+            matched_ids,
+            matched_names,
+            context,
+            created_at: Utc::now(),
+        }
+    }
+
+    pub fn format_prompt(&self) -> String {
+        let mut prompt = format!("Did you mean:\n\n");
+        for (i, name) in self.matched_names.iter().enumerate() {
+            prompt.push_str(&format!("{}) {}\n", i + 1, name));
+        }
+        prompt.push_str("\nEnter the number of your choice:");
+        prompt
+    }
+
+    pub fn get_selection(&self, choice: usize) -> Option<(String, String)> {
+        if choice > 0 && choice <= self.matched_ids.len() {
+            let idx = choice - 1;
+            Some((self.matched_ids[idx].clone(), self.matched_names[idx].clone()))
+        } else {
+            None
+        }
+    }
+}
+
 // ============================================================================
 // Companion System (Phase 6 Week 4)
 // ============================================================================
