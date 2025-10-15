@@ -548,6 +548,36 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// List all world object IDs
+    pub fn list_object_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        let prefix = b"objects:world:";
+        for kv in self.objects.scan_prefix(prefix) {
+            let (key_bytes, _) = kv?;
+            if let Ok(key_str) = std::str::from_utf8(&key_bytes) {
+                if let Some(id) = key_str.strip_prefix("objects:world:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    /// Delete a world object by ID
+    pub fn delete_object_world(&self, object_id: &str) -> Result<(), TinyMushError> {
+        // Remove from primary object tree
+        let key = format!("objects:world:{}", object_id).into_bytes();
+        self.objects.remove(key)?;
+        
+        // Remove from index
+        let index_key = format!("oid:{}", object_id);
+        self.object_index.remove(index_key.as_bytes())?;
+        
+        self.objects.flush()?;
+        Ok(())
+    }
+
     /// Resolve a room destination for a player, cloning the landing gazebo when required.
     pub fn resolve_destination_for_player(
         &self,
@@ -944,6 +974,19 @@ impl TinyMushStore {
     pub fn room_exists(&self, room_id: &str) -> Result<bool, TinyMushError> {
         let key = format!("rooms:world:{}", room_id);
         Ok(self.primary.contains_key(key.as_bytes())?)
+    }
+
+    /// Check if an object exists (world objects only)
+    pub fn object_exists(&self, object_id: &str) -> Result<bool, TinyMushError> {
+        // Check secondary index first for O(1) lookup
+        let index_key = format!("oid:{}", object_id);
+        if self.object_index.contains_key(index_key.as_bytes())? {
+            return Ok(true);
+        }
+        
+        // Fallback: check world objects tree directly
+        let key = format!("objects:world:{}", object_id);
+        Ok(self.objects.contains_key(key.as_bytes())?)
     }
 
     // ============================================================================

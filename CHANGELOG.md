@@ -179,15 +179,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Seeded starter rooms verification (20+ rooms including gazebo_landing, town_square, all world locations)
 - **629 total tests passing** (including 7 new room tests, 21 total from phases 2-4)
 
+#### Phase 5: Object System (@OBJECT Command)
+- **@OBJECT command**: Complete admin interface for data-driven object management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new world objects with default properties
+  - `EDIT <id> NAME <text>`: Update object display name
+  - `EDIT <id> DESCRIPTION <text>`: Set object description
+  - `EDIT <id> WEIGHT <number>`: Set weight in units (0-255)
+  - `EDIT <id> VALUE <number>`: Set currency value in base units
+  - `EDIT <id> FLAG <flag>`: Add object behavioral flag (12 flag types)
+  - `EDIT <id> TAKEABLE <true|false>`: Toggle whether object can be picked up
+  - `EDIT <id> USABLE <true|false>`: Toggle whether object can be used
+  - `EDIT <id> LOCKED <true|false>`: Toggle lock status (prevents taking)
+  - `DELETE <id>`: Remove world object from database
+  - `LIST`: List all world objects with properties and flags
+  - `SHOW <id>`: Display detailed object information including history
+  - Aliases: `@OBJECTS`, `@OBJ` for alternate command usage
+
+#### Object Flags (12 variants)
+- **QuestItem**: Required for quest objectives
+- **Consumable**: Single-use items (potions, food)
+- **Equipment**: Can be equipped by players
+- **KeyItem**: Important story or quest items
+- **Container**: Can hold other objects
+- **Magical**: Has magical properties or effects
+- **Companion**: Pet or ally object
+- **Clonable**: Players can create copies (opt-in)
+- **Unique**: Cannot be cloned (artifacts, quest items)
+- **NoValue**: Strip currency value to 0 on clone
+- **NoCloneChildren**: Cannot clone if contains other objects
+- **LightSource**: Provides illumination in dark rooms (torches, lanterns)
+
+#### Storage Layer Enhancements
+- `object_exists()`: Fast existence check using secondary index (oid:{id}) and fallback to "objects:world:{id}"
+- `list_object_ids()`: Scan and return all world object IDs from objects tree with "objects:world:" prefix
+- `delete_object_world()`: Remove world object with index cleanup and flush
+- Object CRUD operations use dedicated objects sled tree with O(1) secondary index
+- Support for both world-owned and player-owned objects with different key formats
+
+#### Testing
+- **7 new integration tests** in `tests/object_management.rs`:
+  - CRUD operations validation (create, read, update, delete)
+  - All field editing (name, description, weight, value, takeable, usable, locked)
+  - All 12 flag type management with validation
+  - Object flag combinations
+  - Existence checks and error handling
+  - List functionality with sorting validation
+  - Seeded objects verification (37 objects present in initialized database)
+- **636 total tests passing** (including 7 new object tests, 28 total from phases 2-5)
+
 ### Developer Notes
-- **Pattern**: Achievement, NPC, Companion, and Room systems follow proven @QUEST/@RECIPE command structure
-- **Migration Status**: Phase 4 of 6-phase data-driven content migration (see TODO.md)
-- **Next Steps**: Phase 5 (Objects), Phase 6 (Polish & Documentation)
-- **Implementation Notes**: Room system more complex than NPCs/Companions due to:
-  - Bidirectional exit management requiring destination validation
-  - 13 room flags vs 5 NPC flags or 6 companion types
-  - Different storage key format ("rooms:world:{id}" vs "npcs:{id}")
-  - Support for instanced rooms (per-player variants like landing gazebo)
+- **Pattern**: Achievement, NPC, Companion, Room, and Object systems follow proven @QUEST/@RECIPE command structure
+- **Migration Status**: Phase 5 of 6-phase data-driven content migration (see TODO.md)
+- **Next Steps**: Phase 6 (Polish & Documentation)
+- **Implementation Notes**: Object system features include:
+  - Secondary index for O(1) object lookups (oid:{id} → full key)
+  - Support for world-owned vs player-owned objects with different key formats
+  - Currency value using CurrencyAmount type (supports multi-tier and decimal)
+  - Clone tracking with depth, source ID, and clone count fields
+  - Ownership history for forensic tracking
 
 ## [1.0.115-beta] - 2025-10-14
 

@@ -178,6 +178,7 @@ pub enum TinyMushCommand {
     NPCAdmin(String, Vec<String>), // @NPC <subcommand> [args] - manage NPCs (admin only)
     CompanionAdmin(String, Vec<String>), // @COMPANION <subcommand> [args] - manage companions (admin only)
     RoomAdmin(String, Vec<String>), // @ROOM <subcommand> [args] - manage rooms (admin only)
+    ObjectAdmin(String, Vec<String>), // @OBJECT <subcommand> [args] - manage objects (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -640,6 +641,9 @@ impl TinyMushProcessor {
             }
             TinyMushCommand::RoomAdmin(subcommand, args) => {
                 self.handle_room_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::ObjectAdmin(subcommand, args) => {
+                self.handle_object_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1311,6 +1315,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::RoomAdmin(subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @ROOM <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new room\n  EDIT <id> NAME <text> - Set room name\n  EDIT <id> SHORTDESC <text> - Set room short description\n  EDIT <id> LONGDESC <text> - Set room long description\n  EDIT <id> EXIT <direction> <dest_room> - Add exit (N/S/E/W/U/D/NE/NW/SE/SW)\n  EDIT <id> FLAG <flag> - Add room flag\n  EDIT <id> CAPACITY <number> - Set max occupancy\n  DELETE <id> - Delete room\n  LIST - List all rooms\n  SHOW <id> - Show room details\n\nRoom Flags:\n  SAFE - No combat allowed\n  DARK - Requires light source\n  INDOOR - Protected from weather\n  SHOP - Commercial location\n  QUESTLOCATION - Quest-related room\n  PVPENABLED - PvP combat allowed\n  PLAYERCREATED - Player-made room\n  PRIVATE - Restricted access\n  MODERATED - Admin-monitored\n  INSTANCED - Separate copy per player\n  CROWDED - High traffic area\n  HOUSINGOFFICE - Housing services\n  NOTELEPORTOUT - Cannot teleport out\n\nExit Examples:\n  @ROOM EDIT tavern EXIT NORTH town_square\n  @ROOM EDIT dungeon EXIT UP surface_entrance\n\nExample: @ROOM CREATE dark_cave \"Mysterious Cave\"\nExample: @ROOM EDIT dark_cave FLAG DARK\nExample: @ROOM EDIT dark_cave CAPACITY 10".to_string())
+                }
+            }
+            "@OBJECT" | "@OBJECTS" | "@OBJ" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::ObjectAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @OBJECT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new world object\n  EDIT <id> NAME <text> - Set object name\n  EDIT <id> DESCRIPTION <text> - Set object description\n  EDIT <id> WEIGHT <number> - Set weight (0-255)\n  EDIT <id> VALUE <amount> - Set currency value\n  EDIT <id> FLAG <flag> - Add object flag\n  EDIT <id> TAKEABLE <true|false> - Set takeable property\n  EDIT <id> USABLE <true|false> - Set usable property\n  EDIT <id> LOCKED <true|false> - Lock to prevent taking\n  DELETE <id> - Delete object\n  LIST - List all world objects\n  SHOW <id> - Show object details\n\nObject Flags:\n  QUESTITEM - Required for quests\n  CONSUMABLE - Single-use item\n  EQUIPMENT - Can be equipped\n  KEYITEM - Important story item\n  CONTAINER - Can hold other items\n  MAGICAL - Has magical properties\n  COMPANION - Companion pet/ally\n  CLONABLE - Can be cloned by players\n  UNIQUE - Cannot be cloned\n  NOVALUE - Strip value on clone\n  NOCLONECHILDREN - Cannot clone with contents\n  LIGHTSOURCE - Provides light in dark rooms\n\nValue Examples:\n  @OBJECT EDIT torch VALUE 5gc - Sets value to 5 gold, 0 silver, 0 copper\n  @OBJECT EDIT sword VALUE 2gc,50sc - Sets value to 2 gold, 50 silver, 0 copper\n\nExample: @OBJECT CREATE basic_torch \"Wooden Torch\"\nExample: @OBJECT EDIT basic_torch DESCRIPTION \"A simple torch that provides light.\"\nExample: @OBJECT EDIT basic_torch FLAG LIGHTSOURCE\nExample: @OBJECT EDIT basic_torch TAKEABLE true\nExample: @OBJECT EDIT basic_torch WEIGHT 5".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -8291,6 +8304,278 @@ Not fancy, but it gets the job done.",
                         output.push_str(&format!("  - {}\n", item));
                     }
                 }
+
+                Ok(output)
+            }
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
+        }
+    }
+
+    /// Handle @OBJECT command - manage world objects (admin level 2+)
+    async fn handle_object_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @OBJECT commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @OBJECT CREATE <id> <name>\nExample: @OBJECT CREATE basic_torch \"Wooden Torch\"".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+                let name = args[1..].join(" ");
+
+                // Check if object already exists
+                if store.object_exists(&object_id)? {
+                    return Ok(format!("Object '{}' already exists. Use @OBJECT EDIT to modify it.", object_id));
+                }
+
+                // Create object with default settings
+                use crate::tmush::types::ObjectRecord;
+                let object = ObjectRecord::new_world(&object_id, &name, "A new object.");
+                store.put_object(object)?;
+
+                Ok(format!("Created object '{}' ({}). Use @OBJECT EDIT to customize.", object_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 3 {
+                    return Ok("Usage: @OBJECT EDIT <id> <field> <value>\nFields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED\nExample: @OBJECT EDIT basic_torch NAME \"Bright Torch\"".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+                let field = args[1].to_uppercase();
+
+                let mut object = match store.get_object(&object_id) {
+                    Ok(o) => o,
+                    Err(_) => return Ok(format!("Object '{}' not found. Use @OBJECT CREATE to create it.", object_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        let name = args[2..].join(" ");
+                        object.name = name.clone();
+                        store.put_object(object)?;
+                        Ok(format!("Set object name to '{}'.", name))
+                    }
+                    "DESCRIPTION" | "DESC" => {
+                        let description = args[2..].join(" ");
+                        object.description = description.clone();
+                        store.put_object(object)?;
+                        Ok(format!("Set object description to '{}'.", description))
+                    }
+                    "WEIGHT" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> WEIGHT <number>\nExample: @OBJECT EDIT torch WEIGHT 5".to_string());
+                        }
+                        match args[2].parse::<u8>() {
+                            Ok(weight) => {
+                                object.weight = weight;
+                                store.put_object(object)?;
+                                Ok(format!("Set object weight to {}.", weight))
+                            }
+                            Err(_) => Ok("Weight must be a number between 0 and 255.".to_string()),
+                        }
+                    }
+                    "VALUE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> VALUE <number>\nExample: @OBJECT EDIT sword VALUE 100\nSets the currency value in base units.".to_string());
+                        }
+                        let value_str = &args[2];
+                        match value_str.parse::<i64>() {
+                            Ok(value) => {
+                                use crate::tmush::types::CurrencyAmount;
+                                object.currency_value = CurrencyAmount::multi_tier(value);
+                                store.put_object(object)?;
+                                Ok(format!("Set object value to {}.", value))
+                            }
+                            Err(_) => Ok("Value must be a number (base currency units).".to_string()),
+                        }
+                    }
+                    "FLAG" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> FLAG <flag>\nFlags: QUESTITEM, CONSUMABLE, EQUIPMENT, KEYITEM, CONTAINER, MAGICAL, COMPANION, CLONABLE, UNIQUE, NOVALUE, NOCLONECHILDREN, LIGHTSOURCE\nExample: @OBJECT EDIT torch FLAG LIGHTSOURCE".to_string());
+                        }
+                        use crate::tmush::types::ObjectFlag;
+                        let flag_str = args[2].to_uppercase();
+                        let flag = match flag_str.as_str() {
+                            "QUESTITEM" => ObjectFlag::QuestItem,
+                            "CONSUMABLE" => ObjectFlag::Consumable,
+                            "EQUIPMENT" => ObjectFlag::Equipment,
+                            "KEYITEM" => ObjectFlag::KeyItem,
+                            "CONTAINER" => ObjectFlag::Container,
+                            "MAGICAL" => ObjectFlag::Magical,
+                            "COMPANION" => ObjectFlag::Companion,
+                            "CLONABLE" => ObjectFlag::Clonable,
+                            "UNIQUE" => ObjectFlag::Unique,
+                            "NOVALUE" => ObjectFlag::NoValue,
+                            "NOCLONECHILDREN" => ObjectFlag::NoCloneChildren,
+                            "LIGHTSOURCE" => ObjectFlag::LightSource,
+                            _ => return Ok(format!("Unknown flag '{}'. Valid flags: QUESTITEM, CONSUMABLE, EQUIPMENT, KEYITEM, CONTAINER, MAGICAL, COMPANION, CLONABLE, UNIQUE, NOVALUE, NOCLONECHILDREN, LIGHTSOURCE", flag_str)),
+                        };
+                        
+                        if !object.flags.contains(&flag) {
+                            object.flags.push(flag);
+                            store.put_object(object)?;
+                            Ok(format!("Added flag {} to object.", flag_str))
+                        } else {
+                            Ok(format!("Object already has flag {}.", flag_str))
+                        }
+                    }
+                    "TAKEABLE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> TAKEABLE <true|false>\nExample: @OBJECT EDIT torch TAKEABLE true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                object.takeable = true;
+                                store.put_object(object)?;
+                                Ok("Set object as takeable.".to_string())
+                            }
+                            "false" | "no" | "0" => {
+                                object.takeable = false;
+                                store.put_object(object)?;
+                                Ok("Set object as not takeable.".to_string())
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    "USABLE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> USABLE <true|false>\nExample: @OBJECT EDIT potion USABLE true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                object.usable = true;
+                                store.put_object(object)?;
+                                Ok("Set object as usable.".to_string())
+                            }
+                            "false" | "no" | "0" => {
+                                object.usable = false;
+                                store.put_object(object)?;
+                                Ok("Set object as not usable.".to_string())
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    "LOCKED" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> LOCKED <true|false>\nExample: @OBJECT EDIT statue LOCKED true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                object.locked = true;
+                                store.put_object(object)?;
+                                Ok("Set object as locked (cannot be taken).".to_string())
+                            }
+                            "false" | "no" | "0" => {
+                                object.locked = false;
+                                store.put_object(object)?;
+                                Ok("Set object as unlocked.".to_string())
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED", field)),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @OBJECT DELETE <id>\nExample: @OBJECT DELETE old_torch".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+
+                // Check if object exists
+                if !store.object_exists(&object_id)? {
+                    return Ok(format!("Object '{}' not found.", object_id));
+                }
+
+                // Use the storage method for deleting world objects
+                store.delete_object_world(&object_id)?;
+
+                Ok(format!("Deleted object '{}'.", object_id))
+            }
+            "LIST" => {
+                let object_ids = store.list_object_ids()?;
+                
+                if object_ids.is_empty() {
+                    return Ok("No world objects found. Use @OBJECT CREATE to create objects.".to_string());
+                }
+
+                let mut output = format!("World Objects ({} total):\n", object_ids.len());
+                for id in object_ids {
+                    if let Ok(object) = store.get_object(&id) {
+                        let flags_str = if object.flags.is_empty() {
+                            "none".to_string()
+                        } else {
+                            object.flags.iter()
+                                .map(|f| format!("{:?}", f))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        };
+                        let takeable = if object.takeable { "takeable" } else { "fixed" };
+                        let usable = if object.usable { "usable" } else { "not-usable" };
+                        output.push_str(&format!(
+                            "  {} - {} (weight: {}, value: {:?}, {}, {}, flags: {})\n",
+                            id, object.name, object.weight, object.currency_value, takeable, usable, flags_str
+                        ));
+                    }
+                }
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @OBJECT SHOW <id>\nExample: @OBJECT SHOW basic_torch".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+
+                let object = match store.get_object(&object_id) {
+                    Ok(o) => o,
+                    Err(_) => return Ok(format!("Object '{}' not found.", object_id)),
+                };
+
+                let flags_str = if object.flags.is_empty() {
+                    "none".to_string()
+                } else {
+                    object.flags.iter()
+                        .map(|f| format!("{:?}", f))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+
+                let owner_str = match &object.owner {
+                    crate::tmush::types::ObjectOwner::World => "World".to_string(),
+                    crate::tmush::types::ObjectOwner::Player { username } => format!("Player: {}", username),
+                };
+
+                let mut output = format!("Object: {} ({})\n", object.id, object.name);
+                output.push_str(&format!("Description: {}\n", object.description));
+                output.push_str(&format!("Owner: {}\n", owner_str));
+                output.push_str(&format!("Weight: {}\n", object.weight));
+                output.push_str(&format!("Value: {:?}\n", object.currency_value));
+                output.push_str(&format!("Takeable: {}\n", if object.takeable { "yes" } else { "no" }));
+                output.push_str(&format!("Usable: {}\n", if object.usable { "yes" } else { "no" }));
+                output.push_str(&format!("Locked: {}\n", if object.locked { "yes" } else { "no" }));
+                output.push_str(&format!("Flags: {}\n", flags_str));
+                output.push_str(&format!("Created: {}\n", object.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
+                output.push_str(&format!("Created by: {}\n", object.created_by));
+                
+                if let Some(ref source) = object.clone_source_id {
+                    output.push_str(&format!("Clone source: {} (depth: {})\n", source, object.clone_depth));
+                }
+                output.push_str(&format!("Times cloned: {}\n", object.clone_count));
 
                 Ok(output)
             }
