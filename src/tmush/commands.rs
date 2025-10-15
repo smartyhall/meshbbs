@@ -172,6 +172,7 @@ pub enum TinyMushCommand {
     ListAbandoned, // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
     Dialog(String, String, Option<String>), // @DIALOG <npc> <subcommand> [args] - manage NPC dialogue trees (admin only)
     Recipe(String, Vec<String>), // @RECIPE <subcommand> [args] - manage crafting recipes (admin only)
+    QuestAdmin(String, Vec<String>), // @QUEST <subcommand> [args] - manage quests (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -619,6 +620,9 @@ impl TinyMushProcessor {
             }
             TinyMushCommand::Recipe(subcommand, args) => {
                 self.handle_recipe(session, subcommand, args, config).await
+            }
+            TinyMushCommand::QuestAdmin(subcommand, args) => {
+                self.handle_quest_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1245,6 +1249,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::Recipe(subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @RECIPE <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new recipe\n  EDIT <id> MATERIAL ADD <item_id> <qty> - Add material\n  EDIT <id> MATERIAL REMOVE <item_id> - Remove material\n  EDIT <id> RESULT <item_id> [qty] - Set result item\n  EDIT <id> STATION <station_id> - Set crafting station\n  EDIT <id> DESCRIPTION <text> - Set description\n  DELETE <id> - Delete recipe\n  LIST [station] - List all recipes\n  SHOW <id> - Show recipe details\n\nExample: @RECIPE CREATE goat_cheese \"Goat Milk Cheese\"".to_string())
+                }
+            }
+            "@QUEST" | "@QST" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::QuestAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @QUEST <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new quest\n  EDIT <id> DESCRIPTION <text> - Set description\n  EDIT <id> GIVER <npc_id> - Set quest giver NPC\n  EDIT <id> LEVEL <num> - Set recommended level\n  EDIT <id> OBJECTIVE ADD <type> <details> - Add objective\n  EDIT <id> OBJECTIVE REMOVE <index> - Remove objective\n  EDIT <id> REWARD CURRENCY <amount> - Set currency reward\n  EDIT <id> REWARD XP <amount> - Set experience reward\n  EDIT <id> REWARD ITEM <item_id> - Set item reward\n  EDIT <id> PREREQUISITE <quest_id> - Set prerequisite quest\n  DELETE <id> - Delete quest\n  LIST - List all quests\n  SHOW <id> - Show quest details\n\nExample: @QUEST CREATE fetch_water \"Fetch Water for the Village\"".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -6886,6 +6899,373 @@ Not fancy, but it gets the job done.",
             }
             _ => Ok(format!(
                 "Unknown @RECIPE subcommand: {}\n\
+                Use: CREATE, EDIT, DELETE, LIST, SHOW",
+                subcommand
+            )),
+        }
+    }
+
+    /// Handle @QUEST command - manage quests (admin only)
+    async fn handle_quest_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        // Check admin level (sysop = 3, admin = 2)
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Only admins can manage quests.".to_string());
+        }
+
+        let store = self.store();
+
+        match subcommand.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @QUEST CREATE <id> <name>\nExample: @QUEST CREATE fetch_water \"Fetch Water for the Village\"".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                let quest_name = args[1..].join(" ");
+
+                // Check if quest already exists
+                if store.quest_exists(&quest_id)? {
+                    return Ok(format!("Quest '{}' already exists. Use @QUEST EDIT to modify it or @QUEST DELETE to remove it first.", quest_id));
+                }
+
+                // Create new quest with minimal defaults
+                let quest = crate::tmush::types::QuestRecord::new(
+                    &quest_id,
+                    &quest_name,
+                    "", // Empty description initially
+                    "system", // Default NPC
+                    1, // Default level
+                );
+
+                store.put_quest(quest)?;
+
+                Ok(format!(
+                    "Quest '{}' created.\n\nNext steps:\n\
+                    - @QUEST EDIT {} DESCRIPTION <text>\n\
+                    - @QUEST EDIT {} GIVER <npc_id>\n\
+                    - @QUEST EDIT {} LEVEL <num>\n\
+                    - @QUEST EDIT {} OBJECTIVE ADD <type> <details>\n\
+                    - @QUEST EDIT {} REWARD CURRENCY <amount>",
+                    quest_name, quest_id, quest_id, quest_id, quest_id, quest_id
+                ))
+            }
+            "EDIT" => {
+                if args.is_empty() {
+                    return Ok("Usage: @QUEST EDIT <id> <field> <value>\nFields: DESCRIPTION, GIVER, LEVEL, OBJECTIVE, REWARD, PREREQUISITE".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                let mut quest = match store.get_quest(&quest_id) {
+                    Ok(q) => q,
+                    Err(_) => return Ok(format!("Quest '{}' not found.", quest_id)),
+                };
+
+                if args.len() < 2 {
+                    return Ok("Usage: @QUEST EDIT <id> <field> <value>".to_string());
+                }
+
+                let field = args[1].to_uppercase();
+                match field.as_str() {
+                    "DESCRIPTION" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> DESCRIPTION <text>".to_string());
+                        }
+
+                        quest.description = args[2..].join(" ");
+                        store.put_quest(quest)?;
+
+                        Ok("Quest description updated.".to_string())
+                    }
+                    "GIVER" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> GIVER <npc_id>".to_string());
+                        }
+
+                        quest.quest_giver_npc = args[2].clone();
+                        store.put_quest(quest.clone())?;
+
+                        Ok(format!("Quest giver set to: {}", args[2]))
+                    }
+                    "LEVEL" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> LEVEL <num>".to_string());
+                        }
+
+                        match args[2].parse::<u8>() {
+                            Ok(level) if level >= 1 && level <= 5 => {
+                                quest.difficulty = level;
+                                store.put_quest(quest)?;
+                                Ok(format!("Quest difficulty set to: {}", level))
+                            }
+                            _ => Ok("Difficulty must be a number (1-5)".to_string()),
+                        }
+                    }
+                    "OBJECTIVE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> OBJECTIVE ADD/REMOVE <details>".to_string());
+                        }
+
+                        let action = args[2].to_uppercase();
+                        match action.as_str() {
+                            "ADD" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @QUEST EDIT <id> OBJECTIVE ADD <type> <target> [count]\nTypes: VISIT, TALK, KILL, COLLECT, USE".to_string());
+                                }
+
+                                let obj_type = args[3].to_uppercase();
+                                let target = args[4].clone();
+                                let count = if args.len() > 5 {
+                                    args[5].parse().unwrap_or(1)
+                                } else {
+                                    1
+                                };
+
+                                use crate::tmush::types::{ObjectiveType, QuestObjective};
+
+                                let objective = match obj_type.as_str() {
+                                    "VISIT" => QuestObjective::new(
+                                        &format!("Visit {}", target),
+                                        ObjectiveType::VisitLocation {
+                                            room_id: target,
+                                        },
+                                        count,
+                                    ),
+                                    "TALK" => QuestObjective::new(
+                                        &format!("Talk to {}", target),
+                                        ObjectiveType::TalkToNpc {
+                                            npc_id: target,
+                                        },
+                                        count,
+                                    ),
+                                    "KILL" => QuestObjective::new(
+                                        &format!("Defeat {} {}", count, target),
+                                        ObjectiveType::KillEnemy {
+                                            enemy_type: target,
+                                            count,
+                                        },
+                                        count,
+                                    ),
+                                    "COLLECT" => QuestObjective::new(
+                                        &format!("Collect {} {}", count, target),
+                                        ObjectiveType::CollectItem {
+                                            item_id: target,
+                                            count,
+                                        },
+                                        count,
+                                    ),
+                                    "USE" => QuestObjective::new(
+                                        &format!("Use {}", target),
+                                        ObjectiveType::UseItem {
+                                            item_id: target.clone(),
+                                            target,
+                                        },
+                                        count,
+                                    ),
+                                    _ => return Ok("Unknown objective type. Use: VISIT, TALK, KILL, COLLECT, or USE".to_string()),
+                                };
+
+                                quest.objectives.push(objective);
+                                store.put_quest(quest)?;
+
+                                Ok(format!("Added objective: {} {}", obj_type, args[4]))
+                            }
+                            "REMOVE" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> OBJECTIVE REMOVE <index>".to_string());
+                                }
+
+                                match args[3].parse::<usize>() {
+                                    Ok(index) if index > 0 && index <= quest.objectives.len() => {
+                                        quest.objectives.remove(index - 1);
+                                        store.put_quest(quest)?;
+                                        Ok(format!("Removed objective #{}", index))
+                                    }
+                                    _ => Ok(format!("Invalid index. Quest has {} objectives.", quest.objectives.len())),
+                                }
+                            }
+                            _ => Ok("Usage: @QUEST EDIT <id> OBJECTIVE ADD/REMOVE <details>".to_string()),
+                        }
+                    }
+                    "REWARD" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> REWARD CURRENCY/XP/ITEM <value>".to_string());
+                        }
+
+                        let reward_type = args[2].to_uppercase();
+                        match reward_type.as_str() {
+                            "CURRENCY" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> REWARD CURRENCY <amount>".to_string());
+                                }
+
+                                match args[3].parse::<i64>() {
+                                    Ok(amount) => {
+                                        use crate::tmush::types::CurrencyAmount;
+                                        quest.rewards.currency = Some(CurrencyAmount::Decimal { minor_units: amount });
+                                        store.put_quest(quest)?;
+                                        Ok(format!("Currency reward set to: {}", amount))
+                                    }
+                                    Err(_) => Ok("Amount must be a number".to_string()),
+                                }
+                            }
+                            "XP" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> REWARD XP <amount>".to_string());
+                                }
+
+                                match args[3].parse::<u32>() {
+                                    Ok(amount) => {
+                                        quest.rewards.experience = amount;
+                                        store.put_quest(quest)?;
+                                        Ok(format!("Experience reward set to: {} XP", amount))
+                                    }
+                                    Err(_) => Ok("Amount must be a number".to_string()),
+                                }
+                            }
+                            "ITEM" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @QUEST EDIT <id> REWARD ITEM <item_id>".to_string());
+                                }
+
+                                quest.rewards.items.push(args[3].clone());
+                                store.put_quest(quest)?;
+                                Ok(format!("Added item reward: {}", args[3]))
+                            }
+                            _ => Ok("Unknown reward type. Use: CURRENCY, XP, or ITEM".to_string()),
+                        }
+                    }
+                    "PREREQUISITE" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @QUEST EDIT <id> PREREQUISITE <quest_id>".to_string());
+                        }
+
+                        let prereq_id = args[2].to_lowercase();
+                        
+                        // Verify prerequisite quest exists
+                        if !store.quest_exists(&prereq_id)? {
+                            return Ok(format!("Prerequisite quest '{}' does not exist.", prereq_id));
+                        }
+
+                        quest.prerequisites.push(prereq_id.clone());
+                        store.put_quest(quest)?;
+
+                        Ok(format!("Added prerequisite: {}", prereq_id))
+                    }
+                    _ => Ok("Unknown field. Use: DESCRIPTION, GIVER, LEVEL, OBJECTIVE, REWARD, or PREREQUISITE".to_string()),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @QUEST DELETE <id>".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                match store.get_quest(&quest_id) {
+                    Ok(quest) => {
+                        store.delete_quest(&quest_id)?;
+                        Ok(format!("Quest '{}' has been deleted.", quest.name))
+                    }
+                    Err(_) => Ok(format!("Quest '{}' not found.", quest_id)),
+                }
+            }
+            "LIST" => {
+                let quest_ids = store.list_quest_ids()?;
+
+                if quest_ids.is_empty() {
+                    return Ok("No quests found.".to_string());
+                }
+
+                let mut output = "=== ALL QUESTS ===\n\n".to_string();
+
+                for (idx, quest_id) in quest_ids.iter().enumerate() {
+                    if let Ok(quest) = store.get_quest(quest_id) {
+                        output.push_str(&format!(
+                            "{}. {} (ID: {})\n",
+                            idx + 1,
+                            quest.name,
+                            quest.id
+                        ));
+                        output.push_str(&format!("   Level: {} | Giver: {}\n", quest.difficulty, quest.quest_giver_npc));
+                        output.push_str(&format!("   Objectives: {} | Prerequisites: {}\n\n", quest.objectives.len(), quest.prerequisites.len()));
+                    }
+                }
+
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @QUEST SHOW <id>".to_string());
+                }
+
+                let quest_id = args[0].to_lowercase();
+                let quest = match store.get_quest(&quest_id) {
+                    Ok(q) => q,
+                    Err(_) => return Ok(format!("Quest '{}' not found.", quest_id)),
+                };
+
+                let mut output = format!(
+                    "=== QUEST: {} ===\n\
+                    ID: {}\n\
+                    Description: {}\n\
+                    Quest Giver: {}\n\
+                    Difficulty: {}\n\n",
+                    quest.name,
+                    quest.id,
+                    if quest.description.is_empty() {
+                        "(no description)"
+                    } else {
+                        &quest.description
+                    },
+                    quest.quest_giver_npc,
+                    quest.difficulty
+                );
+
+                // Objectives
+                output.push_str("OBJECTIVES:\n");
+                if quest.objectives.is_empty() {
+                    output.push_str("  (no objectives set - use @QUEST EDIT to add)\n");
+                } else {
+                    for (idx, obj) in quest.objectives.iter().enumerate() {
+                        output.push_str(&format!("  {}. {} ({})\n", idx + 1, obj.description, obj.required));
+                    }
+                }
+
+                // Prerequisites
+                if !quest.prerequisites.is_empty() {
+                    output.push_str("\nPREREQUISITES:\n");
+                    for prereq in &quest.prerequisites {
+                        output.push_str(&format!("  - {}\n", prereq));
+                    }
+                }
+
+                // Rewards
+                output.push_str("\nREWARDS:\n");
+                if quest.rewards.experience > 0 {
+                    output.push_str(&format!("  - {} XP\n", quest.rewards.experience));
+                }
+                if let Some(crate::tmush::types::CurrencyAmount::Decimal { minor_units }) = &quest.rewards.currency {
+                    if *minor_units > 0 {
+                        output.push_str(&format!("  - {} currency\n", minor_units));
+                    }
+                }
+                if !quest.rewards.items.is_empty() {
+                    for item in &quest.rewards.items {
+                        output.push_str(&format!("  - Item: {}\n", item));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!(
+                "Unknown @QUEST subcommand: {}\n\
                 Use: CREATE, EDIT, DELETE, LIST, SHOW",
                 subcommand
             )),

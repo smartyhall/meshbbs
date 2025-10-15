@@ -2318,6 +2318,12 @@ impl TinyMushStore {
         Ok(())
     }
 
+    /// Check if a quest exists
+    pub fn quest_exists(&self, quest_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("quest:{}", quest_id);
+        Ok(self.quests.contains_key(key.as_bytes())?)
+    }
+
     // ========================================================================
     // Achievement Storage
     // ========================================================================
