@@ -26,7 +26,7 @@ RestartSec=10
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+ProtectSystem=full
 ProtectHome=true
 ReadWritePaths=/opt/meshbbs/data /opt/meshbbs/meshbbs.log
 
@@ -198,7 +198,7 @@ The service file includes security hardening:
 
 - **NoNewPrivileges**: Prevents privilege escalation
 - **PrivateTmp**: Uses private /tmp directory
-- **ProtectSystem=strict**: Makes most of the filesystem read-only
+- **ProtectSystem=full**: Makes /usr, /boot, and /efi read-only (compatible with all systems)
 - **ProtectHome**: Makes /home read-only
 - **ReadWritePaths**: Only allows writing to specific directories
 
@@ -275,7 +275,7 @@ SyslogIdentifier=meshbbs
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+ProtectSystem=full
 ProtectHome=true
 ReadWritePaths=/opt/meshbbs/data /opt/meshbbs/meshbbs.log
 ProtectKernelTunables=true
@@ -287,7 +287,7 @@ Environment="RUST_LOG=info"
 Environment="RUST_BACKTRACE=1"
 
 # Resource limits (adjust for your hardware)
-MemoryLimit=512M
+MemoryMax=512M
 TasksMax=100
 CPUQuota=80%
 

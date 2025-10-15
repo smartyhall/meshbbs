@@ -334,7 +334,7 @@ SyslogIdentifier=meshbbs
 # Security hardening
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+ProtectSystem=full
 ProtectHome=true
 ReadWritePaths=$INSTALL_PATH/data $INSTALL_PATH/meshbbs.log
 ProtectKernelTunables=true
@@ -345,7 +345,7 @@ RestrictRealtime=true
 Environment="RUST_LOG=info"
 
 # Resource limits
-MemoryLimit=512M
+MemoryMax=512M
 TasksMax=100
 
 [Install]
