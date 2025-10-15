@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.900] - 2025-10-15
+
+### Added - Complete Data-Driven Content Management System
+
+This release completes the comprehensive migration from hardcoded content to a fully
+data-driven system with admin commands and JSON seed files. All game content is now
+manageable without recompilation.
+
 ### Added - Data-Driven Seed Content Migration
 
 #### Phase 6: JSON Seed Data Migration

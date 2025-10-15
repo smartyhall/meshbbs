@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.0.115--beta-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.0.900-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,22 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release notes
+
+- **1.0.900 (2025-10-15): Complete Data-Driven Content Management** 🎯✨
+   - **Data-Driven Admin Commands**: Six comprehensive command systems for managing all game content
+     * @ACHIEVEMENT: Manage achievements, triggers, rewards, and hidden unlocks
+     * @NPC: Create and modify NPCs with dialogues, titles, and flags
+     * @COMPANION: Manage tameable companions with types and locations
+     * @ROOM: Build world rooms with exits, flags, and capacity management
+     * @OBJECT: Create objects with properties, flags, and currency values
+     * @QUEST & @RECIPE: Manage quests and crafting recipes (existing systems)
+   - **JSON Seed Content**: All initial game content now loads from editable JSON files
+     * 6 seed files in data/seeds/: npcs.json, companions.json, rooms.json, achievements.json, quests.json, recipes.json
+     * Admins can customize starter content without recompiling
+     * Fallback to hardcoded seeds ensures backwards compatibility
+   - **Installation Updates**: install.sh and cargo-deb packaging updated for seed file distribution
+   - **Testing**: 636 tests passing (+49 new integration tests for admin commands)
+   - **Benefits**: Full content customization, version control friendly, modding support, no compilation required
 
 - **1.0.115-beta (2025-10-14): Phase 4 & Phase 5 Content Complete** 🎮✨
    - **Phase 4 Quests**: Four new epic quests with 87,000+ currency and 1,950 XP rewards
