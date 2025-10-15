@@ -204,6 +204,7 @@ impl TinyMushStore {
             store.seed_quests_if_needed()?;
             store.seed_achievements_if_needed()?;
             store.seed_companions_if_needed()?;
+            store.seed_recipes_if_needed()?;
             store.seed_npcs_if_needed()?;
 
             // Seed full dialogue trees for NPCs
@@ -2506,6 +2507,93 @@ impl TinyMushStore {
         }
         Ok(inserted)
     }
+
+    // ========================================================================
+    // Crafting Recipe Management (Data-Driven System)
+    // ========================================================================
+
+    /// Store or update a crafting recipe
+    pub fn put_recipe(
+        &self,
+        recipe: crate::tmush::types::CraftingRecipe,
+    ) -> Result<(), TinyMushError> {
+        let key = format!("recipe:{}", recipe.id);
+        let value = Self::serialize(&recipe)?;
+        self.objects.insert(key.as_bytes(), value)?;
+        self.objects.flush()?;
+        Ok(())
+    }
+
+    /// Get a recipe by ID
+    pub fn get_recipe(&self, recipe_id: &str) -> Result<crate::tmush::types::CraftingRecipe, TinyMushError> {
+        let key = format!("recipe:{}", recipe_id);
+        let bytes = self
+            .objects
+            .get(key.as_bytes())?
+            .ok_or_else(|| TinyMushError::NotFound(format!("Recipe not found: {}", recipe_id)))?;
+        Self::deserialize(bytes)
+    }
+
+    /// List all recipes, optionally filtered by crafting station
+    pub fn list_recipes(
+        &self,
+        station_filter: Option<&str>,
+    ) -> Result<Vec<crate::tmush::types::CraftingRecipe>, TinyMushError> {
+        let prefix = b"recipe:";
+        let mut recipes = Vec::new();
+
+        for result in self.objects.scan_prefix(prefix) {
+            let (_, value) = result?;
+            let recipe: crate::tmush::types::CraftingRecipe = Self::deserialize(value)?;
+
+            if let Some(station) = station_filter {
+                if recipe.requires_station.as_deref() == Some(station) {
+                    recipes.push(recipe);
+                }
+            } else {
+                recipes.push(recipe);
+            }
+        }
+
+        // Sort by name for consistent ordering
+        recipes.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(recipes)
+    }
+
+    /// Delete a recipe by ID
+    pub fn delete_recipe(&self, recipe_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("recipe:{}", recipe_id);
+        self.objects.remove(key.as_bytes())?;
+        self.objects.flush()?;
+        Ok(())
+    }
+
+    /// Check if a recipe exists
+    pub fn recipe_exists(&self, recipe_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("recipe:{}", recipe_id);
+        Ok(self.objects.contains_key(key.as_bytes())?)
+    }
+
+    /// Seed default crafting recipes if none exist
+    pub fn seed_recipes_if_needed(&self) -> Result<usize, TinyMushError> {
+        // Check if any recipes exist
+        if self.objects.scan_prefix(b"recipe:").next().is_some() {
+            return Ok(0);
+        }
+
+        // Seed default recipes
+        let recipes = crate::tmush::state::seed_default_recipes();
+        let mut inserted = 0usize;
+        for recipe in recipes {
+            self.put_recipe(recipe)?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
+    // ========================================================================
+    // NPC and World Seeding
+    // ========================================================================
 
     pub fn seed_npcs_if_needed(&self) -> Result<usize, TinyMushError> {
         // Check if NPCs exist by trying to iterate the tree

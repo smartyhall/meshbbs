@@ -180,6 +180,7 @@ pub enum TinyMushCommand {
     EditNpc(String, String, String), // @EDITNPC <npc_id> <field> <value> - edit NPC properties (admin only)
     ListAbandoned, // @LISTABANDONED - view abandoned/at-risk housing (admin, Phase 7)
     Dialog(String, String, Option<String>), // @DIALOG <npc> <subcommand> [args] - manage NPC dialogue trees (admin only)
+    Recipe(String, Vec<String>), // @RECIPE <subcommand> [args] - manage crafting recipes (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -624,6 +625,9 @@ impl TinyMushProcessor {
             TinyMushCommand::Dialog(npc_id, subcommand, args) => {
                 self.handle_dialog(session, npc_id, subcommand, args, config)
                     .await
+            }
+            TinyMushCommand::Recipe(subcommand, args) => {
+                self.handle_recipe(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1241,6 +1245,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::Dialog(npc_id, subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @DIALOG <npc> <subcommand> [args]\nSubcommands: LIST, VIEW <topic>, ADD <topic> <text>, EDIT <topic> <json>, DELETE <topic>, TEST <topic>\nExample: @DIALOG merchant VIEW greeting".to_string())
+                }
+            }
+            "@RECIPE" | "@RCP" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::Recipe(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @RECIPE <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new recipe\n  EDIT <id> MATERIAL ADD <item_id> <qty> - Add material\n  EDIT <id> MATERIAL REMOVE <item_id> - Remove material\n  EDIT <id> RESULT <item_id> [qty] - Set result item\n  EDIT <id> STATION <station_id> - Set crafting station\n  EDIT <id> DESCRIPTION <text> - Set description\n  DELETE <id> - Delete recipe\n  LIST [station] - List all recipes\n  SHOW <id> - Show recipe details\n\nExample: @RECIPE CREATE goat_cheese \"Goat Milk Cheese\"".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
