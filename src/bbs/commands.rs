@@ -426,11 +426,10 @@ impl CommandProcessor {
         config: &Config,
     ) -> Result<String> {
         session.state = SessionState::MainMenu;
+        // Security: Minimal information disclosure for unauthenticated users
         Ok(format!(
-            "[{}]\nNode: {}\nAuth: REGISTER <user> <pass> or LOGIN <user> [pass]\nType HELP for commands\n{}",
-            config.bbs.name,
-            session.node_id,
-            self.render_main_menu(session, config)
+            "[{}]\nAuthentication required.\nPlease REGISTER <username> <password> or LOGIN <username> [password]\nType H for help.\n",
+            config.bbs.name
         ))
     }
 
@@ -580,7 +579,10 @@ impl CommandProcessor {
                 // Build compact contextual help to fit within 230 bytes
                 let mut out = String::new();
                 if !session.is_logged_in() {
-                    out.push_str("AUTH: REGISTER <u> <p> | LOGIN <u> <p>\n");
+                    // Security: Minimal information for unauthenticated users
+                    out.push_str("Authentication required.\n");
+                    out.push_str("Please REGISTER <username> <password> or LOGIN <username> [password]\n");
+                    out.push_str("Type H for help.\n");
                     return Ok(out);
                 }
                 out.push_str("ACCT: P then [C]hange/[N]ew pass | [L]ogout\n");
