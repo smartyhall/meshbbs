@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Data-Driven Seed Content Migration
+
+#### Phase 6: JSON Seed Data Migration
+- **Seed data now JSON-based**: All initial game content now loaded from editable JSON files in `data/seeds/`
+  - `npcs.json`: 5 starter NPCs (Mayor Thompson, City Clerk, Gate Guard, Market Vendor, Museum Curator)
+  - `companions.json`: 3 companions (Gentle Mare, Loyal Hound, Shadow Cat)
+  - `rooms.json`: 24 world rooms (Old Towne Mesh complete world map)
+  - `achievements.json`: 17 achievements across 6 categories
+  - `quests.json`: 3 starter quests (Welcome, Market Exploration, Network Explorer)
+  - `recipes.json`: 2 crafting recipes (Signal Booster, Basic Antenna)
+
+- **seed_loader module**: New `src/tmush/seed_loader.rs` with 6 loading functions
+  - `load_npcs_from_json()`: Deserialize NPCs with dialogues and flags
+  - `load_companions_from_json()`: Deserialize companions with types and locations
+  - `load_rooms_from_json()`: Deserialize rooms with exits, flags, and capacity
+  - `load_achievements_from_json()`: Deserialize achievements with triggers
+  - `load_quests_from_json()`: Deserialize quests with objectives and rewards
+  - `load_recipes_from_json()`: Deserialize crafting recipes with materials
+
+- **Fallback to hardcoded seeds**: If JSON files are missing, automatically falls back to hardcoded Rust seed functions for backwards compatibility
+
+- **Installation support**: `install.sh` now creates `data/seeds/` directory and copies all seed JSON files
+
+- **Package distribution**: All 6 seed JSON files included in cargo-deb package assets
+
+#### Benefits
+- **Admins can customize content**: Edit seed JSON files to customize initial world without recompiling
+- **Version control friendly**: Seed data changes visible in git diffs as JSON
+- **Easier testing**: Create custom test worlds by modifying JSON files
+- **Modding support**: Community can share custom seed content as JSON files
+- **No compilation required**: Adjust NPC dialogue, room descriptions, achievement triggers without rebuilding
+
 ### Added - Data-Driven Achievement Management
 
 #### Phase 1: Achievement System (@ACHIEVEMENT Command)

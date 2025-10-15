@@ -115,6 +115,9 @@ pub struct TinyMushStore {
     player_trades: sled::Tree,      // ptrade:{username} → session_id
     template_instances: sled::Tree, // tpl:{template_id}:{instance_id} → ""
 
+    // Data directory path for seed files and other data
+    data_dir: PathBuf,
+
     // In-memory instanced room cache (not persisted across restarts)
     instanced_rooms: Arc<RwLock<HashMap<String, RoomRecord>>>,
     landing_instances: Arc<RwLock<HashMap<String, String>>>,
@@ -153,6 +156,14 @@ impl TinyMushStore {
     ) -> Result<Self, TinyMushError> {
         let path_ref = path.as_ref();
         std::fs::create_dir_all(path_ref)?;
+
+        // Calculate data directory for seed files (parent of database path)
+        // Database is typically at data/tinymush, seeds are at data/seeds/
+        let data_dir = path_ref
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
+
         let db = sled::open(path_ref)?;
         let primary = db.open_tree(TREE_PRIMARY)?;
         let objects = db.open_tree(TREE_OBJECTS)?;
@@ -195,6 +206,7 @@ impl TinyMushStore {
             housing_guests,
             player_trades,
             template_instances,
+            data_dir,
             instanced_rooms: Arc::new(RwLock::new(HashMap::new())),
             landing_instances: Arc::new(RwLock::new(HashMap::new())),
         };
@@ -1177,8 +1189,23 @@ impl TinyMushStore {
         {
             return Ok(0);
         }
-        let now = Utc::now();
-        let rooms = canonical_world_seed(now);
+
+        // Load rooms from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/rooms.json");
+        let rooms = match crate::tmush::load_rooms_from_json(&seed_path) {
+            Ok(rooms) => rooms,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load rooms from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                let now = Utc::now();
+                canonical_world_seed(now)
+            }
+        };
+
         let mut inserted = 0usize;
         for room in rooms {
             self.put_room(room)?;
@@ -1191,7 +1218,22 @@ impl TinyMushStore {
         if self.quests.iter().next().is_some() {
             return Ok(0);
         }
-        let quests = crate::tmush::seed_starter_quests();
+
+        // Load quests from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/quests.json");
+        let quests = match crate::tmush::load_quests_from_json(&seed_path) {
+            Ok(quests) => quests,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load quests from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_quests()
+            }
+        };
+
         let mut inserted = 0usize;
         for quest in quests {
             self.put_quest(quest)?;
@@ -2488,7 +2530,22 @@ impl TinyMushStore {
         if self.achievements.iter().next().is_some() {
             return Ok(0);
         }
-        let achievements = crate::tmush::seed_starter_achievements();
+
+        // Load achievements from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/achievements.json");
+        let achievements = match crate::tmush::load_achievements_from_json(&seed_path) {
+            Ok(achievements) => achievements,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load achievements from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_achievements()
+            }
+        };
+
         let mut inserted = 0usize;
         for achievement in achievements {
             self.put_achievement(achievement)?;
@@ -2596,7 +2653,22 @@ impl TinyMushStore {
         if self.companions.iter().next().is_some() {
             return Ok(0);
         }
-        let companions = crate::tmush::seed_starter_companions();
+
+        // Load companions from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/companions.json");
+        let companions = match crate::tmush::load_companions_from_json(&seed_path) {
+            Ok(companions) => companions,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load companions from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_companions()
+            }
+        };
+
         let mut inserted = 0usize;
         for companion in companions {
             self.put_companion(companion)?;
@@ -2678,8 +2750,21 @@ impl TinyMushStore {
             return Ok(0);
         }
 
-        // Seed default recipes
-        let recipes = crate::tmush::state::seed_default_recipes();
+        // Load recipes from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/recipes.json");
+        let recipes = match crate::tmush::load_recipes_from_json(&seed_path) {
+            Ok(recipes) => recipes,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load recipes from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::state::seed_default_recipes()
+            }
+        };
+
         let mut inserted = 0usize;
         for recipe in recipes {
             self.put_recipe(recipe)?;
@@ -2712,7 +2797,21 @@ impl TinyMushStore {
             }
         }
 
-        let npcs = crate::tmush::seed_starter_npcs();
+        // Load NPCs from JSON seed file
+        let seed_path = std::path::Path::new(&self.data_dir).join("seeds/npcs.json");
+        let npcs = match crate::tmush::load_npcs_from_json(&seed_path) {
+            Ok(npcs) => npcs,
+            Err(e) => {
+                log::warn!(
+                    "Failed to load NPCs from {}: {}. Falling back to hardcoded seeds.",
+                    seed_path.display(),
+                    e
+                );
+                // Fallback to hardcoded seeds if JSON file doesn't exist
+                crate::tmush::seed_starter_npcs()
+            }
+        };
+
         let mut inserted = 0usize;
         for npc in npcs {
             self.put_npc(npc)?;
