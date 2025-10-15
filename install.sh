@@ -340,7 +340,6 @@ ReadWritePaths=$INSTALL_PATH/data $INSTALL_PATH/meshbbs.log
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictRealtime=true
-RestrictNamespaces=true
 
 # Environment
 Environment="RUST_LOG=info"
