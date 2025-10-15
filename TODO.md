@@ -1,16 +1,16 @@
-# TinyMUSH Implementation TODO
+# Data-Driven Content Migration TODO
 
-**Last Updated**: 2025-10-12 (Production Readiness: 98% Complete! 🎉)
+**Last Updated**: 2025-10-14  
+**Branch**: `crafting_refactor`  
+**Goal**: Migrate all hardcoded game content to data-driven database systems
 
-**Recent Achievement**: ✅ Phase 10 Testing Complete! Production-Ready!
-- Performance testing: 458 ops/sec database, 14.58 ops/sec concurrent users
-- Release build: 12x faster than debug (0.44s vs 5.26s for 200 operations)
-- Security audit: Zero critical vulnerabilities (4 low-risk warnings only)
-- All 237 tests passing with 100% success rate
-- Clean security profile validated
-- **READY FOR BETA TESTING**
+**Completed Systems**: ✅
+- Crafting Recipes → `@RECIPE` command (605 lines, 5 tests)
+- Quests → `@QUEST` command (605 lines, 5 tests)
 
-**Next Up**: Beta Testing & Launch Preparation
+**Remaining Systems**: 5 major systems (~1600 lines, ~25 tests, 24-34 hours)
+
+**Reference**: See `HARDCODED_CONTENT_ANALYSIS.md` for detailed analysis
 
 ## Development Standards
 
@@ -39,15 +39,378 @@ This checklist tracks hands-on work for the TinyMUSH project. It bridges the hig
 
 ## Legend
 - [ ] TODO – not started
-- [~] In progress
-- [x] Done
+- [~] In progress – actively being worked on
+- [x] Done – completed and tested
+- [!] Blocked – waiting on dependency or decision
 
 ---
 
-## Phase 0 — Project Discipline & Games Menu Foundations ✅ COMPLETE
-(Ref: Plan §Phase 0, Design §Admin & GM Tools → Menu UX)
+## PHASE 1: Achievement System (@ACHIEVEMENT Command) [6-8 hours]
+**Priority**: HIGH - Player engagement, immediate gameplay impact  
+**Complexity**: Medium  
+**Files**: `src/tmush/commands.rs`, `src/tmush/storage.rs`, `tests/achievement_management.rs`
 
-- [x] Confirm project hygiene
+### 1.1 Achievement Command Infrastructure
+- [ ] Add `AchievementAdmin(String, Vec<String>)` enum variant to `TinyMushCommand`
+- [ ] Implement `@ACHIEVEMENT` command parser with full help text
+  - [ ] Document all subcommands: CREATE, EDIT, DELETE, LIST, SHOW
+  - [ ] Document trigger types: KILLCOUNT, ROOMVISITS, FRIENDCOUNT, MESSAGESSENT, TRADECOUNT, CURRENCYEARNED, QUESTCOMPLETION, VISITLOCATION, COMPLETEQUEST
+  - [ ] Document categories: Combat, Exploration, Social, Economic, Quest, Special
+- [ ] Add command dispatch routing to `handle_achievement_admin()`
+- [ ] Add `achievement_exists()` helper method to storage layer
+
+### 1.2 Achievement CRUD Operations
+- [ ] Implement `handle_achievement_admin()` function
+  - [ ] Admin level 2+ permission check
+  - [ ] CREATE subcommand - basic achievement creation
+  - [ ] EDIT DESCRIPTION - set achievement description
+  - [ ] EDIT CATEGORY - set category (enum validation)
+  - [ ] EDIT TRIGGER - complex trigger type handling with parameters
+    - [ ] KILLCOUNT {required}
+    - [ ] ROOMVISITS {required}
+    - [ ] FRIENDCOUNT {required}
+    - [ ] MESSAGESSENT {required}
+    - [ ] TRADECOUNT {required}
+    - [ ] CURRENCYEARNED {amount}
+    - [ ] QUESTCOMPLETION {required}
+    - [ ] VISITLOCATION {room_id}
+    - [ ] COMPLETEQUEST {quest_id}
+  - [ ] EDIT TITLE - set title reward (optional)
+  - [ ] EDIT HIDDEN - toggle hidden flag (true/false)
+  - [ ] DELETE subcommand - remove achievement
+  - [ ] LIST subcommand - show all achievements (with category filter)
+  - [ ] SHOW subcommand - detailed achievement information
+
+### 1.3 Achievement Testing
+- [ ] Create `tests/achievement_management.rs`
+- [ ] Test: achievement_crud_operations (create, read, update, delete)
+- [ ] Test: achievement_edit_all_fields (description, category, trigger, title, hidden)
+- [ ] Test: achievement_trigger_types (validate all 9 trigger types)
+- [ ] Test: achievement_exists_check (helper method validation)
+- [ ] Test: default_achievements_seeded (verify 15 starter achievements)
+- [ ] Test: achievement_list_by_category (filtering)
+- [ ] Run full test suite: `cargo test` (expect 248+ tests passing)
+
+### 1.4 Achievement Documentation & Cleanup
+- [ ] Update achievement section in user documentation
+- [ ] Update CHANGELOG.md with achievement system changes
+- [ ] Remove hardcoded achievement creation notes from docs
+- [ ] Commit with message: `feat(achievement): add data-driven achievement management system (@ACHIEVEMENT command)`
+
+**Milestone 1 Complete**: ✅ Achievements fully data-driven
+
+---
+
+## PHASE 2: NPC System (@NPC Command) [8-12 hours]
+**Priority**: HIGH - Essential for world-building, custom storylines  
+**Complexity**: Medium-High  
+**Files**: `src/tmush/commands.rs`, `src/tmush/storage.rs`, `tests/npc_management.rs`
+
+### 2.1 NPC Command Infrastructure
+- [ ] Add `NpcAdmin(String, Vec<String>)` enum variant to `TinyMushCommand`
+- [ ] Implement `@NPC` command parser with full help text
+  - [ ] Document all subcommands: CREATE, EDIT, DELETE, LIST, SHOW, TELEPORT
+  - [ ] Document dialogue management: DIALOG ADD/REMOVE
+  - [ ] Document NPC flags: Guard, Vendor, TutorialNpc, QuestGiver
+- [ ] Add command dispatch routing to `handle_npc_admin()`
+- [ ] Add `npc_exists()` helper method to storage layer
+
+### 2.2 NPC CRUD Operations
+- [ ] Implement `handle_npc_admin()` function
+  - [ ] Admin level 2+ permission check
+  - [ ] CREATE subcommand - basic NPC creation with name and location
+  - [ ] EDIT TITLE - set NPC title/role
+  - [ ] EDIT DESCRIPTION - set physical description (long text)
+  - [ ] EDIT LOCATION - move NPC to different room
+  - [ ] EDIT DIALOG ADD - add dialogue topic and text
+  - [ ] EDIT DIALOG REMOVE - remove dialogue topic
+  - [ ] EDIT FLAG - add/remove NPC flags (Guard, Vendor, TutorialNpc, QuestGiver)
+  - [ ] DELETE subcommand - remove NPC (with safety checks)
+  - [ ] LIST subcommand - show all NPCs (with location filter)
+  - [ ] SHOW subcommand - detailed NPC info including all dialogues
+  - [ ] TELEPORT subcommand - move NPC to different room instantly
+
+### 2.3 NPC Dialogue Tree Management
+- [ ] Handle HashMap<String, String> dialogue_tree structure
+- [ ] Validate dialogue topic names (no special characters)
+- [ ] Support multi-line dialogue text
+- [ ] Integration with existing TALK command
+- [ ] Verify NPC dialogue persistence across saves
+
+### 2.4 NPC Testing
+- [ ] Create `tests/npc_management.rs`
+- [ ] Test: npc_crud_operations (create, read, update, delete)
+- [ ] Test: npc_edit_all_fields (title, description, location, flags)
+- [ ] Test: npc_dialogue_management (add, remove, list topics)
+- [ ] Test: npc_multi_dialogue_topics (multiple dialogue entries)
+- [ ] Test: npc_teleport (location changes)
+- [ ] Test: npc_exists_check (helper method validation)
+- [ ] Test: default_npcs_seeded (verify 5 starter NPCs)
+- [ ] Test: npc_flag_management (add/remove flags)
+- [ ] Run full test suite: `cargo test` (expect 256+ tests passing)
+
+### 2.5 NPC Documentation & Cleanup
+- [ ] Update NPC section in admin documentation
+- [ ] Update CHANGELOG.md with NPC system changes
+- [ ] Remove hardcoded NPC creation notes from docs
+- [ ] Commit with message: `feat(npc): add data-driven NPC management system (@NPC command)`
+
+**Milestone 2 Complete**: ✅ NPCs fully data-driven
+
+---
+
+## PHASE 3: Companion System (@COMPANION Command) [4-6 hours]
+**Priority**: MEDIUM - Adds variety, builds on NPC patterns  
+**Complexity**: Low-Medium  
+**Files**: `src/tmush/commands.rs`, `src/tmush/storage.rs`, `tests/companion_management.rs`
+
+### 3.1 Companion Command Infrastructure
+- [ ] Add `CompanionAdmin(String, Vec<String>)` enum variant to `TinyMushCommand`
+- [ ] Implement `@COMPANION` command parser with full help text
+  - [ ] Document all subcommands: CREATE, EDIT, DELETE, LIST, SHOW, TELEPORT
+  - [ ] Document companion types: Horse, Dog, Cat, Bird, Wolf, Bear, etc.
+  - [ ] Document stats: health, loyalty, strength
+- [ ] Add command dispatch routing to `handle_companion_admin()`
+- [ ] Add `companion_exists()` helper method to storage layer
+
+### 3.2 Companion CRUD Operations
+- [ ] Implement `handle_companion_admin()` function
+  - [ ] Admin level 2+ permission check
+  - [ ] CREATE subcommand - create companion with type
+  - [ ] EDIT DESCRIPTION - set companion description
+  - [ ] EDIT LOCATION - move companion to different room
+  - [ ] EDIT STATS HEALTH - set health value
+  - [ ] EDIT STATS LOYALTY - set loyalty value
+  - [ ] EDIT STATS STRENGTH - set strength value
+  - [ ] EDIT RIDEABLE - toggle rideable flag (horses only)
+  - [ ] DELETE subcommand - remove companion
+  - [ ] LIST subcommand - show all companions (with type filter)
+  - [ ] SHOW subcommand - detailed companion info
+  - [ ] TELEPORT subcommand - move companion to room
+
+### 3.3 Companion Testing
+- [ ] Create `tests/companion_management.rs`
+- [ ] Test: companion_crud_operations (create, read, update, delete)
+- [ ] Test: companion_edit_all_fields (description, location, stats, rideable)
+- [ ] Test: companion_types (validate all companion types)
+- [ ] Test: companion_stats_management (health, loyalty, strength)
+- [ ] Test: companion_exists_check (helper method validation)
+- [ ] Test: default_companions_seeded (verify 3 starter companions)
+- [ ] Run full test suite: `cargo test` (expect 262+ tests passing)
+
+### 3.4 Companion Documentation & Cleanup
+- [ ] Update companion section in admin documentation
+- [ ] Update CHANGELOG.md with companion system changes
+- [ ] Commit with message: `feat(companion): add data-driven companion management system (@COMPANION command)`
+
+**Milestone 3 Complete**: ✅ Companions fully data-driven
+
+---
+
+## PHASE 4: Enhanced Room System (@ROOM Command) [3-4 hours]
+**Priority**: MEDIUM-LOW - QoL improvement for builders  
+**Complexity**: Low  
+**Files**: `src/tmush/commands.rs`, `src/tmush/builder_commands.rs`
+
+### 4.1 Enhanced Room Commands
+- [ ] Add `@ROOM` as alias for existing `@DIG` command
+- [ ] Enhance room editing capabilities
+  - [ ] `@ROOM EDIT <id> NAME <name>` - rename room
+  - [ ] `@ROOM EDIT <id> DESCRIPTION <text>` - short description
+  - [ ] `@ROOM EDIT <id> LONG_DESC <text>` - full description
+  - [ ] `@ROOM EDIT <id> FLAG <flag>` - add flags
+  - [ ] `@ROOM EDIT <id> CAPACITY <number>` - set capacity
+- [ ] Add `@ROOM DELETE` with safety checks
+  - [ ] Verify no players in room
+  - [ ] Verify not a required system room (gazebo_landing, town_square)
+  - [ ] Remove all exits pointing to deleted room
+- [ ] Enhance `@ROOM LIST` with flag filtering
+- [ ] Add `@ROOM SHOW` for detailed room information
+
+### 4.2 Room Testing
+- [ ] Enhance existing room tests in appropriate test file
+- [ ] Test: room_edit_all_fields (name, descriptions, flags, capacity)
+- [ ] Test: room_delete_safety_checks (prevent deleting occupied rooms)
+- [ ] Test: room_list_filtering (by flag)
+- [ ] Run full test suite: `cargo test` (expect 266+ tests passing)
+
+### 4.3 Room Documentation & Cleanup
+- [ ] Update builder documentation with enhanced commands
+- [ ] Update CHANGELOG.md with room system improvements
+- [ ] Commit with message: `feat(room): enhance room management with @ROOM command and safety checks`
+
+**Milestone 4 Complete**: ✅ Room system enhanced
+
+---
+
+## PHASE 5: Enhanced Object System (@OBJECT Command) [3-4 hours]
+**Priority**: MEDIUM - Consolidates existing commands  
+**Complexity**: Low-Medium  
+**Files**: `src/tmush/commands.rs`, `src/tmush/builder_commands.rs`
+
+### 5.1 Enhanced Object Commands
+- [ ] Add `@OBJECT` as consolidated interface for `@CREATE` and `@SET`
+- [ ] Enhance object editing capabilities
+  - [ ] `@OBJECT EDIT <id> DESCRIPTION <text>` - short description
+  - [ ] `@OBJECT EDIT <id> LONG_DESC <text>` - full description
+  - [ ] `@OBJECT EDIT <id> FLAG <flag>` - add flags
+  - [ ] `@OBJECT EDIT <id> WEIGHT <number>` - set weight
+  - [ ] `@OBJECT EDIT <id> VALUE <number>` - set value
+  - [ ] `@OBJECT EDIT <id> LOCATION <room_id>` - move object
+- [ ] Add `@OBJECT DELETE` with safety checks
+- [ ] Enhance `@OBJECT LIST` with flag filtering
+- [ ] Add `@OBJECT SHOW` for detailed object information
+- [ ] Add `@OBJECT TELEPORT` for instant relocation
+
+### 5.2 Object Testing
+- [ ] Enhance existing object tests
+- [ ] Test: object_edit_all_fields (descriptions, flags, weight, value, location)
+- [ ] Test: object_delete_safety_checks
+- [ ] Test: object_list_filtering (by flag)
+- [ ] Test: object_teleport (location changes)
+- [ ] Run full test suite: `cargo test` (expect 270+ tests passing)
+
+### 5.3 Object Documentation & Cleanup
+- [ ] Update builder documentation with enhanced commands
+- [ ] Update CHANGELOG.md with object system improvements
+- [ ] Commit with message: `feat(object): enhance object management with @OBJECT command`
+
+**Milestone 5 Complete**: ✅ Object system enhanced
+
+---
+
+## PHASE 6: Integration & Polish [2-3 hours]
+**Priority**: HIGH - Ensure all systems work together  
+**Complexity**: Low
+
+### 6.1 Cross-System Integration
+- [ ] Verify quest system uses new NPC management
+- [ ] Verify achievements work with enhanced room/object systems
+- [ ] Test companion spawning in enhanced room system
+- [ ] Verify all admin commands follow consistent patterns
+
+### 6.2 Documentation Updates
+- [ ] Update `HARDCODED_CONTENT_ANALYSIS.md` with completion status
+- [ ] Create `docs/administration/DATA_DRIVEN_CONTENT.md` guide
+  - [ ] Overview of all admin commands
+  - [ ] Best practices for world building
+  - [ ] Security considerations
+  - [ ] Backup and rollback procedures
+- [ ] Update main README.md with data-driven features
+- [ ] Update admin command reference documentation
+
+### 6.3 Final Testing & Validation
+- [ ] Run full test suite: `cargo test`
+- [ ] Verify all 270+ tests passing
+- [ ] Check for compiler warnings: `cargo clippy`
+- [ ] Run in release mode: `cargo build --release`
+- [ ] Manual QA testing of all admin commands
+- [ ] Performance testing with large datasets
+
+### 6.4 Release Preparation
+- [ ] Update CHANGELOG.md with complete feature list
+- [ ] Tag release candidate: `v1.1.0-rc1`
+- [ ] Create migration guide for existing worlds
+- [ ] Final commit: `feat(data-driven): complete migration to data-driven content management`
+- [ ] Merge `crafting_refactor` → `main`
+
+**Milestone 6 Complete**: ✅ Data-driven migration complete!
+
+---
+
+## Success Criteria
+
+### Completion Checklist
+- [ ] All 5 major systems migrated (Achievements, NPCs, Companions, Rooms, Objects)
+- [ ] All ~270+ tests passing (baseline 243 + new 27+)
+- [ ] Zero compiler warnings
+- [ ] All admin commands follow consistent pattern
+- [ ] Comprehensive documentation updated
+- [ ] Migration guide created
+- [ ] Performance validated
+
+### Quality Gates
+- [ ] Each phase committed separately with descriptive messages
+- [ ] Integration tests for each new system
+- [ ] Admin permission checks on all commands
+- [ ] Error handling and validation
+- [ ] Backwards compatibility maintained (seed functions still work)
+
+---
+
+## Development Standards (Maintained from Previous TODO)
+
+**⚠️ CRITICAL: Zero Tolerance for Compiler Warnings**
+- All warnings emitted by the Rust compiler must be fixed before committing
+- All warnings in unit tests must be resolved
+- Use `cargo check` and `cargo test` to verify clean builds
+- This policy applies to all phases and contributions
+
+**🚀 PERFORMANCE: Scale Target 500-1000 Users**
+- All database operations must be efficient (O(1) or O(log n))
+- Use secondary indexes for frequently accessed data
+- Pagination required for list operations over 100 items
+- Monitor and test at target scale during development
+
+**🔒 SECURITY: Admin Command Safety**
+- All admin commands require level 2+ permission
+- Log all administrative actions
+- Validate all input parameters
+- Prevent SQL injection via parameterized queries (sled is safe)
+- Regular security audits with `cargo audit`
+
+---
+
+## Quick Commands Reference
+
+```bash
+# Development cycle for each phase
+cargo check                    # Fast syntax check
+cargo test                     # Run all tests
+cargo test --test <name>       # Run specific test file
+cargo clippy                   # Lint check
+cargo build --release          # Production build
+
+# Git workflow
+git add <files>
+git commit -m "feat(system): description"
+git push origin crafting_refactor
+
+# Documentation
+mdbook serve docs              # View documentation locally
+```
+
+---
+
+## Notes & Decisions
+
+### Pattern Consistency
+All new admin commands follow the established pattern:
+1. Enum variant: `SystemAdmin(String, Vec<String>)`
+2. Parser with comprehensive help text
+3. Dispatch handler routing
+4. CRUD function with subcommands (CREATE, EDIT, DELETE, LIST, SHOW)
+5. Storage helper methods (system_exists)
+6. Integration tests (5-8 tests per system)
+
+### Backwards Compatibility
+- Seed functions remain in place as fallback
+- Existing hardcoded content still loads on first run
+- Admin commands augment, don't replace, existing systems
+- Migration is additive, not destructive
+
+### Future Enhancements (Post-Migration)
+- [ ] Web-based admin interface for content management
+- [ ] Import/Export system for content sharing
+- [ ] Version control for game content changes
+- [ ] Content templates and presets
+- [ ] Bulk operations for mass updates
+
+---
+
+**Project Status**: Ready to begin Phase 1  
+**Next Action**: Implement @ACHIEVEMENT command system  
+**Estimated Completion**: 24-34 hours of focused development
   - [x] Reconcile existing unstaged files (`Cargo.lock`, archived `MUD_MUSH_PROPOSAL.md`)
   - [x] Document TinyMUSH-specific contribution rules in `CONTRIBUTING.md`
   - [x] Script UTF-8 byte-length validation (reuse prior tooling / `just` recipe)
