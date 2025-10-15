@@ -293,6 +293,10 @@ if [ ! -f "$INSTALL_PATH/data/topics.json" ]; then
     fi
 fi
 
+# Create log file for systemd mount namespace
+echo -e "${YELLOW}Creating log file${NC}"
+touch "$INSTALL_PATH/meshbbs.log"
+
 # Set ownership
 echo -e "${YELLOW}Setting ownership${NC}"
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_PATH"
