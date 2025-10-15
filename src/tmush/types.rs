@@ -33,6 +33,7 @@ pub enum Direction {
 pub enum RoomVisibility {
     Public,
     Private,
+    Hidden,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

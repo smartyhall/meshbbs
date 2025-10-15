@@ -1314,7 +1314,7 @@ impl TinyMushProcessor {
                     let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
                     TinyMushCommand::RoomAdmin(subcommand, args)
                 } else {
-                    TinyMushCommand::Unknown("Usage: @ROOM <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new room\n  EDIT <id> NAME <text> - Set room name\n  EDIT <id> SHORTDESC <text> - Set room short description\n  EDIT <id> LONGDESC <text> - Set room long description\n  EDIT <id> EXIT <direction> <dest_room> - Add exit (N/S/E/W/U/D/NE/NW/SE/SW)\n  EDIT <id> FLAG <flag> - Add room flag\n  EDIT <id> CAPACITY <number> - Set max occupancy\n  DELETE <id> - Delete room\n  LIST - List all rooms\n  SHOW <id> - Show room details\n\nRoom Flags:\n  SAFE - No combat allowed\n  DARK - Requires light source\n  INDOOR - Protected from weather\n  SHOP - Commercial location\n  QUESTLOCATION - Quest-related room\n  PVPENABLED - PvP combat allowed\n  PLAYERCREATED - Player-made room\n  PRIVATE - Restricted access\n  MODERATED - Admin-monitored\n  INSTANCED - Separate copy per player\n  CROWDED - High traffic area\n  HOUSINGOFFICE - Housing services\n  NOTELEPORTOUT - Cannot teleport out\n\nExit Examples:\n  @ROOM EDIT tavern EXIT NORTH town_square\n  @ROOM EDIT dungeon EXIT UP surface_entrance\n\nExample: @ROOM CREATE dark_cave \"Mysterious Cave\"\nExample: @ROOM EDIT dark_cave FLAG DARK\nExample: @ROOM EDIT dark_cave CAPACITY 10".to_string())
+                    TinyMushCommand::Unknown("Usage: @ROOM <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new room\n  EDIT <id> NAME <text> - Set room name\n  EDIT <id> SHORTDESC <text> - Set room short description\n  EDIT <id> LONGDESC <text> - Set room long description\n  EDIT <id> EXIT <direction> <dest_room> - Add exit\n  EDIT <id> EXIT <direction> REMOVE - Remove exit\n  EDIT <id> FLAG <flag> - Add room flag\n  EDIT <id> CAPACITY <number> - Set max occupancy\n  EDIT <id> VISIBILITY <public|private|hidden> - Set room visibility\n  EDIT <id> LOCKED <true|false> - Lock/unlock room\n  EDIT <id> OWNER <player|world> - Transfer ownership\n  EDIT <id> HOUSING_TAGS <tag1,tag2,...> - Set housing filter tags\n  DELETE <id> - Delete room\n  LIST - List all rooms\n  SHOW <id> - Show room details\n\nRoom Flags:\n  SAFE - No combat allowed\n  DARK - Requires light source\n  INDOOR - Protected from weather\n  SHOP - Commercial location\n  QUESTLOCATION - Quest-related room\n  PVPENABLED - PvP combat allowed\n  PLAYERCREATED - Player-made room\n  PRIVATE - Restricted access\n  MODERATED - Admin-monitored\n  INSTANCED - Separate copy per player\n  CROWDED - High traffic area\n  HOUSINGOFFICE - Housing services\n  NOTELEPORTOUT - Cannot teleport out\n\nVisibility Types:\n  PUBLIC - Visible to all, anyone can enter\n  PRIVATE - Visible only to owner/guests\n  HIDDEN - Not listed, requires knowledge of ID\n\nExamples:\n  @ROOM CREATE dark_cave \"Mysterious Cave\"\n  @ROOM EDIT dark_cave FLAG DARK\n  @ROOM EDIT dark_cave CAPACITY 10\n  @ROOM EDIT tavern EXIT NORTH town_square\n  @ROOM EDIT tavern EXIT SOUTH REMOVE\n  @ROOM EDIT private_study VISIBILITY PRIVATE\n  @ROOM EDIT vault LOCKED true\n  @ROOM EDIT player_house OWNER alice\n  @ROOM EDIT housing_office HOUSING_TAGS cozy,small".to_string())
                 }
             }
             "@OBJECT" | "@OBJECTS" | "@OBJ" => {
@@ -1323,7 +1323,7 @@ impl TinyMushProcessor {
                     let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
                     TinyMushCommand::ObjectAdmin(subcommand, args)
                 } else {
-                    TinyMushCommand::Unknown("Usage: @OBJECT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new world object\n  EDIT <id> NAME <text> - Set object name\n  EDIT <id> DESCRIPTION <text> - Set object description\n  EDIT <id> WEIGHT <number> - Set weight (0-255)\n  EDIT <id> VALUE <amount> - Set currency value\n  EDIT <id> FLAG <flag> - Add object flag\n  EDIT <id> TAKEABLE <true|false> - Set takeable property\n  EDIT <id> USABLE <true|false> - Set usable property\n  EDIT <id> LOCKED <true|false> - Lock to prevent taking\n  EDIT <id> TRIGGER <type> <script> - Set object trigger\n  EDIT <id> TRIGGER <type> REMOVE - Remove object trigger\n  DELETE <id> - Delete object\n  LIST - List all world objects\n  SHOW <id> - Show object details\n\nObject Flags:\n  QUESTITEM - Required for quests\n  CONSUMABLE - Single-use item\n  EQUIPMENT - Can be equipped\n  KEYITEM - Important story item\n  CONTAINER - Can hold other items\n  MAGICAL - Has magical properties\n  COMPANION - Companion pet/ally\n  CLONABLE - Can be cloned by players\n  UNIQUE - Cannot be cloned\n  NOVALUE - Strip value on clone\n  NOCLONECHILDREN - Cannot clone with contents\n  LIGHTSOURCE - Provides light in dark rooms\n\nTrigger Types:\n  ONENTER - Fires when player enters room with object\n  ONLOOK - Fires when player examines object\n  ONTAKE - Fires when player takes object\n  ONDROP - Fires when player drops object\n  ONUSE - Fires when player uses object\n  ONPOKE - Fires when player pokes object\n  ONFOLLOW - Fires when player follows something\n  ONIDLE - Fires periodically when idle\n  ONCOMBAT - Fires during combat\n  ONHEAL - Fires when healing occurs\n\nTrigger Script Commands:\n  message(\"text\") - Display message to player\n  heal(amount) - Heal the player\n  consume() - Destroy object after use\n  teleport(\"room_id\") - Move player to room\n  random_chance(percent) - Probability gate\n  has_quest(\"quest_id\") - Check quest status\n  unlock_exit(\"direction\") - Unlock exit\n  Multiple commands: cmd1 && cmd2 && cmd3\n\nValue Examples:\n  @OBJECT EDIT torch VALUE 5gc - Sets value to 5 gold, 0 silver, 0 copper\n  @OBJECT EDIT sword VALUE 2gc,50sc - Sets value to 2 gold, 50 silver, 0 copper\n\nExamples:\n  @OBJECT CREATE basic_torch \"Wooden Torch\"\n  @OBJECT EDIT basic_torch DESCRIPTION \"A simple torch that provides light.\"\n  @OBJECT EDIT basic_torch FLAG LIGHTSOURCE\n  @OBJECT EDIT basic_torch TAKEABLE true\n  @OBJECT EDIT basic_torch WEIGHT 5\n  @OBJECT EDIT singing_mushroom TRIGGER ONENTER message(\"🍄 Chimes!\")\n  @OBJECT EDIT healing_potion TRIGGER ONUSE heal(50) && consume()\n  @OBJECT EDIT mystery_box TRIGGER ONPOKE random_chance(50) && message(\"✨ Click!\")\n  @OBJECT EDIT singing_mushroom TRIGGER ONENTER REMOVE".to_string())
+                    TinyMushCommand::Unknown("Usage: @OBJECT <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new world object\n  EDIT <id> NAME <text> - Set object name\n  EDIT <id> DESCRIPTION <text> - Set object description\n  EDIT <id> WEIGHT <number> - Set weight (0-255)\n  EDIT <id> VALUE <amount> - Set currency value\n  EDIT <id> FLAG <flag> - Add object flag\n  EDIT <id> TAKEABLE <true|false> - Set takeable property\n  EDIT <id> USABLE <true|false> - Set usable property\n  EDIT <id> LOCKED <true|false> - Lock to prevent taking\n  EDIT <id> TRIGGER <type> <script> - Set object trigger\n  EDIT <id> TRIGGER <type> REMOVE - Remove object trigger\n  EDIT <id> OWNER <player|world> - Transfer ownership\n  DELETE <id> - Delete object\n  LIST - List all world objects\n  SHOW <id> - Show object details\n\nObject Flags:\n  QUESTITEM - Required for quests\n  CONSUMABLE - Single-use item\n  EQUIPMENT - Can be equipped\n  KEYITEM - Important story item\n  CONTAINER - Can hold other items\n  MAGICAL - Has magical properties\n  COMPANION - Companion pet/ally\n  CLONABLE - Can be cloned by players\n  UNIQUE - Cannot be cloned\n  NOVALUE - Strip value on clone\n  NOCLONECHILDREN - Cannot clone with contents\n  LIGHTSOURCE - Provides light in dark rooms\n\nTrigger Types:\n  ONENTER - Fires when player enters room with object\n  ONLOOK - Fires when player examines object\n  ONTAKE - Fires when player takes object\n  ONDROP - Fires when player drops object\n  ONUSE - Fires when player uses object\n  ONPOKE - Fires when player pokes object\n  ONFOLLOW - Fires when player follows something\n  ONIDLE - Fires periodically when idle\n  ONCOMBAT - Fires during combat\n  ONHEAL - Fires when healing occurs\n\nTrigger Script Commands:\n  message(\"text\") - Display message to player\n  heal(amount) - Heal the player\n  consume() - Destroy object after use\n  teleport(\"room_id\") - Move player to room\n  random_chance(percent) - Probability gate\n  has_quest(\"quest_id\") - Check quest status\n  unlock_exit(\"direction\") - Unlock exit\n  Multiple commands: cmd1 && cmd2 && cmd3\n\nValue Examples:\n  @OBJECT EDIT torch VALUE 5gc - Sets value to 5 gold, 0 silver, 0 copper\n  @OBJECT EDIT sword VALUE 2gc,50sc - Sets value to 2 gold, 50 silver, 0 copper\n\nExamples:\n  @OBJECT CREATE basic_torch \"Wooden Torch\"\n  @OBJECT EDIT basic_torch DESCRIPTION \"A simple torch that provides light.\"\n  @OBJECT EDIT basic_torch FLAG LIGHTSOURCE\n  @OBJECT EDIT basic_torch TAKEABLE true\n  @OBJECT EDIT basic_torch WEIGHT 5\n  @OBJECT EDIT basic_torch OWNER alice\n  @OBJECT EDIT singing_mushroom TRIGGER ONENTER message(\"🍄 Chimes!\")\n  @OBJECT EDIT healing_potion TRIGGER ONUSE heal(50) && consume()\n  @OBJECT EDIT mystery_box TRIGGER ONPOKE random_chance(50) && message(\"✨ Click!\")\n  @OBJECT EDIT singing_mushroom TRIGGER ONENTER REMOVE".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -8119,7 +8119,7 @@ Not fancy, but it gets the job done.",
             }
             "EDIT" => {
                 if args.len() < 3 {
-                    return Ok("Usage: @ROOM EDIT <id> <field> <value>\nFields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY\nExample: @ROOM EDIT dark_cave NAME \"Dark Cavern\"".to_string());
+                    return Ok("Usage: @ROOM EDIT <id> <field> <value>\nFields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY, VISIBILITY, LOCKED, OWNER, HOUSING_TAGS\nExample: @ROOM EDIT dark_cave NAME \"Dark Cavern\"\nExample: @ROOM EDIT vault LOCKED true\nExample: @ROOM EDIT study VISIBILITY PRIVATE".to_string());
                 }
                 let room_id = args[0].to_lowercase();
                 let field = args[1].to_uppercase();
@@ -8159,10 +8159,10 @@ Not fancy, but it gets the job done.",
                     }
                     "EXIT" => {
                         if args.len() < 4 {
-                            return Ok("Usage: @ROOM EDIT <id> EXIT <direction> <dest_room>\nDirections: N, S, E, W, U, D, NE, NW, SE, SW\nExample: @ROOM EDIT tavern EXIT NORTH town_square".to_string());
+                            return Ok("Usage: @ROOM EDIT <id> EXIT <direction> <dest_room|REMOVE>\nDirections: N, S, E, W, U, D, NE, NW, SE, SW\nExample: @ROOM EDIT tavern EXIT NORTH town_square\nExample: @ROOM EDIT tavern EXIT SOUTH REMOVE".to_string());
                         }
                         let direction_str = args[2].to_uppercase();
-                        let dest_room = args[3].to_lowercase();
+                        let dest_or_remove = args[3].to_uppercase();
 
                         // Parse direction
                         use crate::tmush::types::Direction;
@@ -8180,14 +8180,25 @@ Not fancy, but it gets the job done.",
                             _ => return Ok(format!("Invalid direction '{}'. Valid: N, S, E, W, U, D, NE, NW, SE, SW", direction_str)),
                         };
 
-                        // Check if destination room exists
-                        if !store.room_exists(&dest_room)? {
-                            return Ok(format!("Destination room '{}' does not exist. Create it first with @ROOM CREATE.", dest_room));
-                        }
+                        // Check if removing exit
+                        if dest_or_remove == "REMOVE" {
+                            if room.exits.remove(&direction).is_some() {
+                                store.put_room(room)?;
+                                Ok(format!("Removed {} exit from room '{}'", direction_str, room_id))
+                            } else {
+                                Ok(format!("Room '{}' has no {} exit", room_id, direction_str))
+                            }
+                        } else {
+                            let dest_room = dest_or_remove.to_lowercase();
+                            // Check if destination room exists
+                            if !store.room_exists(&dest_room)? {
+                                return Ok(format!("Destination room '{}' does not exist. Create it first with @ROOM CREATE.", dest_room));
+                            }
 
-                        room.exits.insert(direction, dest_room.clone());
-                        store.put_room(room)?;
-                        Ok(format!("Added exit {} from '{}' to '{}'", direction_str, room_id, dest_room))
+                            room.exits.insert(direction, dest_room.clone());
+                            store.put_room(room)?;
+                            Ok(format!("Added exit {} from '{}' to '{}'", direction_str, room_id, dest_room))
+                        }
                     }
                     "FLAG" => {
                         if args.len() < 3 {
@@ -8236,7 +8247,91 @@ Not fancy, but it gets the job done.",
                         store.put_room(room)?;
                         Ok(format!("Set room '{}' capacity to {}", room_id, capacity))
                     }
-                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY", field)),
+                    "VISIBILITY" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> VISIBILITY <public|private|hidden>\nExample: @ROOM EDIT study VISIBILITY PRIVATE".to_string());
+                        }
+                        let visibility_str = args[2].to_uppercase();
+                        
+                        use crate::tmush::types::RoomVisibility;
+                        let visibility = match visibility_str.as_str() {
+                            "PUBLIC" => RoomVisibility::Public,
+                            "PRIVATE" => RoomVisibility::Private,
+                            "HIDDEN" => RoomVisibility::Hidden,
+                            _ => return Ok("Visibility must be PUBLIC, PRIVATE, or HIDDEN".to_string()),
+                        };
+                        
+                        room.visibility = visibility;
+                        store.put_room(room)?;
+                        Ok(format!("Set room '{}' visibility to {}", room_id, visibility_str))
+                    }
+                    "LOCKED" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> LOCKED <true|false>\nExample: @ROOM EDIT vault LOCKED true".to_string());
+                        }
+                        let value = args[2].to_lowercase();
+                        match value.as_str() {
+                            "true" | "yes" | "1" => {
+                                room.locked = true;
+                                store.put_room(room)?;
+                                Ok(format!("Locked room '{}' (guests cannot enter)", room_id))
+                            }
+                            "false" | "no" | "0" => {
+                                room.locked = false;
+                                store.put_room(room)?;
+                                Ok(format!("Unlocked room '{}'", room_id))
+                            }
+                            _ => Ok("Value must be 'true' or 'false'.".to_string()),
+                        }
+                    }
+                    "OWNER" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> OWNER <player|world>\nExample: @ROOM EDIT player_house OWNER alice\nExample: @ROOM EDIT tavern OWNER world".to_string());
+                        }
+                        let owner_str = args[2].to_lowercase();
+                        
+                        use crate::tmush::types::RoomOwner;
+                        if owner_str == "world" {
+                            room.owner = RoomOwner::World;
+                            store.put_room(room)?;
+                            Ok(format!("Transferred room '{}' to World ownership", room_id))
+                        } else {
+                            // Verify player exists
+                            if store.get_player(&owner_str).is_err() {
+                                return Ok(format!("Player '{}' not found", owner_str));
+                            }
+                            room.owner = RoomOwner::Player { username: owner_str.clone() };
+                            store.put_room(room)?;
+                            Ok(format!("Transferred room '{}' to player '{}'", room_id, owner_str))
+                        }
+                    }
+                    "HOUSING_TAGS" | "HOUSINGTAGS" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> HOUSING_TAGS <tag1,tag2,...>\nExample: @ROOM EDIT housing_office HOUSING_TAGS cozy,small,affordable\nUse empty value to clear: @ROOM EDIT housing_office HOUSING_TAGS \"\"".to_string());
+                        }
+                        let tags_str = args[2..].join(" ");
+                        
+                        if tags_str.is_empty() || tags_str == "\"\"" {
+                            room.housing_filter_tags.clear();
+                            store.put_room(room)?;
+                            Ok(format!("Cleared housing filter tags from room '{}'", room_id))
+                        } else {
+                            let tags: Vec<String> = tags_str
+                                .split(',')
+                                .map(|s| s.trim().to_lowercase())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            
+                            if tags.is_empty() {
+                                return Ok("No valid tags provided".to_string());
+                            }
+                            
+                            room.housing_filter_tags = tags.clone();
+                            store.put_room(room)?;
+                            Ok(format!("Set housing filter tags for room '{}': {}", room_id, tags.join(", ")))
+                        }
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY, VISIBILITY, LOCKED, OWNER, HOUSING_TAGS", field)),
                 }
             }
             "DELETE" => {
@@ -8618,7 +8713,28 @@ Not fancy, but it gets the job done.",
                             }
                         }
                     }
-                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED, TRIGGER", field)),
+                    "OWNER" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @OBJECT EDIT <id> OWNER <player|world>\nExample: @OBJECT EDIT magic_sword OWNER alice\nExample: @OBJECT EDIT torch OWNER world".to_string());
+                        }
+                        let owner_str = args[2].to_lowercase();
+                        
+                        use crate::tmush::types::ObjectOwner;
+                        if owner_str == "world" {
+                            object.owner = ObjectOwner::World;
+                            store.put_object(object)?;
+                            Ok(format!("{}Transferred object '{}' to World ownership", warning_message, object_id))
+                        } else {
+                            // Verify player exists
+                            if store.get_player(&owner_str).is_err() {
+                                return Ok(format!("Player '{}' not found", owner_str));
+                            }
+                            object.owner = ObjectOwner::Player { username: owner_str.clone() };
+                            store.put_object(object)?;
+                            Ok(format!("{}Transferred object '{}' to player '{}'", warning_message, object_id, owner_str))
+                        }
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, WEIGHT, VALUE, FLAG, TAKEABLE, USABLE, LOCKED, TRIGGER, OWNER", field)),
                 }
             }
             "DELETE" => {
