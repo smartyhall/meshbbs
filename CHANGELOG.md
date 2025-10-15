@@ -126,10 +126,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SkillBoost <skill> <bonus>**: Boost specific skill (e.g., magic +10)
 - **IdleChatter <message1> [message2...]**: Say ambient messages periodically
 
+#### Phase 4: Room System (@ROOM Command)
+- **@ROOM command**: Complete admin interface for data-driven room/location management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new rooms with default world settings
+  - `EDIT <id> NAME <text>`: Update room display name
+  - `EDIT <id> SHORTDESC <text>`: Set short description (shown in exits/lists)
+  - `EDIT <id> LONGDESC <text>`: Set long description (shown when entering room)
+  - `EDIT <id> EXIT <direction> <destination_id>`: Add directional exit to another room (10 directions)
+  - `EDIT <id> FLAG <flag>`: Add room behavioral flag (13 flag types)
+  - `EDIT <id> CAPACITY <number>`: Set maximum occupancy (1-65535)
+  - `DELETE <id>`: Remove room from database (with validation)
+  - `LIST`: List all rooms with exit counts and active flags
+  - `SHOW <id>`: Display detailed room information including all exits, flags, items, owner, visibility
+
+#### Room Directions (10 variants)
+- **Cardinal**: North, South, East, West
+- **Vertical**: Up, Down
+- **Diagonal**: Northeast, Northwest, Southeast, Southwest
+- **Exit validation**: Destination room must exist before creating exit
+
+#### Room Flags (13 variants)
+- **Safe**: No combat allowed, safe zone for players
+- **Dark**: Requires light source to navigate
+- **Indoor**: Interior location (affects weather/time-of-day descriptions)
+- **Shop**: Contains vendor NPCs or vending machines
+- **QuestLocation**: Key location for quest objectives
+- **PvpEnabled**: Player vs player combat allowed
+- **PlayerCreated**: Built by players using housing system
+- **Private**: Access restricted to owner and invited guests
+- **Moderated**: Requires moderator approval for messages
+- **Instanced**: Each player sees separate instance (e.g., personal landing room)
+- **Crowded**: High traffic area with performance considerations
+- **HousingOffice**: Location where players can purchase housing
+- **NoTeleportOut**: Players cannot teleport/warp out of room
+
+#### Storage Layer Enhancements
+- `room_exists()`: Fast existence check for rooms using "rooms:world:{id}" key format
+- `list_room_ids()`: Scan and return all room IDs from primary tree with "rooms:world:" prefix
+- `delete_room()`: Remove room from database with flush (ensures persistence)
+- Room CRUD operations use primary sled tree (not dedicated tree like NPCs/Companions)
+- Support for bidirectional exit management with destination validation
+
+#### Testing
+- **7 new integration tests** in `tests/room_management.rs`:
+  - CRUD operations validation (create, read, update, delete)
+  - All field editing (name, short_desc, long_desc, capacity)
+  - Exit management with 10 direction types and destination validation
+  - Single and multiple exit handling
+  - All 13 flag type management with validation
+  - Multiple flags per room (combinations)
+  - Existence checks and error handling
+  - Seeded starter rooms verification (20+ rooms including gazebo_landing, town_square, all world locations)
+- **629 total tests passing** (including 7 new room tests, 21 total from phases 2-4)
+
 ### Developer Notes
-- **Pattern**: Achievement, NPC, and Companion systems follow proven @QUEST/@RECIPE command structure
-- **Migration Status**: Phase 3 of 6-phase data-driven content migration (see TODO.md)
-- **Next Steps**: Phase 4 (Rooms), Phase 5 (Objects), Phase 6 (Polish)
+- **Pattern**: Achievement, NPC, Companion, and Room systems follow proven @QUEST/@RECIPE command structure
+- **Migration Status**: Phase 4 of 6-phase data-driven content migration (see TODO.md)
+- **Next Steps**: Phase 5 (Objects), Phase 6 (Polish & Documentation)
+- **Implementation Notes**: Room system more complex than NPCs/Companions due to:
+  - Bidirectional exit management requiring destination validation
+  - 13 room flags vs 5 NPC flags or 6 companion types
+  - Different storage key format ("rooms:world:{id}" vs "npcs:{id}")
+  - Support for instanced rooms (per-player variants like landing gazebo)
 
 ## [1.0.115-beta] - 2025-10-14
 

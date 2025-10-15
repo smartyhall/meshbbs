@@ -524,6 +524,30 @@ impl TinyMushStore {
         }
     }
 
+    /// List all world room IDs
+    pub fn list_room_ids(&self) -> Result<Vec<String>, TinyMushError> {
+        let mut ids = Vec::new();
+        let prefix = b"rooms:world:";
+        for kv in self.primary.scan_prefix(prefix) {
+            let (key_bytes, _) = kv?;
+            if let Ok(key_str) = std::str::from_utf8(&key_bytes) {
+                if let Some(id) = key_str.strip_prefix("rooms:world:") {
+                    ids.push(id.to_string());
+                }
+            }
+        }
+        ids.sort();
+        Ok(ids)
+    }
+
+    /// Delete a world room
+    pub fn delete_room(&self, room_id: &str) -> Result<(), TinyMushError> {
+        let key = format!("rooms:world:{}", room_id).into_bytes();
+        self.primary.remove(key)?;
+        self.primary.flush()?;
+        Ok(())
+    }
+
     /// Resolve a room destination for a player, cloning the landing gazebo when required.
     pub fn resolve_destination_for_player(
         &self,
@@ -914,6 +938,12 @@ impl TinyMushStore {
     pub fn companion_exists(&self, companion_id: &str) -> Result<bool, TinyMushError> {
         let key = format!("companion:{}", companion_id);
         Ok(self.companions.contains_key(key.as_bytes())?)
+    }
+
+    /// Check if a room exists
+    pub fn room_exists(&self, room_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("rooms:world:{}", room_id);
+        Ok(self.primary.contains_key(key.as_bytes())?)
     }
 
     // ============================================================================

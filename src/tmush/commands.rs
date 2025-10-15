@@ -177,6 +177,7 @@ pub enum TinyMushCommand {
     AchievementAdmin(String, Vec<String>), // @ACHIEVEMENT <subcommand> [args] - manage achievements (admin only)
     NPCAdmin(String, Vec<String>), // @NPC <subcommand> [args] - manage NPCs (admin only)
     CompanionAdmin(String, Vec<String>), // @COMPANION <subcommand> [args] - manage companions (admin only)
+    RoomAdmin(String, Vec<String>), // @ROOM <subcommand> [args] - manage rooms (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -636,6 +637,9 @@ impl TinyMushProcessor {
             }
             TinyMushCommand::CompanionAdmin(subcommand, args) => {
                 self.handle_companion_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::RoomAdmin(subcommand, args) => {
+                self.handle_room_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1298,6 +1302,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::CompanionAdmin(subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @COMPANION <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new companion\n  EDIT <id> NAME <text> - Set companion name\n  EDIT <id> DESCRIPTION <text> - Set companion description\n  EDIT <id> TYPE <type> - Set companion type\n  EDIT <id> ROOM <room_id> - Set companion location\n  EDIT <id> BEHAVIOR <behavior> [params] - Add companion behavior\n  DELETE <id> - Delete companion\n  LIST - List all companions\n  SHOW <id> - Show companion details\n\nCompanion Types:\n  HORSE - Mount, extra storage\n  DOG - Loyal follower, alert danger\n  CAT - Independent, idle chatter\n  FAMILIAR - Magic boost, auto-follow\n  MERCENARY - Combat assist\n  CONSTRUCT - Mechanical ally\n\nBehavior Examples:\n  @COMPANION EDIT loyal_dog BEHAVIOR AutoFollow\n  @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30\n  @COMPANION EDIT guard_dog BEHAVIOR CombatAssist 5\n  @COMPANION EDIT healing_cat BEHAVIOR Healing 10 300\n\nExample: @COMPANION CREATE war_horse \"Battle Steed\"\nExample: @COMPANION EDIT war_horse TYPE HORSE\nExample: @COMPANION EDIT war_horse ROOM armory".to_string())
+                }
+            }
+            "@ROOM" | "@ROOMS" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::RoomAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @ROOM <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new room\n  EDIT <id> NAME <text> - Set room name\n  EDIT <id> SHORTDESC <text> - Set room short description\n  EDIT <id> LONGDESC <text> - Set room long description\n  EDIT <id> EXIT <direction> <dest_room> - Add exit (N/S/E/W/U/D/NE/NW/SE/SW)\n  EDIT <id> FLAG <flag> - Add room flag\n  EDIT <id> CAPACITY <number> - Set max occupancy\n  DELETE <id> - Delete room\n  LIST - List all rooms\n  SHOW <id> - Show room details\n\nRoom Flags:\n  SAFE - No combat allowed\n  DARK - Requires light source\n  INDOOR - Protected from weather\n  SHOP - Commercial location\n  QUESTLOCATION - Quest-related room\n  PVPENABLED - PvP combat allowed\n  PLAYERCREATED - Player-made room\n  PRIVATE - Restricted access\n  MODERATED - Admin-monitored\n  INSTANCED - Separate copy per player\n  CROWDED - High traffic area\n  HOUSINGOFFICE - Housing services\n  NOTELEPORTOUT - Cannot teleport out\n\nExit Examples:\n  @ROOM EDIT tavern EXIT NORTH town_square\n  @ROOM EDIT dungeon EXIT UP surface_entrance\n\nExample: @ROOM CREATE dark_cave \"Mysterious Cave\"\nExample: @ROOM EDIT dark_cave FLAG DARK\nExample: @ROOM EDIT dark_cave CAPACITY 10".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -8030,6 +8043,251 @@ Not fancy, but it gets the job done.",
                 if !companion.inventory.is_empty() {
                     output.push_str(&format!("\nInventory ({} items):\n", companion.inventory.len()));
                     for item in &companion.inventory {
+                        output.push_str(&format!("  - {}\n", item));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
+        }
+    }
+
+    /// Handle @ROOM command - manage rooms (admin level 2+)
+    async fn handle_room_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @ROOM commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @ROOM CREATE <id> <name>\nExample: @ROOM CREATE dark_cave \"Mysterious Cave\"".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+                let name = args[1..].join(" ");
+
+                // Check if room already exists
+                if store.room_exists(&room_id)? {
+                    return Ok(format!("Room '{}' already exists. Use @ROOM EDIT to modify it.", room_id));
+                }
+
+                // Create room with default settings
+                use crate::tmush::types::RoomRecord;
+                let room = RoomRecord::world(&room_id, &name, "A new location.", "This area has not been fully described yet.");
+                store.put_room(room)?;
+
+                Ok(format!("Created room '{}' ({}). Use @ROOM EDIT to customize.", room_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 3 {
+                    return Ok("Usage: @ROOM EDIT <id> <field> <value>\nFields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY\nExample: @ROOM EDIT dark_cave NAME \"Dark Cavern\"".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+                let field = args[1].to_uppercase();
+
+                let mut room = match store.get_room(&room_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Room '{}' not found. Use @ROOM CREATE to create it.", room_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        let name = args[2..].join(" ");
+                        if name.is_empty() {
+                            return Ok("Name cannot be empty".to_string());
+                        }
+                        room.name = name.clone();
+                        store.put_room(room)?;
+                        Ok(format!("Updated room '{}' name to '{}'", room_id, name))
+                    }
+                    "SHORTDESC" | "SHORT" => {
+                        let desc = args[2..].join(" ");
+                        if desc.is_empty() {
+                            return Ok("Short description cannot be empty".to_string());
+                        }
+                        room.short_desc = desc;
+                        store.put_room(room)?;
+                        Ok(format!("Updated room '{}' short description", room_id))
+                    }
+                    "LONGDESC" | "LONG" | "DESCRIPTION" => {
+                        let desc = args[2..].join(" ");
+                        if desc.is_empty() {
+                            return Ok("Long description cannot be empty".to_string());
+                        }
+                        room.long_desc = desc;
+                        store.put_room(room)?;
+                        Ok(format!("Updated room '{}' long description", room_id))
+                    }
+                    "EXIT" => {
+                        if args.len() < 4 {
+                            return Ok("Usage: @ROOM EDIT <id> EXIT <direction> <dest_room>\nDirections: N, S, E, W, U, D, NE, NW, SE, SW\nExample: @ROOM EDIT tavern EXIT NORTH town_square".to_string());
+                        }
+                        let direction_str = args[2].to_uppercase();
+                        let dest_room = args[3].to_lowercase();
+
+                        // Parse direction
+                        use crate::tmush::types::Direction;
+                        let direction = match direction_str.as_str() {
+                            "N" | "NORTH" => Direction::North,
+                            "S" | "SOUTH" => Direction::South,
+                            "E" | "EAST" => Direction::East,
+                            "W" | "WEST" => Direction::West,
+                            "U" | "UP" => Direction::Up,
+                            "D" | "DOWN" => Direction::Down,
+                            "NE" | "NORTHEAST" => Direction::Northeast,
+                            "NW" | "NORTHWEST" => Direction::Northwest,
+                            "SE" | "SOUTHEAST" => Direction::Southeast,
+                            "SW" | "SOUTHWEST" => Direction::Southwest,
+                            _ => return Ok(format!("Invalid direction '{}'. Valid: N, S, E, W, U, D, NE, NW, SE, SW", direction_str)),
+                        };
+
+                        // Check if destination room exists
+                        if !store.room_exists(&dest_room)? {
+                            return Ok(format!("Destination room '{}' does not exist. Create it first with @ROOM CREATE.", dest_room));
+                        }
+
+                        room.exits.insert(direction, dest_room.clone());
+                        store.put_room(room)?;
+                        Ok(format!("Added exit {} from '{}' to '{}'", direction_str, room_id, dest_room))
+                    }
+                    "FLAG" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> FLAG <flag>\nExample: @ROOM EDIT dark_cave FLAG DARK".to_string());
+                        }
+                        let flag_str = args[2].to_uppercase();
+
+                        use crate::tmush::types::RoomFlag;
+                        let flag = match flag_str.as_str() {
+                            "SAFE" => RoomFlag::Safe,
+                            "DARK" => RoomFlag::Dark,
+                            "INDOOR" => RoomFlag::Indoor,
+                            "SHOP" => RoomFlag::Shop,
+                            "QUESTLOCATION" => RoomFlag::QuestLocation,
+                            "PVPENABLED" => RoomFlag::PvpEnabled,
+                            "PLAYERCREATED" => RoomFlag::PlayerCreated,
+                            "PRIVATE" => RoomFlag::Private,
+                            "MODERATED" => RoomFlag::Moderated,
+                            "INSTANCED" => RoomFlag::Instanced,
+                            "CROWDED" => RoomFlag::Crowded,
+                            "HOUSINGOFFICE" => RoomFlag::HousingOffice,
+                            "NOTELEPORTOUT" => RoomFlag::NoTeleportOut,
+                            _ => return Ok(format!("Invalid flag '{}'. Valid flags: SAFE, DARK, INDOOR, SHOP, QUESTLOCATION, PVPENABLED, PLAYERCREATED, PRIVATE, MODERATED, INSTANCED, CROWDED, HOUSINGOFFICE, NOTELEPORTOUT", flag_str)),
+                        };
+
+                        if !room.flags.contains(&flag) {
+                            room.flags.push(flag);
+                            store.put_room(room)?;
+                            Ok(format!("Added flag {} to room '{}'", flag_str, room_id))
+                        } else {
+                            Ok(format!("Room '{}' already has flag {}", room_id, flag_str))
+                        }
+                    }
+                    "CAPACITY" => {
+                        if args.len() < 3 {
+                            return Ok("Usage: @ROOM EDIT <id> CAPACITY <number>\nExample: @ROOM EDIT tavern CAPACITY 50".to_string());
+                        }
+                        let capacity: u16 = match args[2].parse() {
+                            Ok(c) => c,
+                            Err(_) => return Ok("Capacity must be a number between 1 and 65535".to_string()),
+                        };
+                        if capacity == 0 {
+                            return Ok("Capacity must be at least 1".to_string());
+                        }
+                        room.max_capacity = capacity;
+                        store.put_room(room)?;
+                        Ok(format!("Set room '{}' capacity to {}", room_id, capacity))
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, SHORTDESC, LONGDESC, EXIT, FLAG, CAPACITY", field)),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ROOM DELETE <id>\nExample: @ROOM DELETE dark_cave".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+
+                if !store.room_exists(&room_id)? {
+                    return Ok(format!("Room '{}' not found.", room_id));
+                }
+
+                store.delete_room(&room_id)?;
+                Ok(format!("Deleted room '{}'", room_id))
+            }
+            "LIST" => {
+                let room_ids = store.list_room_ids()?;
+                if room_ids.is_empty() {
+                    return Ok("No rooms found.".to_string());
+                }
+
+                let mut output = format!("Rooms ({})\n", room_ids.len());
+                output.push_str("─────────────────────────────────────────────────────\n");
+                for room_id in room_ids {
+                    match store.get_room(&room_id) {
+                        Ok(room) => {
+                            let flags_str = if room.flags.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" [{}]", room.flags.iter().map(|f| format!("{:?}", f)).collect::<Vec<_>>().join(", "))
+                            };
+                            let exits_count = room.exits.len();
+                            output.push_str(&format!("  {}: {} ({} exits){}\n", 
+                                room.id, room.name, exits_count, flags_str));
+                        }
+                        Err(_) => {} // Skip if room can't be loaded
+                    }
+                }
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ROOM SHOW <id>\nExample: @ROOM SHOW dark_cave".to_string());
+                }
+                let room_id = args[0].to_lowercase();
+
+                let room = match store.get_room(&room_id) {
+                    Ok(r) => r,
+                    Err(_) => return Ok(format!("Room '{}' not found.", room_id)),
+                };
+
+                let mut output = format!("Room Details: {}\n", room.id);
+                output.push_str("═════════════════════════════════════════════════════\n");
+                output.push_str(&format!("Name: {}\n", room.name));
+                output.push_str(&format!("Short: {}\n", room.short_desc));
+                output.push_str(&format!("Long: {}\n", room.long_desc));
+                output.push_str(&format!("Owner: {:?}\n", room.owner));
+                output.push_str(&format!("Capacity: {}\n", room.max_capacity));
+                output.push_str(&format!("Visibility: {:?}\n", room.visibility));
+                output.push_str(&format!("Locked: {}\n", if room.locked { "Yes" } else { "No" }));
+
+                if !room.flags.is_empty() {
+                    output.push_str("\nFlags:\n");
+                    for flag in &room.flags {
+                        output.push_str(&format!("  - {:?}\n", flag));
+                    }
+                }
+
+                if !room.exits.is_empty() {
+                    output.push_str("\nExits:\n");
+                    for (direction, dest) in &room.exits {
+                        output.push_str(&format!("  {:?} -> {}\n", direction, dest));
+                    }
+                }
+
+                if !room.items.is_empty() {
+                    output.push_str(&format!("\nItems ({}):\n", room.items.len()));
+                    for item in &room.items {
                         output.push_str(&format!("  - {}\n", item));
                     }
                 }
