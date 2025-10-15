@@ -176,6 +176,7 @@ pub enum TinyMushCommand {
     QuestAdmin(String, Vec<String>), // @QUEST <subcommand> [args] - manage quests (admin only)
     AchievementAdmin(String, Vec<String>), // @ACHIEVEMENT <subcommand> [args] - manage achievements (admin only)
     NPCAdmin(String, Vec<String>), // @NPC <subcommand> [args] - manage NPCs (admin only)
+    CompanionAdmin(String, Vec<String>), // @COMPANION <subcommand> [args] - manage companions (admin only)
 
     /// Admin permission commands (Phase 9.2)
     ///
@@ -632,6 +633,9 @@ impl TinyMushProcessor {
             }
             TinyMushCommand::NPCAdmin(subcommand, args) => {
                 self.handle_npc_admin(session, subcommand, args, config).await
+            }
+            TinyMushCommand::CompanionAdmin(subcommand, args) => {
+                self.handle_companion_admin(session, subcommand, args, config).await
             }
             TinyMushCommand::ListAbandoned => {
                 self.handle_list_abandoned(session, _storage, config).await
@@ -1285,6 +1289,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::NPCAdmin(subcommand, args)
                 } else {
                     TinyMushCommand::Unknown("Usage: @NPC <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new NPC\n  EDIT <id> NAME <text> - Set NPC name\n  EDIT <id> TITLE <text> - Set NPC title\n  EDIT <id> DESCRIPTION <text> - Set NPC description\n  EDIT <id> ROOM <room_id> - Set NPC location\n  EDIT <id> DIALOG <key> <text> - Add simple dialogue response\n  DELETE <id> - Delete NPC\n  LIST - List all NPCs\n  SHOW <id> - Show NPC details\n\nNPC Flags (use @NPC EDIT <id> FLAG <flag>):\n  VENDOR - NPC can trade items\n  GUARD - NPC provides security\n  TUTORIALNPC - NPC helps with tutorials\n  QUESTGIVER - NPC gives quests\n\nExample: @NPC CREATE blacksmith \"Forge Master Grimm\"\nExample: @NPC EDIT blacksmith ROOM town_forge\nExample: @NPC EDIT blacksmith DIALOG greeting Welcome to my forge!".to_string())
+                }
+            }
+            "@COMPANION" | "@COMPANIONS" | "@PET" => {
+                if parts.len() >= 2 {
+                    let subcommand = parts[1].to_uppercase();
+                    let args: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                    TinyMushCommand::CompanionAdmin(subcommand, args)
+                } else {
+                    TinyMushCommand::Unknown("Usage: @COMPANION <subcommand> [args]\n\nSubcommands:\n  CREATE <id> <name> - Create new companion\n  EDIT <id> NAME <text> - Set companion name\n  EDIT <id> DESCRIPTION <text> - Set companion description\n  EDIT <id> TYPE <type> - Set companion type\n  EDIT <id> ROOM <room_id> - Set companion location\n  EDIT <id> BEHAVIOR <behavior> [params] - Add companion behavior\n  DELETE <id> - Delete companion\n  LIST - List all companions\n  SHOW <id> - Show companion details\n\nCompanion Types:\n  HORSE - Mount, extra storage\n  DOG - Loyal follower, alert danger\n  CAT - Independent, idle chatter\n  FAMILIAR - Magic boost, auto-follow\n  MERCENARY - Combat assist\n  CONSTRUCT - Mechanical ally\n\nBehavior Examples:\n  @COMPANION EDIT loyal_dog BEHAVIOR AutoFollow\n  @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30\n  @COMPANION EDIT guard_dog BEHAVIOR CombatAssist 5\n  @COMPANION EDIT healing_cat BEHAVIOR Healing 10 300\n\nExample: @COMPANION CREATE war_horse \"Battle Steed\"\nExample: @COMPANION EDIT war_horse TYPE HORSE\nExample: @COMPANION EDIT war_horse ROOM armory".to_string())
                 }
             }
             "@GETCONFIG" | "@GETCONF" | "@CONFIG" => {
@@ -7809,6 +7822,221 @@ Not fancy, but it gets the job done.",
                 Use: CREATE, EDIT, DELETE, LIST, SHOW",
                 subcommand
             )),
+        }
+    }
+
+    /// Handle @COMPANION command - manage companions (admin level 2+)
+    async fn handle_companion_admin(
+        &mut self,
+        session: &Session,
+        subcommand: String,
+        args: Vec<String>,
+        _config: &Config,
+    ) -> Result<String> {
+        let player = self.get_or_create_player(session).await?;
+
+        if player.admin_level.unwrap_or(0) < 2 {
+            return Ok("Insufficient permission: admin level 2+ required for @COMPANION commands.".to_string());
+        }
+
+        let store = self.store();
+
+        let subcmd = subcommand.to_uppercase();
+        match subcmd.as_str() {
+            "CREATE" => {
+                if args.len() < 2 {
+                    return Ok("Usage: @COMPANION CREATE <id> <name>\nExample: @COMPANION CREATE war_horse \"Battle Steed\"".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+                let name = args[1..].join(" ");
+
+                // Check if companion already exists
+                if store.companion_exists(&companion_id)? {
+                    return Ok(format!("Companion '{}' already exists. Use @COMPANION EDIT to modify it.", companion_id));
+                }
+
+                // Create companion with default type (Dog) and default room (starting_room)
+                use crate::tmush::types::{CompanionRecord, CompanionType};
+                let companion = CompanionRecord::new(&companion_id, &name, CompanionType::Dog, "starting_room");
+                store.put_companion(companion)?;
+
+                Ok(format!("Created companion '{}' ({}). Use @COMPANION EDIT to customize.", companion_id, name))
+            }
+            "EDIT" => {
+                if args.len() < 3 {
+                    return Ok("Usage: @COMPANION EDIT <id> <field> <value>\nFields: NAME, DESCRIPTION, TYPE, ROOM, BEHAVIOR\nExample: @COMPANION EDIT war_horse TYPE HORSE".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+                let field = args[1].to_uppercase();
+                let value = args[2..].join(" ");
+
+                let mut companion = match store.get_companion(&companion_id) {
+                    Ok(c) => c,
+                    Err(_) => return Ok(format!("Companion '{}' not found. Use @COMPANION CREATE to create it.", companion_id)),
+                };
+
+                match field.as_str() {
+                    "NAME" => {
+                        companion.name = value.clone();
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' name to '{}'", companion_id, value))
+                    }
+                    "DESCRIPTION" => {
+                        companion.description = value.clone();
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' description", companion_id))
+                    }
+                    "TYPE" => {
+                        use crate::tmush::types::CompanionType;
+                        let companion_type = match value.to_uppercase().as_str() {
+                            "HORSE" => CompanionType::Horse,
+                            "DOG" => CompanionType::Dog,
+                            "CAT" => CompanionType::Cat,
+                            "FAMILIAR" => CompanionType::Familiar,
+                            "MERCENARY" => CompanionType::Mercenary,
+                            "CONSTRUCT" => CompanionType::Construct,
+                            _ => return Ok(format!("Invalid companion type '{}'. Valid types: HORSE, DOG, CAT, FAMILIAR, MERCENARY, CONSTRUCT", value)),
+                        };
+                        companion.companion_type = companion_type;
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' type to {}", companion_id, value.to_uppercase()))
+                    }
+                    "ROOM" => {
+                        companion.room_id = value.clone();
+                        store.put_companion(companion)?;
+                        Ok(format!("Updated companion '{}' location to room '{}'", companion_id, value))
+                    }
+                    "BEHAVIOR" => {
+                        use crate::tmush::types::CompanionBehavior;
+                        
+                        // Parse behavior from args[2..]
+                        if args.len() < 3 {
+                            return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR <behavior> [params]\nBehaviors:\n  AutoFollow\n  AlertDanger\n  ExtraStorage <capacity>\n  CombatAssist <damage_bonus>\n  Healing <heal_amount> <cooldown_seconds>\n  SkillBoost <skill> <bonus>\n  IdleChatter <message1> [message2...]\nExample: @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30".to_string());
+                        }
+
+                        let behavior_type = args[2].to_uppercase();
+                        let behavior = match behavior_type.as_str() {
+                            "AUTOFOLLOW" => CompanionBehavior::AutoFollow,
+                            "ALERTDANGER" => CompanionBehavior::AlertDanger,
+                            "EXTRASTORAGE" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR ExtraStorage <capacity>\nExample: @COMPANION EDIT war_horse BEHAVIOR ExtraStorage 30".to_string());
+                                }
+                                let capacity: u32 = args[3].parse().unwrap_or(20);
+                                CompanionBehavior::ExtraStorage { capacity }
+                            }
+                            "COMBATASSIST" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR CombatAssist <damage_bonus>\nExample: @COMPANION EDIT guard_dog BEHAVIOR CombatAssist 5".to_string());
+                                }
+                                let damage_bonus: u32 = args[3].parse().unwrap_or(5);
+                                CompanionBehavior::CombatAssist { damage_bonus }
+                            }
+                            "HEALING" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR Healing <heal_amount> <cooldown_seconds>\nExample: @COMPANION EDIT healing_cat BEHAVIOR Healing 10 300".to_string());
+                                }
+                                let heal_amount: u32 = args[3].parse().unwrap_or(10);
+                                let cooldown_seconds: u64 = args[4].parse().unwrap_or(300);
+                                CompanionBehavior::Healing { heal_amount, cooldown_seconds }
+                            }
+                            "SKILLBOOST" => {
+                                if args.len() < 5 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR SkillBoost <skill> <bonus>\nExample: @COMPANION EDIT magic_cat BEHAVIOR SkillBoost magic 3".to_string());
+                                }
+                                let skill = args[3].clone();
+                                let bonus: u32 = args[4].parse().unwrap_or(2);
+                                CompanionBehavior::SkillBoost { skill, bonus }
+                            }
+                            "IDLECHATTER" => {
+                                if args.len() < 4 {
+                                    return Ok("Usage: @COMPANION EDIT <id> BEHAVIOR IdleChatter <message1> [message2...]\nExample: @COMPANION EDIT friendly_dog BEHAVIOR IdleChatter \"*wags tail*\" \"*barks happily*\"".to_string());
+                                }
+                                let messages: Vec<String> = args[3..].iter().map(|s| s.to_string()).collect();
+                                CompanionBehavior::IdleChatter { messages }
+                            }
+                            _ => return Ok(format!("Invalid behavior type '{}'. Valid types: AutoFollow, AlertDanger, ExtraStorage, CombatAssist, Healing, SkillBoost, IdleChatter", behavior_type)),
+                        };
+
+                        companion.behaviors.push(behavior);
+                        store.put_companion(companion)?;
+                        Ok(format!("Added behavior '{}' to companion '{}'", behavior_type, companion_id))
+                    }
+                    _ => Ok(format!("Unknown field '{}'. Valid fields: NAME, DESCRIPTION, TYPE, ROOM, BEHAVIOR", field)),
+                }
+            }
+            "DELETE" => {
+                if args.is_empty() {
+                    return Ok("Usage: @COMPANION DELETE <id>\nExample: @COMPANION DELETE war_horse".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+
+                if !store.companion_exists(&companion_id)? {
+                    return Ok(format!("Companion '{}' not found.", companion_id));
+                }
+
+                store.delete_companion(&companion_id)?;
+                Ok(format!("Deleted companion '{}'", companion_id))
+            }
+            "LIST" => {
+                let companion_ids = store.list_companion_ids()?;
+                if companion_ids.is_empty() {
+                    return Ok("No companions found.".to_string());
+                }
+
+                let mut output = format!("Companions ({})\n", companion_ids.len());
+                output.push_str("─────────────────────────────────────────────────────\n");
+                for companion_id in companion_ids {
+                    match store.get_companion(&companion_id) {
+                        Ok(companion) => {
+                            let type_str = format!("{:?}", companion.companion_type);
+                            let owner_str = companion.owner.as_ref().map(|o| format!(" [Owner: {}]", o)).unwrap_or_default();
+                            output.push_str(&format!("  {} ({}): {} - {}{}\n", 
+                                companion.id, type_str, companion.name, companion.room_id, owner_str));
+                        }
+                        Err(_) => {} // Skip if companion can't be loaded
+                    }
+                }
+                Ok(output)
+            }
+            "SHOW" => {
+                if args.is_empty() {
+                    return Ok("Usage: @COMPANION SHOW <id>\nExample: @COMPANION SHOW war_horse".to_string());
+                }
+                let companion_id = args[0].to_lowercase();
+
+                let companion = match store.get_companion(&companion_id) {
+                    Ok(c) => c,
+                    Err(_) => return Ok(format!("Companion '{}' not found.", companion_id)),
+                };
+
+                let mut output = format!("Companion Details: {}\n", companion.id);
+                output.push_str("═════════════════════════════════════════════════════\n");
+                output.push_str(&format!("Name: {}\n", companion.name));
+                output.push_str(&format!("Type: {:?}\n", companion.companion_type));
+                output.push_str(&format!("Description: {}\n", companion.description));
+                output.push_str(&format!("Room: {}\n", companion.room_id));
+                output.push_str(&format!("Owner: {}\n", companion.owner.as_ref().unwrap_or(&"None".to_string())));
+                output.push_str(&format!("Loyalty: {} | Happiness: {}\n", companion.loyalty, companion.happiness));
+                output.push_str(&format!("Mounted: {}\n", if companion.is_mounted { "Yes" } else { "No" }));
+                
+                if !companion.behaviors.is_empty() {
+                    output.push_str("\nBehaviors:\n");
+                    for behavior in &companion.behaviors {
+                        output.push_str(&format!("  - {:?}\n", behavior));
+                    }
+                }
+                
+                if !companion.inventory.is_empty() {
+                    output.push_str(&format!("\nInventory ({} items):\n", companion.inventory.len()));
+                    for item in &companion.inventory {
+                        output.push_str(&format!("  - {}\n", item));
+                    }
+                }
+
+                Ok(output)
+            }
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
         }
     }
 

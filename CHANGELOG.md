@@ -71,7 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Storage Layer Enhancements
 - `npc_exists()`: Fast existence check for NPCs
+- `companion_exists()`: Fast existence check for companions
 - NPC CRUD operations integrated with TinyMushStore
+- Companion CRUD operations integrated with TinyMushStore
 - Support for dialogue HashMap and future dialog_tree system
 
 #### Testing
@@ -83,12 +85,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Multiple flags per NPC
   - Existence checks and error handling
   - Seeded starter NPCs verification (5 NPCs: mayor_thompson, city_clerk, gate_guard, market_vendor, museum_curator)
-- **615 total tests passing** (including 7 new NPC tests)
+- **7 new integration tests** in `tests/companion_management.rs`:
+  - CRUD operations validation
+  - All field editing (name, description, type, room)
+  - All 6 CompanionType variants (Horse, Dog, Cat, Familiar, Mercenary, Construct)
+  - All 7 CompanionBehavior types (AutoFollow, AlertDanger, ExtraStorage, CombatAssist, Healing, SkillBoost, IdleChatter)
+  - Complex behavior management with parameters
+  - Multiple behaviors per companion
+  - Existence checks and error handling
+  - Seeded starter companions verification (3 companions: gentle_mare, loyal_hound, shadow_cat)
+- **622 total tests passing** (including 14 new NPC+Companion tests)
+
+#### Phase 3: Companion System (@COMPANION Command)
+- **@COMPANION command**: Complete admin interface for data-driven companion management (admin level 2+ required)
+  - `CREATE <id> <name>`: Create new companions with default type (Dog) and default room (starting_room)
+  - `EDIT <id> NAME <text>`: Update companion display name
+  - `EDIT <id> DESCRIPTION <text>`: Set companion description
+  - `EDIT <id> TYPE <type>`: Set companion type (6 types)
+  - `EDIT <id> ROOM <room_id>`: Move companion to different room
+  - `EDIT <id> BEHAVIOR <behavior> [params]`: Add companion behavior (7 behavior types with parameters)
+  - `DELETE <id>`: Remove companion from database
+  - `LIST`: List all companions with type, room location, and owner
+  - `SHOW <id>`: Display detailed companion information including all behaviors and inventory
+  - Aliases: `@COMPANIONS`, `@PET` for alternate command usage
+
+#### Companion Types (6 variants)
+- **Horse**: Mount with extra storage capacity, auto-follows owner
+- **Dog**: Loyal follower with danger alerts and idle chatter
+- **Cat**: Independent companion with idle chatter behaviors
+- **Familiar**: Magical companion with skill boosts and auto-follow
+- **Mercenary**: Combat assistant with damage bonuses
+- **Construct**: Mechanical ally with storage and combat capabilities
+
+#### Companion Behaviors (7 types with parameters)
+- **AutoFollow**: Automatically follow owner between rooms
+- **AlertDanger**: Warn player when danger is nearby
+- **ExtraStorage <capacity>**: Provide additional inventory slots (e.g., saddlebags)
+- **CombatAssist <damage_bonus>**: Add bonus damage in combat
+- **Healing <heal_amount> <cooldown_seconds>**: Provide healing over time
+- **SkillBoost <skill> <bonus>**: Boost specific skill (e.g., magic +10)
+- **IdleChatter <message1> [message2...]**: Say ambient messages periodically
 
 ### Developer Notes
-- **Pattern**: Achievement and NPC systems follow proven @QUEST/@RECIPE command structure
-- **Migration Status**: Phase 2 of 6-phase data-driven content migration (see TODO.md)
-- **Next Steps**: Phase 3 (Companions), Phase 4 (Rooms), Phase 5 (Objects), Phase 6 (Polish)
+- **Pattern**: Achievement, NPC, and Companion systems follow proven @QUEST/@RECIPE command structure
+- **Migration Status**: Phase 3 of 6-phase data-driven content migration (see TODO.md)
+- **Next Steps**: Phase 4 (Rooms), Phase 5 (Objects), Phase 6 (Polish)
 
 ## [1.0.115-beta] - 2025-10-14
 

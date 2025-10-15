@@ -910,6 +910,12 @@ impl TinyMushStore {
         Ok(self.npcs.contains_key(key.as_bytes())?)
     }
 
+    /// Check if a companion exists
+    pub fn companion_exists(&self, companion_id: &str) -> Result<bool, TinyMushError> {
+        let key = format!("companion:{}", companion_id);
+        Ok(self.companions.contains_key(key.as_bytes())?)
+    }
+
     // ============================================================================
     // Conversation State Storage (Phase 8.5)
     // ============================================================================
