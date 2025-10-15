@@ -8360,18 +8360,78 @@ Not fancy, but it gets the job done.",
                     Err(_) => return Ok(format!("Object '{}' not found. Use @OBJECT CREATE to create it.", object_id)),
                 };
 
+                // Check if this object is heavily used and warn admin
+                let mut warnings = Vec::new();
+                
+                // Check if it's a prototype that has been cloned
+                if object.clone_depth == 0 && object.clone_count > 0 {
+                    warnings.push(format!("⚠️  This is a PROTOTYPE that has been cloned {} times.", object.clone_count));
+                    warnings.push("   Clones are independent - editing this won't affect existing clones.".to_string());
+                }
+
+                // Count instances in rooms, players, and NPCs
+                let mut instance_count = 0;
+                let mut location_summary = Vec::new();
+
+                // Check rooms
+                let room_ids = store.list_room_ids()?;
+                let mut room_count = 0;
+                for room_id in room_ids {
+                    if let Ok(room) = store.get_room(&room_id) {
+                        if room.items.contains(&object_id) {
+                            room_count += 1;
+                            instance_count += 1;
+                        }
+                    }
+                }
+                if room_count > 0 {
+                    location_summary.push(format!("{} rooms", room_count));
+                }
+
+                // Check player inventories
+                let player_ids = store.list_player_ids()?;
+                let mut player_count = 0;
+                for player_id in player_ids {
+                    if let Ok(player) = store.get_player(&player_id) {
+                        if player.inventory.contains(&object_id) {
+                            player_count += 1;
+                            instance_count += 1;
+                        }
+                    }
+                }
+                if player_count > 0 {
+                    location_summary.push(format!("{} players", player_count));
+                }
+
+                // Warn if object is in multiple locations
+                if instance_count > 0 {
+                    warnings.push(format!("⚠️  This object appears in {} locations: {}", 
+                        instance_count, 
+                        location_summary.join(", ")
+                    ));
+                    warnings.push(format!("   Changes will affect ALL instances of '{}' in these locations.", object_id));
+                    warnings.push("   Use @OBJECT INSTANCES to see exact locations.".to_string());
+                }
+
+                // Display warnings if any
+                let warning_message = if !warnings.is_empty() {
+                    format!("\n{}\n\n", warnings.join("\n"))
+                } else {
+                    String::new()
+                };
+
                 match field.as_str() {
                     "NAME" => {
                         let name = args[2..].join(" ");
                         object.name = name.clone();
                         store.put_object(object)?;
-                        Ok(format!("Set object name to '{}'.", name))
+                        Ok(format!("{}Set object name to '{}'.", warning_message, name))
                     }
                     "DESCRIPTION" | "DESC" => {
                         let description = args[2..].join(" ");
                         object.description = description.clone();
                         store.put_object(object)?;
-                        Ok(format!("Set object description to '{}'.", description))
+                        Ok(format!("{}Set object description to '{}'.", warning_message, description))
                     }
                     "WEIGHT" => {
                         if args.len() < 3 {
@@ -8381,7 +8441,7 @@ Not fancy, but it gets the job done.",
                             Ok(weight) => {
                                 object.weight = weight;
                                 store.put_object(object)?;
-                                Ok(format!("Set object weight to {}.", weight))
+                                Ok(format!("{}Set object weight to {}.", warning_message, weight))
                             }
                             Err(_) => Ok("Weight must be a number between 0 and 255.".to_string()),
                         }
@@ -8396,7 +8456,7 @@ Not fancy, but it gets the job done.",
                                 use crate::tmush::types::CurrencyAmount;
                                 object.currency_value = CurrencyAmount::multi_tier(value);
                                 store.put_object(object)?;
-                                Ok(format!("Set object value to {}.", value))
+                                Ok(format!("{}Set object value to {}.", warning_message, value))
                             }
                             Err(_) => Ok("Value must be a number (base currency units).".to_string()),
                         }
@@ -8426,7 +8486,7 @@ Not fancy, but it gets the job done.",
                         if !object.flags.contains(&flag) {
                             object.flags.push(flag);
                             store.put_object(object)?;
-                            Ok(format!("Added flag {} to object.", flag_str))
+                            Ok(format!("{}Added flag {} to object.", warning_message, flag_str))
                         } else {
                             Ok(format!("Object already has flag {}.", flag_str))
                         }
@@ -8440,12 +8500,12 @@ Not fancy, but it gets the job done.",
                             "true" | "yes" | "1" => {
                                 object.takeable = true;
                                 store.put_object(object)?;
-                                Ok("Set object as takeable.".to_string())
+                                Ok(format!("{}Set object as takeable.", warning_message))
                             }
                             "false" | "no" | "0" => {
                                 object.takeable = false;
                                 store.put_object(object)?;
-                                Ok("Set object as not takeable.".to_string())
+                                Ok(format!("{}Set object as not takeable.", warning_message))
                             }
                             _ => Ok("Value must be 'true' or 'false'.".to_string()),
                         }
@@ -8459,12 +8519,12 @@ Not fancy, but it gets the job done.",
                             "true" | "yes" | "1" => {
                                 object.usable = true;
                                 store.put_object(object)?;
-                                Ok("Set object as usable.".to_string())
+                                Ok(format!("{}Set object as usable.", warning_message))
                             }
                             "false" | "no" | "0" => {
                                 object.usable = false;
                                 store.put_object(object)?;
-                                Ok("Set object as not usable.".to_string())
+                                Ok(format!("{}Set object as not usable.", warning_message))
                             }
                             _ => Ok("Value must be 'true' or 'false'.".to_string()),
                         }
@@ -8478,12 +8538,12 @@ Not fancy, but it gets the job done.",
                             "true" | "yes" | "1" => {
                                 object.locked = true;
                                 store.put_object(object)?;
-                                Ok("Set object as locked (cannot be taken).".to_string())
+                                Ok(format!("{}Set object as locked (cannot be taken).", warning_message))
                             }
                             "false" | "no" | "0" => {
                                 object.locked = false;
                                 store.put_object(object)?;
-                                Ok("Set object as unlocked.".to_string())
+                                Ok(format!("{}Set object as unlocked.", warning_message))
                             }
                             _ => Ok("Value must be 'true' or 'false'.".to_string()),
                         }
@@ -8514,25 +8574,228 @@ Not fancy, but it gets the job done.",
                     return Ok("No world objects found. Use @OBJECT CREATE to create objects.".to_string());
                 }
 
-                let mut output = format!("World Objects ({} total):\n", object_ids.len());
+                // Support optional search pattern: @OBJECT LIST [pattern]
+                let search_pattern = if !args.is_empty() {
+                    Some(args.join(" ").to_lowercase())
+                } else {
+                    None
+                };
+
+                let mut filtered_objects = Vec::new();
                 for id in object_ids {
                     if let Ok(object) = store.get_object(&id) {
-                        let flags_str = if object.flags.is_empty() {
-                            "none".to_string()
-                        } else {
-                            object.flags.iter()
-                                .map(|f| format!("{:?}", f))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        };
-                        let takeable = if object.takeable { "takeable" } else { "fixed" };
-                        let usable = if object.usable { "usable" } else { "not-usable" };
-                        output.push_str(&format!(
-                            "  {} - {} (weight: {}, value: {:?}, {}, {}, flags: {})\n",
-                            id, object.name, object.weight, object.currency_value, takeable, usable, flags_str
-                        ));
+                        // Filter by search pattern if provided
+                        if let Some(ref pattern) = search_pattern {
+                            let matches = object.id.to_lowercase().contains(pattern)
+                                || object.name.to_lowercase().contains(pattern)
+                                || object.description.to_lowercase().contains(pattern);
+                            if !matches {
+                                continue;
+                            }
+                        }
+                        filtered_objects.push(object);
                     }
                 }
+
+                if filtered_objects.is_empty() {
+                    if search_pattern.is_some() {
+                        return Ok(format!("No objects found matching '{}'. Try @OBJECT SEARCH for fuzzy matching.", search_pattern.unwrap()));
+                    } else {
+                        return Ok("No world objects found. Use @OBJECT CREATE to create objects.".to_string());
+                    }
+                }
+
+                let mut output = if let Some(ref pattern) = search_pattern {
+                    format!("World Objects matching '{}' ({} of {} total):\n", pattern, filtered_objects.len(), filtered_objects.len())
+                } else {
+                    format!("World Objects ({} total):\n", filtered_objects.len())
+                };
+
+                for object in filtered_objects {
+                    let flags_str = if object.flags.is_empty() {
+                        "none".to_string()
+                    } else {
+                        object.flags.iter()
+                            .map(|f| format!("{:?}", f))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    let takeable = if object.takeable { "takeable" } else { "fixed" };
+                    let usable = if object.usable { "usable" } else { "not-usable" };
+                    output.push_str(&format!(
+                        "  {} - {} (weight: {}, value: {:?}, {}, {}, flags: {})\n",
+                        object.id, object.name, object.weight, object.currency_value, takeable, usable, flags_str
+                    ));
+                }
+                Ok(output)
+            }
+            "SEARCH" => {
+                if args.is_empty() {
+                    return Ok("Usage: @OBJECT SEARCH <pattern>\nExample: @OBJECT SEARCH torch\nSearches object ID, name, and description.".to_string());
+                }
+
+                let pattern = args.join(" ").to_lowercase();
+                let object_ids = store.list_object_ids()?;
+                
+                if object_ids.is_empty() {
+                    return Ok("No world objects found. Use @OBJECT CREATE to create objects.".to_string());
+                }
+
+                // Fuzzy search with scoring
+                let mut matches: Vec<(i32, crate::tmush::types::ObjectRecord)> = Vec::new();
+                
+                for id in object_ids {
+                    if let Ok(object) = store.get_object(&id) {
+                        let mut score = 0;
+                        
+                        // Exact ID match (highest priority)
+                        if object.id.to_lowercase() == pattern {
+                            score += 100;
+                        } else if object.id.to_lowercase().contains(&pattern) {
+                            score += 50;
+                        }
+                        
+                        // Name matching (high priority)
+                        if object.name.to_lowercase() == pattern {
+                            score += 80;
+                        } else if object.name.to_lowercase().contains(&pattern) {
+                            score += 40;
+                        }
+                        
+                        // Description matching (lower priority)
+                        if object.description.to_lowercase().contains(&pattern) {
+                            score += 20;
+                        }
+                        
+                        // Add bonus for word boundary matches
+                        let words: Vec<&str> = pattern.split_whitespace().collect();
+                        for word in words {
+                            if object.name.to_lowercase().split_whitespace().any(|w| w == word) {
+                                score += 10;
+                            }
+                        }
+                        
+                        if score > 0 {
+                            matches.push((score, object));
+                        }
+                    }
+                }
+
+                if matches.is_empty() {
+                    return Ok(format!("No objects found matching '{}'. Try a different search term.", pattern));
+                }
+
+                // Sort by score (descending)
+                matches.sort_by(|a, b| b.0.cmp(&a.0));
+
+                let mut output = format!("Search results for '{}' ({} matches):\n\n", pattern, matches.len());
+                
+                for (score, object) in matches.iter().take(20) {  // Limit to top 20 results
+                    let flags_str = if object.flags.is_empty() {
+                        "none".to_string()
+                    } else {
+                        object.flags.iter()
+                            .map(|f| format!("{:?}", f))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
+                    
+                    output.push_str(&format!(
+                        "  [Score: {}] {} - {}\n",
+                        score, object.id, object.name
+                    ));
+                    output.push_str(&format!(
+                        "    Description: {}\n",
+                        if object.description.len() > 60 {
+                            format!("{}...", &object.description[..60])
+                        } else {
+                            object.description.clone()
+                        }
+                    ));
+                    output.push_str(&format!(
+                        "    Value: {:?}, Flags: {}\n\n",
+                        object.currency_value, flags_str
+                    ));
+                }
+
+                if matches.len() > 20 {
+                    output.push_str(&format!("Showing top 20 of {} matches. Refine your search for better results.\n", matches.len()));
+                }
+
+                Ok(output)
+            }
+            "INSTANCES" => {
+                if args.is_empty() {
+                    return Ok("Usage: @OBJECT INSTANCES <id>\nExample: @OBJECT INSTANCES basic_torch\nShows where an object appears in the world.".to_string());
+                }
+                let object_id = args[0].to_lowercase();
+
+                // Verify object exists
+                let object = match store.get_object(&object_id) {
+                    Ok(o) => o,
+                    Err(_) => return Ok(format!("Object '{}' not found.", object_id)),
+                };
+
+                let mut output = format!("Instances of '{}' ({}):\n\n", object.id, object.name);
+                let mut total_count = 0;
+
+                // Check all rooms for this object
+                let room_ids = store.list_room_ids()?;
+                let mut rooms_with_object = Vec::new();
+                
+                for room_id in room_ids {
+                    if let Ok(room) = store.get_room(&room_id) {
+                        if room.items.contains(&object_id) {
+                            rooms_with_object.push(room);
+                        }
+                    }
+                }
+
+                if !rooms_with_object.is_empty() {
+                    output.push_str(&format!("📍 Rooms ({}):\n", rooms_with_object.len()));
+                    for room in rooms_with_object {
+                        total_count += 1;
+                        output.push_str(&format!("  • {} - {}\n", room.id, room.name));
+                    }
+                    output.push_str("\n");
+                }
+
+                // Check all player inventories
+                let player_ids = store.list_player_ids()?;
+                let mut players_with_object = Vec::new();
+                
+                for player_id in player_ids {
+                    if let Ok(player) = store.get_player(&player_id) {
+                        if player.inventory.contains(&object_id) {
+                            players_with_object.push(player);
+                        }
+                    }
+                }
+
+                if !players_with_object.is_empty() {
+                    output.push_str(&format!("🎒 Player Inventories ({}):\n", players_with_object.len()));
+                    for player in players_with_object {
+                        total_count += 1;
+                        output.push_str(&format!("  • {} ({})\n", player.username, player.current_room));
+                    }
+                    output.push_str("\n");
+                }
+
+                // Show clone information if this is a prototype
+                if object.clone_depth == 0 && object.clone_count > 0 {
+                    output.push_str(&format!("🔄 Clone Information:\n"));
+                    output.push_str(&format!("  This is a prototype that has been cloned {} times.\n", object.clone_count));
+                    output.push_str(&format!("  Note: Clones are independent objects with unique IDs.\n\n"));
+                }
+
+                // Summary
+                if total_count == 0 {
+                    output.push_str("⚠️  This object doesn't appear in any rooms, player inventories, or NPC inventories.\n");
+                    output.push_str("   It may have been created but not yet placed in the world.\n");
+                } else {
+                    output.push_str(&format!("📊 Total instances found: {}\n", total_count));
+                }
+
                 Ok(output)
             }
             "SHOW" => {
@@ -8579,7 +8842,7 @@ Not fancy, but it gets the job done.",
 
                 Ok(output)
             }
-            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SEARCH, INSTANCES, SHOW", subcmd)),
         }
     }
 
