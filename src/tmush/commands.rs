@@ -144,20 +144,20 @@ pub enum TinyMushCommand {
     /// Builder permission management (Phase 7 Week 3)
     ///
     /// These commands manage builder privileges:
-    /// - `/BUILDER`: Display builder status and level
-    /// - `/SETBUILDER <player> <level>`: Grant builder privileges (level 0-3)
-    /// - `/REMOVEBUILDER <player>`: Revoke builder privileges
-    /// - `/BUILDERS`: List all builders
+    /// - `@BUILDER`: Display builder status and level
+    /// - `@SETBUILDER <player> <level>`: Grant builder privileges (level 0-3)
+    /// - `@REMOVEBUILDER <player>`: Revoke builder privileges
+    /// - `@BUILDERS`: List all builders
     ///
     /// Builder Levels:
     /// - Level 0: No builder permissions
     /// - Level 1: Apprentice - create objects, basic room editing
     /// - Level 2: Builder - create rooms, link exits, modify flags
     /// - Level 3: Architect - full world editing, deletion powers
-    Builder, // /BUILDER - show builder status
-    SetBuilder(String, u8), // /SETBUILDER player level - grant builder privileges (0-3)
-    RemoveBuilder(String),  // /REMOVEBUILDER player - revoke builder privileges
-    Builders,               // /BUILDERS - list all builders
+    Builder, // @BUILDER - show builder status
+    SetBuilder(String, u8), // @SETBUILDER player level - grant builder privileges (0-3)
+    RemoveBuilder(String),  // @REMOVEBUILDER player - revoke builder privileges
+    Builders,               // @BUILDERS - list all builders
 
     // System
     Help(Option<String>), // HELP, HELP topic
@@ -201,71 +201,71 @@ pub enum TinyMushCommand {
     /// Player monitoring commands (Phase 9.3)
     ///
     /// These commands enable administrators to monitor and manage player activity:
-    /// - `Players`: List all players in TinyMUSH (online/offline status, location)
-    /// - `Goto(target)`: Teleport admin to a player's location or specific room
+    /// - `@PLAYERS`: List all players in TinyMUSH (online/offline status, location)
+    /// - `@GOTO <target>`: Teleport admin to a player's location or specific room
     ///
     /// Permission requirements:
     /// - All commands require admin level 1+ (Moderator or higher)
     /// - Transparency: Actions are logged for accountability
-    Players, // /PLAYERS - list all players with status and location
-    Goto(String), // /GOTO <player|room> - teleport to player or room
+    Players, // @PLAYERS - list all players with status and location
+    Goto(String), // @GOTO <player|room> - teleport to player or room
 
     /// Clone monitoring commands (Phase 6 Admin Tools)
     ///
     /// These commands enable administrators to monitor cloning activity:
-    /// - `/LISTCLONES [player]`: List all clones owned by a player with genealogy
-    /// - `/CLONESTATS`: Server-wide cloning statistics (totals, top cloners, suspicious patterns)
+    /// - `@LISTCLONES [player]`: List all clones owned by a player with genealogy
+    /// - `@CLONESTATS`: Server-wide cloning statistics (totals, top cloners, suspicious patterns)
     ///
     /// Permission requirements:
     /// - All commands require admin level 1+ (Moderator or higher)
     /// - Used for detecting clone abuse and quota violations
-    ListClones(Option<String>), // /LISTCLONES [player] - list player's clones
-    CloneStats, // /CLONESTATS - server-wide clone statistics
+    ListClones(Option<String>), // @LISTCLONES [player] - list player's clones
+    CloneStats, // @CLONESTATS - server-wide clone statistics
 
     /// World Event Commands (Phase 9.5)
     ///
     /// These commands enable administrators to manage world-wide events and migrations:
-    /// - `/CONVERT_CURRENCY <decimal|multitier> [--dry-run]`: Convert all currency in the world
+    /// - `@CONVERT_CURRENCY <decimal|multitier> [--dry-run]`: Convert all currency in the world
     ///   - Converts player wallets, bank accounts, item values, and shop inventories
     ///   - Use --dry-run flag to preview changes without applying them
     ///   - Logs all conversions for audit purposes
     ///   - Requires admin level 3 (sysop)
-    ConvertCurrency(String, bool), // /CONVERT_CURRENCY <type> [--dry-run] - migrate all currency (sysop only)
+    ConvertCurrency(String, bool), // @CONVERT_CURRENCY <type> [--dry-run] - migrate all currency (sysop only)
 
     /// Backup & Recovery Commands (Phase 9.5)
     ///
     /// These commands enable administrators to backup and restore the world database:
-    /// - `/BACKUP [name]`: Create a manual backup with optional name
+    /// - `@BACKUP [name]`: Create a manual backup with optional name
     ///   - Creates compressed tar.gz archive with SHA256 checksum
     ///   - Manual backups are protected from automatic deletion
     ///   - Requires admin level 2+ (admin or sysop)
-    /// - `/RESTORE <id>`: Restore world from backup ID
+    /// - `@RESTORE <id>`: Restore world from backup ID
     ///   - Verifies backup integrity before restoration
     ///   - Requires confirmation and admin level 3 (sysop only)
     ///   - Server restart required after restore
-    /// - `/LISTBACKUPS`: List all available backups with metadata
+    /// - `@LISTBACKUPS`: List all available backups with metadata
     ///   - Shows backup ID, name, date, size, type, and verification status
     ///   - Sorted by date (newest first)
     ///   - Requires admin level 2+
-    /// - `/VERIFYBACKUP <id>`: Verify backup integrity via checksum
+    /// - `@VERIFYBACKUP <id>`: Verify backup integrity via checksum
     ///   - Validates SHA256 checksum of backup archive
     ///   - Updates verification status in metadata
     ///   - Requires admin level 2+
-    /// - `/DELETEBACKUP <id>`: Delete specific backup by ID
+    /// - `@DELETEBACKUP <id>`: Delete specific backup by ID
     ///   - Manual backups require confirmation
     ///   - Cannot delete only remaining backup
     ///   - Requires admin level 2+
-    /// - `/BACKUPCONFIG [enable|disable|frequency|status]`: Configure automatic backups
+    /// - `@BACKUPCONFIG [enable|disable|frequency|status]`: Configure automatic backups
     ///   - Enable/disable automatic backups
     ///   - Set backup frequency (hourly, 2h, 4h, 6h, 12h, daily)
     ///   - View current configuration
     ///   - Requires admin level 2+
-    Backup(Option<String>), // /BACKUP [name] - create manual backup
-    RestoreBackup(String), // /RESTORE <id> - restore from backup (sysop only)
-    ListBackups,           // /LISTBACKUPS - list all backups
-    VerifyBackup(String),  // /VERIFYBACKUP <id> - verify backup integrity
-    DeleteBackup(String),  // /DELETEBACKUP <id> - delete specific backup
-    BackupConfig(Vec<String>), // /BACKUPCONFIG [subcommand] - configure automatic backups
+    Backup(Option<String>), // @BACKUP [name] - create manual backup
+    RestoreBackup(String), // @RESTORE <id> - restore from backup (sysop only)
+    ListBackups,           // @LISTBACKUPS - list all backups
+    VerifyBackup(String),  // @VERIFYBACKUP <id> - verify backup integrity
+    DeleteBackup(String),  // @DELETEBACKUP <id> - delete specific backup
+    BackupConfig(Vec<String>), // @BACKUPCONFIG [subcommand] - configure automatic backups
 
     // Unrecognized command
     Unknown(String),
@@ -1355,27 +1355,27 @@ impl TinyMushProcessor {
                 }
             }
             "@ADMINS" | "@ADMINLIST" => TinyMushCommand::Admins,
-            "/PLAYERS" | "/WHO" => TinyMushCommand::Players,
-            "/WHERE" => {
+            "@PLAYERS" | "@WHO" => TinyMushCommand::Players,
+            "@WHERE" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Where(Some(parts[1].to_lowercase()))
                 } else {
                     TinyMushCommand::Unknown(
-                        "Usage: /WHERE <player>\nExample: /WHERE alice".to_string(),
+                        "Usage: @WHERE <player>\nExample: @WHERE alice".to_string(),
                     )
                 }
             }
-            "/GOTO" => {
+            "@GOTO" | "@TELEPORT" | "@TEL" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Goto(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Unknown(
-                        "Usage: /GOTO <player|room>\nExample: /GOTO alice or /GOTO town_square"
+                        "Usage: @GOTO <player|room>\nExample: @GOTO alice or @GOTO town_square"
                             .to_string(),
                     )
                 }
             }
-            "/LISTCLONES" => {
+            "@LISTCLONES" | "@CLONES" => {
                 if parts.len() > 1 {
                     let username = parts[1].to_lowercase();
                     TinyMushCommand::ListClones(Some(username))
@@ -1383,15 +1383,15 @@ impl TinyMushProcessor {
                     TinyMushCommand::ListClones(None)
                 }
             }
-            "/CLONESTATS" | "/CLONESTATUS" => TinyMushCommand::CloneStats,
-            "/CONVERT_CURRENCY" | "/CONVERTCURRENCY" | "/MIGRATE" => {
+            "@CLONESTATS" | "@CLONESTATUS" => TinyMushCommand::CloneStats,
+            "@CONVERT_CURRENCY" | "@CONVERTCURRENCY" | "@MIGRATE" => {
                 if parts.len() < 2 {
-                    return TinyMushCommand::Unknown("Usage: /CONVERT_CURRENCY <decimal|multitier> [--dry-run]\nExample: /CONVERT_CURRENCY multitier\nExample: /CONVERT_CURRENCY decimal --dry-run".to_string());
+                    return TinyMushCommand::Unknown("Usage: @CONVERT_CURRENCY <decimal|multitier> [--dry-run]\nExample: @CONVERT_CURRENCY multitier\nExample: @CONVERT_CURRENCY decimal --dry-run".to_string());
                 }
 
                 let currency_type = parts[1].to_lowercase();
                 if currency_type != "decimal" && currency_type != "multitier" {
-                    return TinyMushCommand::Unknown("Invalid currency type. Must be 'decimal' or 'multitier'.\nUsage: /CONVERT_CURRENCY <decimal|multitier> [--dry-run]".to_string());
+                    return TinyMushCommand::Unknown("Invalid currency type. Must be 'decimal' or 'multitier'.\nUsage: @CONVERT_CURRENCY <decimal|multitier> [--dry-run]".to_string());
                 }
 
                 // Check for --dry-run flag
@@ -1401,7 +1401,7 @@ impl TinyMushProcessor {
             }
 
             // Backup & Recovery commands (Phase 9.5)
-            "/BACKUP" => {
+            "@BACKUP" => {
                 if parts.len() > 1 {
                     // Backup with custom name
                     TinyMushCommand::Backup(Some(parts[1..].join(" ")))
@@ -1410,29 +1410,29 @@ impl TinyMushProcessor {
                     TinyMushCommand::Backup(None)
                 }
             }
-            "/RESTORE" | "/RESTOREBACKUP" => {
+            "@RESTORE" | "@RESTOREBACKUP" => {
                 if parts.len() > 1 {
                     TinyMushCommand::RestoreBackup(parts[1].to_string())
                 } else {
-                    TinyMushCommand::Unknown("Usage: /RESTORE <backup_id>\nUse /LISTBACKUPS to see available backups\nExample: /RESTORE backup_20250112_143022".to_string())
+                    TinyMushCommand::Unknown("Usage: @RESTORE <backup_id>\nUse @LISTBACKUPS to see available backups\nExample: @RESTORE backup_20250112_143022".to_string())
                 }
             }
-            "/LISTBACKUPS" | "/BACKUPS" | "/LSBACKUP" => TinyMushCommand::ListBackups,
-            "/VERIFYBACKUP" | "/VERIFY" => {
+            "@LISTBACKUPS" | "@BACKUPS" | "@LSBACKUP" => TinyMushCommand::ListBackups,
+            "@VERIFYBACKUP" | "@VERIFY" => {
                 if parts.len() > 1 {
                     TinyMushCommand::VerifyBackup(parts[1].to_string())
                 } else {
-                    TinyMushCommand::Unknown("Usage: /VERIFYBACKUP <backup_id>\nExample: /VERIFYBACKUP backup_20250112_143022".to_string())
+                    TinyMushCommand::Unknown("Usage: @VERIFYBACKUP <backup_id>\nExample: @VERIFYBACKUP backup_20250112_143022".to_string())
                 }
             }
-            "/DELETEBACKUP" | "/DELBACKUP" | "/RMBACKUP" => {
+            "@DELETEBACKUP" | "@DELBACKUP" | "@RMBACKUP" => {
                 if parts.len() > 1 {
                     TinyMushCommand::DeleteBackup(parts[1].to_string())
                 } else {
-                    TinyMushCommand::Unknown("Usage: /DELETEBACKUP <backup_id>\nExample: /DELETEBACKUP backup_20250112_143022".to_string())
+                    TinyMushCommand::Unknown("Usage: @DELETEBACKUP <backup_id>\nExample: @DELETEBACKUP backup_20250112_143022".to_string())
                 }
             }
-            "/BACKUPCONFIG" | "/BACKUPCFG" | "/AUTOBACKUP" => {
+            "@BACKUPCONFIG" | "@BACKUPCFG" | "@AUTOBACKUP" => {
                 // Collect all arguments after the command
                 let args = if parts.len() > 1 {
                     parts[1..].iter().map(|s| s.to_string()).collect()
@@ -1443,27 +1443,27 @@ impl TinyMushProcessor {
             }
 
             // Builder permission management commands (Phase 7)
-            "/BUILDER" => TinyMushCommand::Builder,
-            "/SETBUILDER" => {
+            "@BUILDER" => TinyMushCommand::Builder,
+            "@SETBUILDER" => {
                 if parts.len() > 2 {
                     let username = parts[1].to_lowercase();
                     match parts[2].parse::<u8>() {
                         Ok(level) if level <= 3 => TinyMushCommand::SetBuilder(username, level),
                         Ok(_) => TinyMushCommand::Unknown("Builder level must be 0-3 (0=none, 1=apprentice, 2=builder, 3=architect)".to_string()),
-                        Err(_) => TinyMushCommand::Unknown("Usage: /SETBUILDER <player> <level>\nLevel: 0=none, 1=apprentice, 2=builder, 3=architect\nExample: /SETBUILDER alice 2".to_string()),
+                        Err(_) => TinyMushCommand::Unknown("Usage: @SETBUILDER <player> <level>\nLevel: 0=none, 1=apprentice, 2=builder, 3=architect\nExample: @SETBUILDER alice 2".to_string()),
                     }
                 } else {
-                    TinyMushCommand::Unknown("Usage: /SETBUILDER <player> <level>\nLevel: 0=none, 1=apprentice, 2=builder, 3=architect".to_string())
+                    TinyMushCommand::Unknown("Usage: @SETBUILDER <player> <level>\nLevel: 0=none, 1=apprentice, 2=builder, 3=architect".to_string())
                 }
             }
-            "/REMOVEBUILDER" | "/REVOKEBUILDER" => {
+            "@REMOVEBUILDER" | "@REVOKEBUILDER" => {
                 if parts.len() > 1 {
                     TinyMushCommand::RemoveBuilder(parts[1].to_lowercase())
                 } else {
-                    TinyMushCommand::Unknown("Usage: /REMOVEBUILDER <player>".to_string())
+                    TinyMushCommand::Unknown("Usage: @REMOVEBUILDER <player>".to_string())
                 }
             }
-            "/BUILDERS" | "/BUILDERLIST" => TinyMushCommand::Builders,
+            "@BUILDERS" | "@BUILDERLIST" => TinyMushCommand::Builders,
 
             // Builder world manipulation commands (Phase 7)
             "/DIG" => {
