@@ -82,6 +82,13 @@ data_dir = "./data"
 # to ensure the final packet stays under the 230 byte Meshtastic limit
 max_message_size = 200
 
+# Show chunk markers for debugging out-of-order message delivery
+# When enabled, multi-chunk messages will include " [n/total]" markers
+# Example: "Long message text [1/3]", "continued here [2/3]", "final chunk [3/3]"
+# This helps identify when Meshtastic delivers chunks out of order
+# Default: false
+show_chunk_markers = false
+
 # Automatic backup configuration
 [storage.backup]
 # Enable automatic backups

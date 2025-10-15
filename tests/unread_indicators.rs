@@ -51,6 +51,7 @@ async fn unread_indicators_topics_and_threads() {
         storage: StorageConfig {
             data_dir: data_dir.to_string_lossy().to_string(),
             max_message_size: 230,
+            show_chunk_markers: false,
         },
         message_topics: {
             let mut m = HashMap::new();

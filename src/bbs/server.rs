@@ -3806,30 +3806,59 @@ impl BbsServer {
                 if body.len() > budget {
                     // Auto-chunk oversized body into UTF-8 safe segments of size <= budget.
                     // Send intermediate chunks without prompt; attach prompt only to the last one.
-                    let parts = self.chunk_utf8(body, budget);
+                    
+                    // Calculate chunk marker overhead if enabled
+                    // Markers will be in format " [n/total]" where total <= 99
+                    // Worst case: " [99/99]" = 9 bytes
+                    let marker_overhead = if self.config.storage.show_chunk_markers {
+                        9 // Reserve space for " [nn/nn]" marker
+                    } else {
+                        0
+                    };
+                    
+                    let chunk_budget = budget.saturating_sub(marker_overhead);
+                    let parts = self.chunk_utf8(body, chunk_budget);
                     let total = parts.len();
-                    debug!("Chunking message into {} parts", total);
+                    debug!("Chunking message into {} parts (markers={}, overhead={})", 
+                           total, self.config.storage.show_chunk_markers, marker_overhead);
+                    
                     for (i, chunk) in parts.into_iter().enumerate() {
                         let is_last = i + 1 == total;
-                        debug!("Chunk {}/{}: {} bytes", i + 1, total, chunk.len());
+                        let chunk_num = i + 1;
+                        
+                        debug!("Chunk {}/{}: {} bytes", chunk_num, total, chunk.len());
+                        
                         if is_last {
-                            let clamped = clamp_utf8(&chunk, budget);
-                            let msg = if clamped.ends_with('\n') {
-                                format!("{}{}", clamped, prompt)
+                            let clamped = clamp_utf8(&chunk, chunk_budget);
+                            let clamped_len = clamped.len();
+                            let with_marker = if self.config.storage.show_chunk_markers {
+                                format!("{} [{}/{}]", clamped, chunk_num, total)
                             } else {
-                                format!("{}\n{}", clamped, prompt)
+                                clamped
+                            };
+                            
+                            let msg = if with_marker.ends_with('\n') {
+                                format!("{}{}", with_marker, prompt)
+                            } else {
+                                format!("{}\n{}", with_marker, prompt)
                             };
                             debug!(
-                                "Sending last chunk: {} bytes (clamped={}, prompt={})",
+                                "Sending last chunk: {} bytes (clamped={}, marker={}, prompt={})",
                                 msg.len(),
-                                clamped.len(),
+                                clamped_len,
+                                if self.config.storage.show_chunk_markers { marker_overhead } else { 0 },
                                 prompt.len()
                             );
                             self.send_message(node_key, &msg).await?;
                         } else {
-                            // Send as-is (no prompt on intermediate parts)
-                            debug!("Sending intermediate chunk: {} bytes", chunk.len());
-                            self.send_message(node_key, &chunk).await?;
+                            // Send intermediate chunk with marker if enabled
+                            let with_marker = if self.config.storage.show_chunk_markers {
+                                format!("{} [{}/{}]", chunk, chunk_num, total)
+                            } else {
+                                chunk.to_string()
+                            };
+                            debug!("Sending intermediate chunk: {} bytes", with_marker.len());
+                            self.send_message(node_key, &with_marker).await?;
                         }
                     }
                     return Ok(());

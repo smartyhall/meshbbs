@@ -42,6 +42,7 @@ async fn unread_message_count_on_login() {
         storage: StorageConfig {
             data_dir: data_dir.to_string_lossy().to_string(),
             max_message_size: 230,
+            show_chunk_markers: false,
         },
         message_topics: {
             let mut m = HashMap::new();

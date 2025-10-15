@@ -44,6 +44,7 @@ async fn test_config_with_beacon(enabled: bool, frequency: &str) -> Config {
                 .unwrap()
                 .to_string(),
             max_message_size: 230,
+            show_chunk_markers: false,
         },
         message_topics: HashMap::new(),
         logging: LoggingConfig {

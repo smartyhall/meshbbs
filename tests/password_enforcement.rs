@@ -39,6 +39,7 @@ async fn passwordless_user_prompt_and_set() {
         storage: StorageConfig {
             data_dir: data_dir.clone(),
             max_message_size: 230,
+            show_chunk_markers: false,
         },
         message_topics: Default::default(),
         logging: LoggingConfig {

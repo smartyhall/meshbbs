@@ -171,6 +171,9 @@ pub struct MeshtasticConfig {
 pub struct StorageConfig {
     pub data_dir: String,
     pub max_message_size: usize,
+    /// Add [n/total] chunk markers to multi-part messages to help detect out-of-order delivery
+    #[serde(default)]
+    pub show_chunk_markers: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -383,6 +386,7 @@ impl Default for Config {
             storage: StorageConfig {
                 data_dir: "./data".to_string(),
                 max_message_size: 200, // Reduced from 230 to account for ~30 bytes Meshtastic protocol overhead
+                show_chunk_markers: false, // Set to true to add [n/total] markers for debugging out-of-order delivery
             },
             message_topics,
             logging: LoggingConfig {

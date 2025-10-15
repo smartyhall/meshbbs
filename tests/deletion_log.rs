@@ -33,6 +33,7 @@ async fn base_config(dir: &str) -> Config {
         storage: StorageConfig {
             data_dir: dir.to_string(),
             max_message_size: 1024,
+            show_chunk_markers: false,
         },
         message_topics: HashMap::new(),
         logging: LoggingConfig {

@@ -50,6 +50,7 @@ fn sysop_user_seeded_with_hash() {
             storage: StorageConfig {
                 data_dir: datadir.to_str().unwrap().to_string(),
                 max_message_size: 1024,
+            show_chunk_markers: false,
             },
             message_topics: HashMap::new(),
             logging: LoggingConfig {

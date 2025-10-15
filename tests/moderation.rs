@@ -53,6 +53,7 @@ async fn base_config() -> Config {
                 .unwrap()
                 .to_string(),
             max_message_size: 1024,
+            show_chunk_markers: false,
         },
         message_topics: topics,
         logging: LoggingConfig {
