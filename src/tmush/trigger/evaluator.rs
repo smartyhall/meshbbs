@@ -855,6 +855,48 @@ mod tests {
         let result = evaluator.evaluate(&node).unwrap();
         assert_eq!(result, Value::Boolean(true));
 
+        // Verify teleport message was added
+        let messages = evaluator.messages();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("Teleported to destination_room"));
+
+        // Verify player moved
+        let player = store.get_player("test_player").unwrap();
+        assert_eq!(player.current_room, "destination_room");
+    }
+
+    #[test]
+    fn test_message_and_teleport_compound() {
+        let (_temp, store, mut context) = create_test_setup();
+
+        // Create player
+        let player =
+            crate::tmush::types::PlayerRecord::new("test_player", "Test Player", "test_room");
+        store.put_player(player).unwrap();
+
+        // Create destination room
+        let dest_room = crate::tmush::types::RoomRecord::world(
+            "destination_room",
+            "Destination",
+            "A new place",
+            "You've been teleported here!",
+        );
+        store.put_room(dest_room).unwrap();
+
+        let mut evaluator = Evaluator::new(&mut context, &store);
+
+        // Parse and execute: message("Flash!") && teleport("destination_room")
+        let script = r#"message("✨ Flash!") && teleport("destination_room")"#;
+        let ast = crate::tmush::trigger::parser::parse_script(script).unwrap();
+        let result = evaluator.evaluate(&ast).unwrap();
+        assert_eq!(result, Value::Boolean(true));
+
+        // Verify BOTH messages were added
+        let messages = evaluator.messages();
+        assert_eq!(messages.len(), 2, "Should have 2 messages, got: {:?}", messages);
+        assert_eq!(messages[0], "✨ Flash!");
+        assert!(messages[1].contains("Teleported to destination_room"));
+
         // Verify player moved
         let player = store.get_player("test_player").unwrap();
         assert_eq!(player.current_room, "destination_room");
