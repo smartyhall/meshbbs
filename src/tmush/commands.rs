@@ -2323,8 +2323,15 @@ impl TinyMushProcessor {
 
         let room_id = player.current_room.clone();
 
+        // Extract object IDs from inventory_stacks for fuzzy matching
+        let inventory_ids: Vec<String> = player
+            .inventory_stacks
+            .iter()
+            .map(|stack| stack.object_id.clone())
+            .collect();
+
         // Use fuzzy matching to find objects in inventory
-        let matches = self.find_objects_by_partial_name(&item_name, &player.inventory);
+        let matches = self.find_objects_by_partial_name(&item_name, &inventory_ids);
 
         // Handle different match scenarios
         let object = match matches.len() {
@@ -2495,8 +2502,15 @@ impl TinyMushProcessor {
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
+        // Extract object IDs from inventory_stacks for fuzzy matching
+        let inventory_ids: Vec<String> = player
+            .inventory_stacks
+            .iter()
+            .map(|stack| stack.object_id.clone())
+            .collect();
+
         // First, try inventory with fuzzy matching
-        let inv_matches = self.find_objects_by_partial_name(&target, &player.inventory);
+        let inv_matches = self.find_objects_by_partial_name(&target, &inventory_ids);
         
         if !inv_matches.is_empty() {
             match inv_matches.len() {
@@ -2966,8 +2980,15 @@ Not fancy, but it gets the job done.",
             Err(e) => return Ok(format!("Error loading player: {}", e)),
         };
 
+        // Extract object IDs from inventory_stacks for fuzzy matching
+        let inventory_ids: Vec<String> = player
+            .inventory_stacks
+            .iter()
+            .map(|stack| stack.object_id.clone())
+            .collect();
+
         // Use fuzzy matching to find objects in inventory
-        let matches = self.find_objects_by_partial_name(&item_name, &player.inventory);
+        let matches = self.find_objects_by_partial_name(&item_name, &inventory_ids);
 
         // Handle different match scenarios
         let object = match matches.len() {
