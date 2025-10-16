@@ -766,14 +766,30 @@ impl TinyMushProcessor {
 
     /// Parse raw input into TinyMUSH command enum
     pub fn parse_command(&self, input: &str) -> TinyMushCommand {
-        let input = input.trim().to_uppercase();
-        let parts: Vec<&str> = input.split_whitespace().collect();
+        let input_trimmed = input.trim();
+        let input_upper = input_trimmed.to_uppercase();
+        
+        // For @ commands, we need to preserve the original case for arguments
+        // (especially for trigger scripts that contain string literals).
+        // The command and subcommand are uppercased at their usage sites.
+        let parts: Vec<&str> = if input_trimmed.starts_with('@') {
+            input_trimmed.split_whitespace().collect()
+        } else {
+            input_upper.split_whitespace().collect()
+        };
 
         if parts.is_empty() {
-            return TinyMushCommand::Unknown(input);
+            return TinyMushCommand::Unknown(input_upper);
         }
+        
+        // For @ commands, uppercase just the command for pattern matching
+        let cmd_for_match = if input_trimmed.starts_with('@') {
+            parts[0].to_uppercase()
+        } else {
+            parts[0].to_string()
+        };
 
-        match parts[0] {
+        match cmd_for_match.as_str() {
             // Movement (single letters)
             "N" | "NORTH" => TinyMushCommand::Move(Direction::North),
             "S" | "SOUTH" => TinyMushCommand::Move(Direction::South),
@@ -855,42 +871,42 @@ impl TinyMushProcessor {
                 if parts.len() > 1 {
                     TinyMushCommand::Take(parts[1..].join(" "))
                 } else {
-                    TinyMushCommand::Unknown(input)
+                    TinyMushCommand::Unknown(input_upper.to_string())
                 }
             }
             "DROP" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Drop(parts[1..].join(" "))
                 } else {
-                    TinyMushCommand::Unknown(input)
+                    TinyMushCommand::Unknown(input_upper.to_string())
                 }
             }
             "USE" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Use(parts[1..].join(" "))
                 } else {
-                    TinyMushCommand::Unknown(input)
+                    TinyMushCommand::Unknown(input_upper.to_string())
                 }
             }
             "POKE" | "PROD" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Poke(parts[1..].join(" "))
                 } else {
-                    TinyMushCommand::Unknown(input)
+                    TinyMushCommand::Unknown(input_upper.to_string())
                 }
             }
             "X" | "EXAMINE" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Examine(parts[1..].join(" "))
                 } else {
-                    TinyMushCommand::Unknown(input)
+                    TinyMushCommand::Unknown(input_upper.to_string())
                 }
             }
             "CRAFT" => {
                 if parts.len() > 1 {
                     TinyMushCommand::Craft(parts[1..].join(" "))
                 } else {
-                    TinyMushCommand::Unknown(input)
+                    TinyMushCommand::Unknown(input_upper.to_string())
                 }
             }
 
@@ -1611,7 +1627,7 @@ impl TinyMushProcessor {
                 }
             }
 
-            _ => TinyMushCommand::Unknown(input),
+            _ => TinyMushCommand::Unknown(input_upper),
         }
     }
 
