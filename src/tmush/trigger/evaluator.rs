@@ -421,21 +421,33 @@ impl<'a> Evaluator<'a> {
             return Err(format!("Object '{}' does not exist", item_id));
         }
 
-        // Add to player's inventory (legacy system)
+        // Add to player's inventory using proper inventory system
+        use crate::tmush::inventory::add_item_to_inventory;
+        use crate::tmush::types::{InventoryConfig, InventoryResult};
+        
         match self.store.get_player(&self.context.player_username) {
             Ok(mut player) => {
-                if !player.inventory.contains(&item_id) {
-                    player.inventory.push(item_id.clone());
-                    player.updated_at = chrono::Utc::now();
-
-                    if let Err(e) = self.store.put_player(player) {
-                        return Err(format!("Failed to grant item: {}", e));
+                match self.store.get_object(&item_id) {
+                    Ok(object) => {
+                        let config = InventoryConfig::default();
+                        match add_item_to_inventory(&mut player, &object, 1, &config) {
+                            InventoryResult::Added { .. } => {
+                                player.updated_at = chrono::Utc::now();
+                                
+                                if let Err(e) = self.store.put_player(player) {
+                                    return Err(format!("Failed to grant item: {}", e));
+                                }
+                                
+                                self.messages.push(format!("🎁 Received: {}!", object.name));
+                                Ok(Value::Boolean(true))
+                            }
+                            InventoryResult::Failed { reason } => {
+                                Err(format!("Could not add item: {}", reason))
+                            }
+                            _ => Ok(Value::Boolean(false)) // Other result types
+                        }
                     }
-
-                    self.messages.push(format!("🎁 Received: {}!", item_id));
-                    Ok(Value::Boolean(true))
-                } else {
-                    Ok(Value::Boolean(false)) // Already have it
+                    Err(e) => Err(format!("Failed to load object: {}", e)),
                 }
             }
             Err(e) => Err(format!("Failed to get player: {}", e)),
@@ -444,27 +456,38 @@ impl<'a> Evaluator<'a> {
 
     fn action_consume(&mut self, _args: &[AstNode]) -> Result<Value, String> {
         // Consume the object that triggered this script (remove from inventory and delete)
+        use crate::tmush::inventory::remove_item_from_inventory;
+        use crate::tmush::types::InventoryResult;
+        
         let object_id = self.context.object_id.clone();
 
-        // Remove from player's inventory
+        // Remove from player's inventory using proper inventory system
         match self.store.get_player(&self.context.player_username) {
             Ok(mut player) => {
-                let initial_len = player.inventory.len();
-                player.inventory.retain(|id| id != &object_id);
+                match remove_item_from_inventory(&mut player, &object_id, 1) {
+                    InventoryResult::Removed { .. } => {
+                        player.updated_at = chrono::Utc::now();
 
-                if player.inventory.len() < initial_len {
-                    player.updated_at = chrono::Utc::now();
+                        if let Err(e) = self.store.put_player(player) {
+                            return Err(format!("Failed to remove from inventory: {}", e));
+                        }
 
-                    if let Err(e) = self.store.put_player(player) {
-                        return Err(format!("Failed to remove from inventory: {}", e));
+                        // Delete the object (optional - could leave as orphan)
+                        // For now, just remove from inventory
+                        
+                        // Get object name for better message
+                        let object_name = self.store
+                            .get_object(&object_id)
+                            .map(|obj| obj.name)
+                            .unwrap_or_else(|_| object_id.clone());
+                            
+                        self.messages.push(format!("💨 {} consumed!", object_name));
+                        Ok(Value::Boolean(true))
                     }
-
-                    // Delete the object (optional - could leave as orphan)
-                    // For now, just remove from inventory
-                    self.messages.push(format!("💨 {} consumed!", object_id));
-                    Ok(Value::Boolean(true))
-                } else {
-                    Ok(Value::Boolean(false)) // Not in inventory
+                    InventoryResult::Failed { .. } => {
+                        Ok(Value::Boolean(false)) // Item not in inventory
+                    }
+                    _ => Ok(Value::Boolean(false)) // Other result types
                 }
             }
             Err(e) => Err(format!("Failed to get player: {}", e)),
@@ -799,9 +822,9 @@ mod tests {
         let result = evaluator.evaluate(&node).unwrap();
         assert_eq!(result, Value::Boolean(true));
 
-        // Verify player has the item
+        // Verify player has the item in inventory_stacks
         let player = store.get_player("test_player").unwrap();
-        assert!(player.inventory.contains(&"magic_key".to_string()));
+        assert!(player.inventory_stacks.iter().any(|s| s.object_id == "magic_key"));
     }
 
     #[test]
@@ -841,10 +864,14 @@ mod tests {
     fn test_consume_action() {
         let (_temp, store, mut context) = create_test_setup();
 
-        // Create player with an item
+        // Create player with an item in inventory_stacks
         let mut player =
             crate::tmush::types::PlayerRecord::new("test_player", "Test Player", "test_room");
-        player.inventory.push("potion".to_string());
+        player.inventory_stacks.push(crate::tmush::types::ItemStack {
+            object_id: "potion".to_string(),
+            quantity: 1,
+            added_at: chrono::Utc::now(),
+        });
         store.put_player(player).unwrap();
 
         // Set context object to the potion
@@ -860,9 +887,9 @@ mod tests {
         let result = evaluator.evaluate(&node).unwrap();
         assert_eq!(result, Value::Boolean(true));
 
-        // Verify item removed from inventory
+        // Verify item removed from inventory_stacks
         let player = store.get_player("test_player").unwrap();
-        assert!(!player.inventory.contains(&"potion".to_string()));
+        assert!(!player.inventory_stacks.iter().any(|s| s.object_id == "potion"));
     }
 
     #[test]

@@ -4238,7 +4238,7 @@ Not fancy, but it gets the job done.",
                 }
 
                 DialogCondition::HasItem { item_id } => {
-                    if !player.inventory.contains(item_id) {
+                    if !Self::player_has_item(&player, item_id) {
                         return Ok(false);
                     }
                 }
@@ -4294,45 +4294,60 @@ Not fancy, but it gets the job done.",
         for action in actions {
             match action {
                 DialogAction::GiveItem { item_id, quantity } => {
-                    // Add item to player inventory
+                    // Add item to player inventory using proper inventory system
+                    use crate::tmush::inventory::add_item_to_inventory;
+                    use crate::tmush::types::{InventoryConfig, InventoryResult};
+                    
                     let mut player = self.store().get_player(player_name)?;
-
-                    for _ in 0..*quantity {
-                        player.inventory.push(item_id.clone());
-                    }
-
-                    self.store().put_player(player)?;
-
-                    let qty_msg = if *quantity > 1 {
-                        format!("{} x{}", item_id, quantity)
-                    } else {
-                        item_id.clone()
+                    
+                    // Get the object to add
+                    let object = match self.store().get_object(item_id) {
+                        Ok(obj) => obj,
+                        Err(_) => {
+                            messages.push(format!("⚠️ Error: Item '{}' not found", item_id));
+                            continue;
+                        }
                     };
-                    messages.push(format!("🎁 You received: {}", qty_msg));
+                    
+                    let config = InventoryConfig::default();
+                    match add_item_to_inventory(&mut player, &object, *quantity, &config) {
+                        InventoryResult::Added { quantity: added, .. } => {
+                            self.store().put_player(player)?;
+                            let qty_msg = if added > 1 {
+                                format!("{} x{}", object.name, added)
+                            } else {
+                                object.name.clone()
+                            };
+                            messages.push(format!("🎁 You received: {}", qty_msg));
+                        }
+                        InventoryResult::Failed { reason } => {
+                            messages.push(format!("⚠️ Could not receive {}: {}", object.name, reason));
+                        }
+                        _ => {} // Other result types not applicable
+                    }
                 }
 
                 DialogAction::TakeItem { item_id, quantity } => {
-                    // Remove item from player inventory
+                    // Remove item from player inventory using proper inventory system
+                    use crate::tmush::inventory::remove_item_from_inventory;
+                    use crate::tmush::types::InventoryResult;
+                    
                     let mut player = self.store().get_player(player_name)?;
 
-                    let mut removed = 0;
-                    for _ in 0..*quantity {
-                        if let Some(pos) = player.inventory.iter().position(|x| x == item_id) {
-                            player.inventory.remove(pos);
-                            removed += 1;
-                        } else {
-                            break;
+                    match remove_item_from_inventory(&mut player, item_id, *quantity) {
+                        InventoryResult::Removed { quantity: removed, .. } => {
+                            self.store().put_player(player)?;
+                            let qty_msg = if removed > 1 {
+                                format!("{} x{}", item_id, removed)
+                            } else {
+                                item_id.clone()
+                            };
+                            messages.push(format!("📤 You gave: {}", qty_msg));
                         }
-                    }
-
-                    if removed > 0 {
-                        self.store().put_player(player)?;
-                        let qty_msg = if removed > 1 {
-                            format!("{} x{}", item_id, removed)
-                        } else {
-                            item_id.clone()
-                        };
-                        messages.push(format!("📤 You gave: {}", qty_msg));
+                        InventoryResult::Failed { reason } => {
+                            messages.push(format!("⚠️ Could not give {}: {}", item_id, reason));
+                        }
+                        _ => {} // Other result types not applicable
                     }
                 }
 
@@ -8608,7 +8623,7 @@ Not fancy, but it gets the job done.",
                 let mut player_count = 0;
                 for player_id in player_ids {
                     if let Ok(player) = store.get_player(&player_id) {
-                        if player.inventory.contains(&object_id) {
+                        if Self::player_has_item(&player, &object_id) {
                             player_count += 1;
                             instance_count += 1;
                         }
@@ -9058,7 +9073,7 @@ Not fancy, but it gets the job done.",
                 
                 for player_id in player_ids {
                     if let Ok(player) = store.get_player(&player_id) {
-                        if player.inventory.contains(&object_id) {
+                        if Self::player_has_item(&player, &object_id) {
                             players_with_object.push(player);
                         }
                     }
@@ -12411,10 +12426,22 @@ Not fancy, but it gets the job done.",
                 // Save updated item
                 store.put_object(item.clone())?;
 
-                // Add to player inventory
+                // Add to player inventory using proper inventory system
+                use crate::tmush::inventory::add_item_to_inventory;
+                use crate::tmush::types::{InventoryConfig, InventoryResult};
+                
                 let mut updated_player = player.clone();
-                updated_player.inventory.push(item_id);
-                store.put_player_async(updated_player).await?;
+                let config = InventoryConfig::default();
+                
+                match add_item_to_inventory(&mut updated_player, &item, 1, &config) {
+                    InventoryResult::Added { .. } => {
+                        store.put_player_async(updated_player).await?;
+                    }
+                    InventoryResult::Failed { reason } => {
+                        return Ok(format!("Could not add {} to inventory: {}", item.name, reason));
+                    }
+                    _ => {} // Other result types not applicable
+                }
 
                 // Save updated housing instance
                 store.put_housing_instance(&instance)?;
