@@ -769,10 +769,16 @@ impl TinyMushProcessor {
         let input_trimmed = input.trim();
         let input_upper = input_trimmed.to_uppercase();
         
-        // For @ commands, we need to preserve the original case for arguments
-        // (especially for trigger scripts that contain string literals).
-        // The command and subcommand are uppercased at their usage sites.
-        let parts: Vec<&str> = if input_trimmed.starts_with('@') {
+        // Determine if we need to preserve case for this command's arguments.
+        // Most game commands should be case-insensitive, but user-facing text
+        // (chat, emotes, descriptions, trigger scripts) must preserve case.
+        let first_char = input_trimmed.chars().next();
+        let first_word = input_upper.split_whitespace().next().unwrap_or("");
+        let is_text_command = matches!(first_char, Some('\'') | Some(':') | Some(';'))
+            || matches!(first_word, "SAY" | "EMOTE" | "POSE" | "OOC" | "WHISPER" | "WHIS");
+        let preserve_case = input_trimmed.starts_with('@') || is_text_command;
+        
+        let parts: Vec<&str> = if preserve_case {
             input_trimmed.split_whitespace().collect()
         } else {
             input_upper.split_whitespace().collect()
@@ -782,8 +788,8 @@ impl TinyMushProcessor {
             return TinyMushCommand::Unknown(input_upper);
         }
         
-        // For @ commands, uppercase just the command for pattern matching
-        let cmd_for_match = if input_trimmed.starts_with('@') {
+        // For case-preserved commands, uppercase just the command for pattern matching
+        let cmd_for_match = if preserve_case {
             parts[0].to_uppercase()
         } else {
             parts[0].to_string()

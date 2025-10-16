@@ -13,40 +13,40 @@ async fn test_social_command_parsing() {
     let store = TinyMushStore::open(dir.path().join("tinymush")).expect("store");
     let processor = TinyMushProcessor::new(store.clone());
 
-    // Test SAY parsing
+    // Test SAY parsing - should preserve case
     let parsed = processor.parse_command("SAY hello world");
     match parsed {
-        TinyMushCommand::Say(text) => assert_eq!(text, "HELLO WORLD"),
+        TinyMushCommand::Say(text) => assert_eq!(text, "hello world"),
         _ => panic!("Expected Say command"),
     }
 
-    // Test EMOTE parsing
+    // Test EMOTE parsing - should preserve case
     let parsed = processor.parse_command("EMOTE waves");
     match parsed {
-        TinyMushCommand::Emote(text) => assert_eq!(text, "WAVES"),
+        TinyMushCommand::Emote(text) => assert_eq!(text, "waves"),
         _ => panic!("Expected Emote command"),
     }
 
-    // Test WHISPER parsing
+    // Test WHISPER parsing - should preserve case
     let parsed = processor.parse_command("WHISPER alice hello");
     match parsed {
         TinyMushCommand::Whisper(target, message) => {
-            assert_eq!(target, "ALICE");
-            assert_eq!(message, "HELLO");
+            assert_eq!(target, "alice");
+            assert_eq!(message, "hello");
         }
         _ => panic!("Expected Whisper command"),
     }
 
-    // Test shortcuts
+    // Test shortcuts - should preserve case
     let parsed = processor.parse_command("' hello");
     match parsed {
-        TinyMushCommand::Say(text) => assert_eq!(text, "HELLO"),
+        TinyMushCommand::Say(text) => assert_eq!(text, "hello"),
         _ => panic!("Expected Say command from ' shortcut"),
     }
 
     let parsed = processor.parse_command(": waves");
     match parsed {
-        TinyMushCommand::Emote(text) => assert_eq!(text, "WAVES"),
+        TinyMushCommand::Emote(text) => assert_eq!(text, "waves"),
         _ => panic!("Expected Emote command from : shortcut"),
     }
 }
