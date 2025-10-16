@@ -15,6 +15,9 @@
 # BBS data directory
 /data/
 
+# Test data directory
+/test_data/
+
 # Configuration files (keep template)
 config.toml
 !config.example.toml
