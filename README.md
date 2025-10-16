@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,14 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release Notes
+
+**Version 1.1.1** completes the data-driven admin system expansion with comprehensive player and object management commands. This release adds critical missing features that enable runtime editing of all game content without code modification.
+
+**Admin System Enhancements:** Three powerful new admin commands (@GIVE, @TELEPORT, @STATS) provide complete player management capabilities. Room and object editing expanded with ownership transfers, visibility controls (including new Hidden visibility mode for secret rooms), housing tag configuration, exit removal, and lock management. All 10 identified gaps in the data-driven system have been implemented.
+
+**Previous Major Release (v1.1.0):** Complete transformation from basic BBS into fully data-driven, production-ready platform with TinyMUSH game engine, systemd/daemon integration, automated welcome system, message replication infrastructure, and comprehensive content management through six admin command interfaces. See full v1.1.0 changelog below for details.
+
+---
 
 **Version 1.1.0** represents a major milestone of development of meshbbs for me... completing the transformation from a basic bulletin board system into a fully data-driven, production-ready platform. This release encompasses both significant **core BBS infrastructure improvements** and a complete **TinyMUSH game engine** with comprehensive content management capabilities. It also measn that I've completely ported the BBS for the third time. In the 90's it was written in Pascal, then I ported it to Java, and now in its third iteration it has been fully ported to Rust!
 
