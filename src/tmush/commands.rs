@@ -2369,8 +2369,10 @@ impl TinyMushProcessor {
         // Fire OnDrop trigger before dropping
         let trigger_messages = execute_on_drop(&object, &player.username, &room_id, self.store());
 
-        // Remove from player inventory
-        player.inventory.retain(|id| id != &object.id);
+        // Remove from player inventory using inventory system
+        if !Self::remove_item_from_player(&mut player, &object.id, quantity) {
+            return Ok(format!("Error: Failed to remove {} from inventory.", object.name));
+        }
 
         // Add to room
         room.items.push(object.id.clone());
@@ -2430,7 +2432,7 @@ impl TinyMushProcessor {
         let room_id = player.current_room.clone();
 
         // Verify object is in player's inventory
-        if !player.inventory.contains(&object_id) {
+        if !Self::player_has_item(&player, &object_id) {
             return Ok("You don't have that item anymore.".to_string());
         }
 
@@ -2449,8 +2451,10 @@ impl TinyMushProcessor {
         // Fire OnDrop trigger
         let trigger_messages = execute_on_drop(&object, &player.username, &room_id, self.store());
 
-        // Remove from player inventory
-        player.inventory.retain(|id| id != &object.id);
+        // Remove from player inventory using inventory system
+        if !Self::remove_item_from_player(&mut player, &object.id, 1) {
+            return Ok(format!("Error: Failed to remove {} from inventory.", object.name));
+        }
 
         // Add to room
         room.items.push(object.id.clone());
@@ -2619,7 +2623,7 @@ impl TinyMushProcessor {
         };
 
         // Determine quantity if in inventory
-        let quantity = if player.inventory.contains(&object_id) {
+        let quantity = if Self::player_has_item(&player, &object_id) {
             get_item_quantity(&player, &object_id)
         } else {
             1
@@ -2676,7 +2680,9 @@ impl TinyMushProcessor {
         // Check if station requirement is met
         if let Some(required_station) = &recipe.requires_station {
             // Check if player has the station in inventory or is in a room with it
-            let has_station = player.inventory.iter().any(|item_id| item_id.starts_with(required_station));
+            let has_station = player.inventory_stacks
+                .iter()
+                .any(|stack| stack.object_id.starts_with(required_station));
             
             if !has_station {
                 return Ok(format!(
@@ -2691,7 +2697,9 @@ impl TinyMushProcessor {
         for material in &recipe.materials {
             if !material.consumed {
                 // Tool requirement - just need to have it
-                let has_tool = player.inventory.iter().any(|item_id| item_id.starts_with(&material.item_id));
+                let has_tool = player.inventory_stacks
+                    .iter()
+                    .any(|stack| stack.object_id.starts_with(&material.item_id));
                 if !has_tool {
                     missing_materials.push(format!(
                         "{} (tool)",
@@ -2700,13 +2708,14 @@ impl TinyMushProcessor {
                 }
             } else {
                 // Material requirement - need enough to consume
-                let owned_qty = player
-                    .inventory
+                let owned_qty: u32 = player
+                    .inventory_stacks
                     .iter()
-                    .filter(|item_id| item_id.starts_with(&material.item_id))
-                    .count();
+                    .filter(|stack| stack.object_id.starts_with(&material.item_id))
+                    .map(|stack| stack.quantity)
+                    .sum();
 
-                if owned_qty < material.quantity as usize {
+                if owned_qty < material.quantity {
                     missing_materials.push(format!(
                         "{} (need {}, have {})",
                         material.item_id, material.quantity, owned_qty
@@ -2727,21 +2736,28 @@ Missing: {}",
         // Consume materials from inventory (but not tools)
         for material in &recipe.materials {
             if material.consumed {
-                for _ in 0..material.quantity {
-                    // Find and remove one instance of this material
-                    if let Some(pos) = player
-                        .inventory
-                        .iter()
-                        .position(|item_id| item_id.starts_with(&material.item_id))
-                    {
-                        let item_id = player.inventory[pos].clone();
-                        match remove_item_from_inventory(&mut player, &item_id, 1) {
-                            crate::tmush::types::InventoryResult::Removed { .. } => {},
-                            crate::tmush::types::InventoryResult::Failed { reason } => {
-                                return Ok(format!("Failed to remove material {}: {}", material.item_id, reason));
-                            },
-                            _ => {},
-                        }
+                // Find matching items and remove required quantity
+                let matching_stacks: Vec<String> = player
+                    .inventory_stacks
+                    .iter()
+                    .filter(|stack| stack.object_id.starts_with(&material.item_id))
+                    .map(|stack| stack.object_id.clone())
+                    .collect();
+
+                let mut remaining = material.quantity;
+                for object_id in matching_stacks {
+                    if remaining == 0 {
+                        break;
+                    }
+                    
+                    match remove_item_from_inventory(&mut player, &object_id, remaining) {
+                        crate::tmush::types::InventoryResult::Removed { quantity, .. } => {
+                            remaining = remaining.saturating_sub(quantity);
+                        },
+                        crate::tmush::types::InventoryResult::Failed { reason } => {
+                            return Ok(format!("Failed to remove material {}: {}", material.item_id, reason));
+                        },
+                        _ => {},
                     }
                 }
             }
@@ -3055,7 +3071,7 @@ Not fancy, but it gets the job done.",
         };
 
         // Verify object is in player's inventory
-        if !player.inventory.contains(&object_id) {
+        if !Self::player_has_item(&player, &object_id) {
             return Ok("You don't have that item anymore.".to_string());
         }
 
@@ -3115,7 +3131,12 @@ Not fancy, but it gets the job done.",
             Some(obj) => obj,
             None => {
                 // Also check inventory
-                match self.find_object_by_name(&target_name, &player.inventory) {
+                let inventory_ids: Vec<String> = player
+                    .inventory_stacks
+                    .iter()
+                    .map(|stack| stack.object_id.clone())
+                    .collect();
+                match self.find_object_by_name(&target_name, &inventory_ids) {
                     Some(obj) => obj,
                     None => {
                         return Ok(format!("You don't see '{}' here.", target_name));
@@ -12125,6 +12146,22 @@ Not fancy, but it gets the job done.",
         }
 
         matches
+    }
+
+    /// Helper: Check if player has an item in their inventory_stacks
+    fn player_has_item(player: &PlayerRecord, object_id: &str) -> bool {
+        player.inventory_stacks.iter().any(|stack| stack.object_id == object_id)
+    }
+
+    /// Helper: Remove item from player's inventory_stacks
+    fn remove_item_from_player(player: &mut PlayerRecord, object_id: &str, quantity: u32) -> bool {
+        use crate::tmush::inventory::remove_item_from_inventory;
+        use crate::tmush::types::InventoryResult;
+        
+        match remove_item_from_inventory(player, object_id, quantity) {
+            InventoryResult::Removed { .. } => true,
+            _ => false,
+        }
     }
 
     /// Helper: Record ownership transfer in item's history (Phase 5)

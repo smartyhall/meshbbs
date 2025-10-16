@@ -1,0 +1,10 @@
+{
+  "username": "user_16",
+  "access_level": 1,
+  "password_hash": "$argon2id$v=19$m=19456,t=2,p=1$eKX0UYluK5Xsi8bFaSjvFw$0tHsYwrkcvgxw6l1Gou0fO+ou96d46xqU6GeMlP4BrE",
+  "first_login": "2025-10-15T23:41:54.024646Z",
+  "last_login": "2025-10-15T23:41:54.024646Z",
+  "total_messages": 0,
+  "welcome_shown_on_registration": false,
+  "welcome_shown_on_first_login": false
+}
