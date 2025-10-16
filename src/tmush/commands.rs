@@ -8493,6 +8493,71 @@ Not fancy, but it gets the job done.",
                 }
                 Ok(output)
             }
+            "SEARCH" => {
+                if args.is_empty() {
+                    return Ok("Usage: @ROOM SEARCH <pattern>\nExample: @ROOM SEARCH square\nSearches room names and descriptions for the pattern.".to_string());
+                }
+                let search_pattern = args.join(" ").to_lowercase();
+                
+                let room_ids = store.list_room_ids()?;
+                let mut matches = Vec::new();
+                
+                // Search through all rooms
+                for room_id in room_ids {
+                    if let Ok(room) = store.get_room(&room_id) {
+                        let id_lower = room.id.to_lowercase();
+                        let name_lower = room.name.to_lowercase();
+                        let short_desc_lower = room.short_desc.to_lowercase();
+                        let long_desc_lower = room.long_desc.to_lowercase();
+                        
+                        // Calculate score based on where the pattern matches
+                        let mut score = 0;
+                        if id_lower.contains(&search_pattern) {
+                            score += 100; // Exact ID match is highest priority
+                        }
+                        if name_lower.contains(&search_pattern) {
+                            score += 50; // Name match is high priority
+                        }
+                        if short_desc_lower.contains(&search_pattern) {
+                            score += 25; // Short description match
+                        }
+                        if long_desc_lower.contains(&search_pattern) {
+                            score += 10; // Long description match
+                        }
+                        
+                        if score > 0 {
+                            matches.push((room, score));
+                        }
+                    }
+                }
+                
+                if matches.is_empty() {
+                    return Ok(format!("No rooms found matching '{}'.", search_pattern));
+                }
+                
+                // Sort by score (highest first)
+                matches.sort_by(|a, b| b.1.cmp(&a.1));
+                
+                let mut output = format!("Rooms matching '{}' ({} found)\n", search_pattern, matches.len());
+                output.push_str("─────────────────────────────────────────────────────\n");
+                
+                for (room, score) in matches.iter().take(20) {
+                    let flags_str = if room.flags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", room.flags.iter().map(|f| format!("{:?}", f)).collect::<Vec<_>>().join(", "))
+                    };
+                    let exits_count = room.exits.len();
+                    output.push_str(&format!("  {} ({}): {} ({} exits){}\n", 
+                        room.id, score, room.name, exits_count, flags_str));
+                }
+                
+                if matches.len() > 20 {
+                    output.push_str(&format!("\n... and {} more results. Be more specific to narrow search.\n", matches.len() - 20));
+                }
+                
+                Ok(output)
+            }
             "SHOW" => {
                 if args.is_empty() {
                     return Ok("Usage: @ROOM SHOW <id>\nExample: @ROOM SHOW dark_cave".to_string());
@@ -8537,7 +8602,7 @@ Not fancy, but it gets the job done.",
 
                 Ok(output)
             }
-            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SHOW", subcmd)),
+            _ => Ok(format!("Unknown subcommand '{}'. Valid: CREATE, EDIT, DELETE, LIST, SEARCH, SHOW", subcmd)),
         }
     }
 
