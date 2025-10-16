@@ -19,7 +19,7 @@ use crate::tmush::trigger::{
 };
 use crate::tmush::types::{
     AchievementCategory, AchievementRecord, AchievementTrigger, BulletinBoard, BulletinMessage,
-    CurrencyAmount, Direction as TmushDirection, ObjectRecord, ObjectTrigger, RoomFlag, TutorialState,
+    CurrencyAmount, Direction as TmushDirection, ItemStack, ObjectRecord, ObjectTrigger, RoomFlag, TutorialState,
     TutorialStep,
 };
 use crate::tmush::{PlayerRecord, TinyMushError, TinyMushStore};
@@ -209,6 +209,27 @@ pub enum TinyMushCommand {
     /// - Transparency: Actions are logged for accountability
     Players, // @PLAYERS - list all players with status and location
     Goto(String), // @GOTO <player|room> - teleport to player or room
+
+    /// Item and currency management commands
+    ///
+    /// These commands enable administrators to grant items and currency to players:
+    /// - `@GIVE <player> <object_id> [quantity]`: Grant items to player inventory
+    /// - `@GIVE <player> CURRENCY <amount>`: Grant currency to player
+    ///
+    /// Permission requirements:
+    /// - Requires admin level 2+ (Admin or higher)
+    Give(String, Vec<String>), // @GIVE player object/currency [amount]
+    
+    /// Player teleportation and stat management commands
+    ///
+    /// These commands enable administrators to manage players:
+    /// - `@TELEPORT <player> <room>`: Teleport another player to a room
+    /// - `@STATS <player> EDIT <stat> <value>`: Modify player stats (HP, etc.)
+    ///
+    /// Permission requirements:
+    /// - Requires admin level 2+ (Admin or higher)
+    Teleport(String, String), // @TELEPORT player room - teleport player to room
+    Stats(String, Vec<String>), // @STATS player edit/show [stat] [value]
 
     /// Clone monitoring commands (Phase 6 Admin Tools)
     ///
@@ -657,6 +678,15 @@ impl TinyMushProcessor {
                 self.handle_remove_admin(session, username, config).await
             }
             TinyMushCommand::Admins => self.handle_admins(session, config).await,
+            TinyMushCommand::Give(player, args) => {
+                self.handle_give(session, player, args, config).await
+            }
+            TinyMushCommand::Stats(player, args) => {
+                self.handle_stats(session, player, args, config).await
+            }
+            TinyMushCommand::Teleport(player, room) => {
+                self.handle_teleport(session, player, room, config).await
+            }
             TinyMushCommand::Players => self.handle_players(session, config).await,
             TinyMushCommand::Goto(target) => self.handle_goto(session, target, config).await,
             TinyMushCommand::ConvertCurrency(currency_type, dry_run) => {
@@ -1355,6 +1385,22 @@ impl TinyMushProcessor {
                 }
             }
             "@ADMINS" | "@ADMINLIST" => TinyMushCommand::Admins,
+            "@GIVE" => {
+                if parts.len() < 3 {
+                    TinyMushCommand::Unknown("Usage: @GIVE <player> <object_id> [quantity]\n       @GIVE <player> CURRENCY <amount>\nExample: @GIVE alice basic_torch\nExample: @GIVE alice basic_torch 5\nExample: @GIVE alice CURRENCY 1000".to_string())
+                } else {
+                    let player = parts[1].to_lowercase();
+                    TinyMushCommand::Give(player, parts[2..].iter().map(|s| s.to_string()).collect())
+                }
+            }
+            "@STATS" => {
+                if parts.len() < 2 {
+                    TinyMushCommand::Unknown("Usage: @STATS <player> EDIT <stat> <value>\nExample: @STATS alice EDIT HP 100".to_string())
+                } else {
+                    let player = parts[1].to_lowercase();
+                    TinyMushCommand::Stats(player, parts[2..].iter().map(|s| s.to_string()).collect())
+                }
+            }
             "@PLAYERS" | "@WHO" => TinyMushCommand::Players,
             "@WHERE" => {
                 if parts.len() > 1 {
@@ -1365,12 +1411,30 @@ impl TinyMushProcessor {
                     )
                 }
             }
-            "@GOTO" | "@TELEPORT" | "@TEL" => {
+            "@GOTO" | "@TEL" => {
+                // @GOTO is for self-teleportation only
                 if parts.len() > 1 {
                     TinyMushCommand::Goto(parts[1..].join(" "))
                 } else {
                     TinyMushCommand::Unknown(
                         "Usage: @GOTO <player|room>\nExample: @GOTO alice or @GOTO town_square"
+                            .to_string(),
+                    )
+                }
+            }
+            "@TELEPORT" => {
+                // @TELEPORT can be used for self or to teleport others (admin only)
+                if parts.len() == 2 {
+                    // @TELEPORT <target> - self teleport (like @GOTO)
+                    TinyMushCommand::Goto(parts[1..].join(" "))
+                } else if parts.len() > 2 {
+                    // @TELEPORT <player> <room> - admin teleporting another player
+                    let player = parts[1].to_lowercase();
+                    let room = parts[2..].join(" ");
+                    TinyMushCommand::Teleport(player, room)
+                } else {
+                    TinyMushCommand::Unknown(
+                        "Usage: @TELEPORT <target>  (self teleport)\n       @TELEPORT <player> <room>  (admin only)\nExample: @TELEPORT town_square\nExample: @TELEPORT alice tavern"
                             .to_string(),
                     )
                 }
@@ -9169,9 +9233,17 @@ Not fancy, but it gets the job done.",
 
             response.push_str("Available Admin Commands:\n");
             response.push_str("  @ADMINS - List all administrators\n");
+            if player.admin_level() >= 1 {
+                response.push_str("  @PLAYERS - List all players with location\n");
+                response.push_str("  @GOTO <player|room> - Teleport to player or room\n");
+            }
             if player.admin_level() >= 2 {
                 response.push_str("  @SETADMIN <player> <level> - Grant admin privileges\n");
                 response.push_str("  @REMOVEADMIN <player> - Revoke admin privileges\n");
+                response.push_str("  @GIVE <player> <object_id> [qty] - Grant items to player\n");
+                response.push_str("  @GIVE <player> CURRENCY <amt> - Grant currency to player\n");
+                response.push_str("  @TELEPORT <player> <room> - Teleport player to room\n");
+                response.push_str("  @STATS <player> EDIT <stat> <value> - Edit player stats\n");
             }
             if player.admin_level() >= 3 {
                 response.push_str("  @EDITROOM <room> <desc> - Edit room descriptions\n");
@@ -9470,6 +9542,271 @@ Not fancy, but it gets the job done.",
                 Ok(response)
             }
             Err(e) => Ok(format!("❌ Error listing administrators: {}", e)),
+        }
+    }
+
+    /// Handle `@GIVE` command - grant items or currency to a player
+    ///
+    /// Grants items or currency to a player's inventory. Admin level 2+ required.
+    ///
+    /// # Usage
+    /// - `@GIVE <player> <object_id> [quantity]`: Grant items to player
+    /// - `@GIVE <player> CURRENCY <amount>`: Grant currency to player
+    ///
+    /// # Permission Requirements
+    /// - Caller must be admin level 2+ (Admin or higher)
+    ///
+    /// # Examples
+    /// ```text
+    /// @GIVE alice basic_torch
+    /// @GIVE alice basic_torch 5
+    /// @GIVE alice CURRENCY 1000
+    /// ```
+    async fn handle_give(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        args: Vec<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check admin permissions (level 2+ required)
+        if player.admin_level() < 2 {
+            return Ok("❌ Permission denied. Requires admin level 2+ (Admin or higher).".to_string());
+        }
+
+        let store = self.store();
+
+        // Load target player
+        let mut target = match store.get_player(&target_username) {
+            Ok(p) => p,
+            Err(_) => {
+                return Ok(format!(
+                    "❌ Player '{}' not found.",
+                    target_username
+                ));
+            }
+        };
+
+        if args.is_empty() {
+            return Ok("❌ Usage: @GIVE <player> <object_id> [quantity]\n       @GIVE <player> CURRENCY <amount>".to_string());
+        }
+
+        // Check if giving currency
+        if args[0].eq_ignore_ascii_case("CURRENCY") {
+            if args.len() < 2 {
+                return Ok("❌ Usage: @GIVE <player> CURRENCY <amount>".to_string());
+            }
+
+            let amount: i64 = match args[1].parse() {
+                Ok(amt) => amt,
+                Err(_) => {
+                    return Ok(format!("❌ Invalid amount: {}", args[1]));
+                }
+            };
+
+            // Add currency matching the player's current currency type
+            let to_add = match target.currency {
+                CurrencyAmount::Decimal { .. } => CurrencyAmount::decimal(amount),
+                CurrencyAmount::MultiTier { .. } => CurrencyAmount::multi_tier(amount),
+            };
+
+            target.currency = match target.currency.add(&to_add) {
+                Ok(new_amount) => new_amount,
+                Err(e) => {
+                    return Ok(format!("❌ Failed to add currency: {}", e));
+                }
+            };
+
+            let display_name = target.display_name.clone();
+            let currency_value = target.currency.base_value();
+            store.put_player_async(target).await?;
+
+            return Ok(format!(
+                "✅ Granted {} currency to {}.\nNew balance: {}",
+                amount, display_name, currency_value
+            ));
+        }
+
+        // Giving an object
+        let object_id = &args[0];
+        let quantity: u32 = if args.len() > 1 {
+            match args[1].parse() {
+                Ok(qty) => qty,
+                Err(_) => {
+                    return Ok(format!("❌ Invalid quantity: {}", args[1]));
+                }
+            }
+        } else {
+            1
+        };
+
+        // Verify object exists
+        let obj = match store.get_object(object_id) {
+            Ok(o) => o,
+            Err(_) => {
+                return Ok(format!("❌ Object '{}' not found.", object_id));
+            }
+        };
+
+        // Check if object already exists in inventory (for stacking)
+        if let Some(stack) = target.inventory_stacks.iter_mut().find(|s| s.object_id == *object_id) {
+            stack.quantity += quantity;
+        } else {
+            // Create new stack
+            target.inventory_stacks.push(ItemStack::new(object_id.clone(), quantity));
+        }
+
+        let display_name = target.display_name.clone();
+        store.put_player_async(target).await?;
+
+        Ok(format!(
+            "✅ Granted {}x {} to {}.",
+            quantity, obj.name, display_name
+        ))
+    }
+
+    /// Handle `@TELEPORT` command - teleport a player to a room (admin only)
+    ///
+    /// Teleports another player to a specified room. Admin level 2+ required.
+    ///
+    /// # Usage
+    /// - `@TELEPORT <player> <room>`: Teleport player to room
+    ///
+    /// # Permission Requirements
+    /// - Caller must be admin level 2+ (Admin or higher)
+    ///
+    /// # Example
+    /// ```text
+    /// @TELEPORT alice town_square
+    /// @TELEPORT bob tavern
+    /// ```
+    async fn handle_teleport(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        room_id: String,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check admin permissions (level 2+ required)
+        if player.admin_level() < 2 {
+            return Ok("❌ Permission denied. Requires admin level 2+ (Admin or higher).".to_string());
+        }
+
+        let store = self.store();
+
+        // Load target player
+        let mut target = match store.get_player(&target_username) {
+            Ok(p) => p,
+            Err(_) => {
+                return Ok(format!(
+                    "❌ Player '{}' not found.",
+                    target_username
+                ));
+            }
+        };
+
+        // Verify room exists
+        if store.get_room(&room_id).is_err() {
+            return Ok(format!("❌ Room '{}' not found.", room_id));
+        }
+
+        let display_name = target.display_name.clone();
+        target.current_room = room_id.clone();
+        store.put_player_async(target).await?;
+
+        Ok(format!(
+            "✅ Teleported {} to room '{}'.",
+            display_name, room_id
+        ))
+    }
+
+    /// Handle `@STATS` command - view or edit player statistics
+    ///
+    /// View or modify player statistics like HP, max HP, etc. Admin level 2+ required for editing.
+    ///
+    /// # Usage
+    /// - `@STATS <player> EDIT <stat> <value>`: Modify player stat
+    ///
+    /// # Permission Requirements
+    /// - Caller must be admin level 2+ (Admin or higher)
+    ///
+    /// # Examples
+    /// ```text
+    /// @STATS alice EDIT HP 100
+    /// @STATS bob EDIT HP 50
+    /// ```
+    async fn handle_stats(
+        &mut self,
+        session: &Session,
+        target_username: String,
+        args: Vec<String>,
+        config: &Config,
+    ) -> Result<String> {
+        let player = match self.get_or_create_player(session).await {
+            Ok(player) => player,
+            Err(e) => return Ok(format!("Error loading player: {}", e)),
+        };
+
+        // Check admin permissions (level 2+ required)
+        if player.admin_level() < 2 {
+            return Ok("❌ Permission denied. Requires admin level 2+ (Admin or higher).".to_string());
+        }
+
+        let store = self.store();
+
+        // Load target player
+        let mut target = match store.get_player(&target_username) {
+            Ok(p) => p,
+            Err(_) => {
+                return Ok(format!(
+                    "❌ Player '{}' not found.",
+                    target_username
+                ));
+            }
+        };
+
+        if args.is_empty() {
+            return Ok("❌ Usage: @STATS <player> EDIT <stat> <value>\nExample: @STATS alice EDIT HP 100".to_string());
+        }
+
+        // Handle EDIT subcommand
+        if args[0].eq_ignore_ascii_case("EDIT") {
+            if args.len() < 3 {
+                return Ok("❌ Usage: @STATS <player> EDIT <stat> <value>".to_string());
+            }
+
+            let stat_name = args[1].to_uppercase();
+            let value: u32 = match args[2].parse() {
+                Ok(v) => v,
+                Err(_) => {
+                    return Ok(format!("❌ Invalid value: {}", args[2]));
+                }
+            };
+
+            match stat_name.as_str() {
+                "HP" => {
+                    target.stats.hp = value;
+                    let display_name = target.display_name.clone();
+                    store.put_player_async(target).await?;
+                    Ok(format!(
+                        "✅ Set {}'s HP to {}.",
+                        display_name, value
+                    ))
+                }
+                _ => Ok(format!("❌ Unknown stat: {}\nAvailable: HP", stat_name)),
+            }
+        } else {
+            Ok("❌ Usage: @STATS <player> EDIT <stat> <value>".to_string())
         }
     }
 
