@@ -1015,7 +1015,7 @@ Legendary piece of equipment.",
 pub fn seed_npc_dialogues_if_needed(
     store: &crate::tmush::storage::TinyMushStore,
 ) -> Result<usize, crate::tmush::errors::TinyMushError> {
-    use crate::tmush::types::{DialogChoice, DialogNode};
+    use crate::tmush::types::{DialogAction, DialogChoice, DialogCondition, DialogNode};
     use std::collections::HashMap;
 
     let mut updated = 0;
