@@ -8904,6 +8904,14 @@ Not fancy, but it gets the job done.",
                             
                             let script = args[3..].join(" ");
                             
+                            // Normalize smart/curly quotes to straight quotes
+                            // macOS and some terminals auto-convert quotes which breaks DSL parsing
+                            let script = script
+                                .replace('\u{201C}', "\"")  // " LEFT DOUBLE QUOTATION MARK
+                                .replace('\u{201D}', "\"")  // " RIGHT DOUBLE QUOTATION MARK
+                                .replace('\u{2018}', "'")   // ' LEFT SINGLE QUOTATION MARK
+                                .replace('\u{2019}', "'");  // ' RIGHT SINGLE QUOTATION MARK
+                            
                             // Validate script is not empty
                             if script.trim().is_empty() {
                                 return Ok("Trigger script cannot be empty. Use 'REMOVE' to delete a trigger.".to_string());
@@ -13691,14 +13699,14 @@ mod tests {
             TinyMushCommand::Look(Some("SWORD".to_string()))
         );
 
-        // Social commands
+        // Social commands - now preserve case
         assert_eq!(
             processor.parse_command("say hello"),
-            TinyMushCommand::Say("HELLO".to_string())
+            TinyMushCommand::Say("hello".to_string())
         );
         assert_eq!(
             processor.parse_command("' hello world"),
-            TinyMushCommand::Say("HELLO WORLD".to_string())
+            TinyMushCommand::Say("hello world".to_string())
         );
 
         // System commands
