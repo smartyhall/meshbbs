@@ -74,7 +74,7 @@ fn test_weather_suffix_not_match() {
 
 #[test]
 fn test_alternate_prefix_exclamation() {
-    let parser = PublicCommandParser::new_with_prefix(Some("!".to_string()));
+    let parser = PublicCommandParser::new_with_prefix(Some("!".to_string()), None);
     match parser.parse("!HELP") {
         PublicCommand::Help => {}
         other => panic!("Expected Help with '!' prefix, got {:?}", other),
@@ -91,5 +91,42 @@ fn test_alternate_prefix_exclamation() {
     match parser.parse("#SLOT") {
         PublicCommand::Unknown => {}
         other => panic!("Expected Unknown for '#' prefix, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_help_command_menu() {
+    let parser = PublicCommandParser::new_with_prefix(None, Some("MENU".to_string()));
+    match parser.parse("^MENU") {
+        PublicCommand::Help => {}
+        other => panic!("Expected Help with MENU keyword, got {:?}", other),
+    }
+    // Old HELP command should not work
+    match parser.parse("^HELP") {
+        PublicCommand::Unknown => {}
+        other => panic!("Expected Unknown for HELP when MENU is configured, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_help_command_info() {
+    let parser = PublicCommandParser::new_with_prefix(None, Some("INFO".to_string()));
+    match parser.parse("^INFO") {
+        PublicCommand::Help => {}
+        other => panic!("Expected Help with INFO keyword, got {:?}", other),
+    }
+    match parser.parse("^info") {
+        PublicCommand::Help => {}
+        other => panic!("Expected Help with lowercase info, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_help_command_invalid_fallback() {
+    // Invalid help command should fall back to HELP
+    let parser = PublicCommandParser::new_with_prefix(None, Some("EMERGENCY".to_string()));
+    match parser.parse("^HELP") {
+        PublicCommand::Help => {}
+        other => panic!("Expected Help to fallback to default when invalid keyword provided, got {:?}", other),
     }
 }

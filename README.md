@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,8 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release Notes
+
+**Version 1.1.2** adds configurable help command keywords to address emergency assistance protocol concerns on some mesh networks.
 
 **Version 1.1.1** completes the data-driven admin system expansion with comprehensive player and object management commands. This release adds critical missing features that enable runtime editing of all game content without code modification.
 

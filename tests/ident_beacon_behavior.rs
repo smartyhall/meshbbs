@@ -20,6 +20,7 @@ async fn test_config_with_beacon(enabled: bool, frequency: &str) -> Config {
             sysop_password_hash: None,
             public_command_prefix: None,
             allow_public_login: true,
+            help_command: "HELP".to_string(),
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

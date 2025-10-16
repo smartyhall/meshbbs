@@ -275,6 +275,7 @@ pub fn private_guide(
     suggested_callsign: &str,
     emoji: &str,
     cmd_prefix: char,
+    help_cmd: &str,
 ) -> String {
     format!(
         "👋 Welcome to Meshtastic, {}!\n\
@@ -285,8 +286,8 @@ pub fn private_guide(
         \n\
         Suggestion: \"{} {}\"\n\
         \n\
-        Questions? Send {}HELP to explore MeshBBS!",
-        node_name, emoji, suggested_callsign, cmd_prefix
+        Questions? Send {}{} to explore MeshBBS!",
+        node_name, emoji, suggested_callsign, cmd_prefix, help_cmd
     )
 }
 
@@ -503,16 +504,16 @@ mod tests {
 
     #[test]
     fn test_private_guide_contains_key_info() {
-        let guide = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '^');
+        let guide = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '^', "HELP");
         assert!(guide.contains("CONFIG"));
         assert!(guide.contains("USER"));
         assert!(guide.contains("Brave Eagle"));
         assert!(guide.contains("🦅"));
         assert!(guide.contains("^HELP"));
 
-        // Test with different prefix
-        let guide_alt = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '!');
-        assert!(guide_alt.contains("!HELP"));
+        // Test with different prefix and help command
+        let guide_alt = private_guide("Meshtastic B4E1", "Brave Eagle", "🦅", '!', "MENU");
+        assert!(guide_alt.contains("!MENU"));
     }
 
     #[test]

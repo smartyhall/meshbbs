@@ -24,6 +24,7 @@ async fn unread_message_count_on_login() {
             sysop_password_hash: None,
             public_command_prefix: None,
             allow_public_login: true,
+            help_command: "HELP".to_string(),
         },
         meshtastic: MeshtasticConfig {
             port: "".into(),

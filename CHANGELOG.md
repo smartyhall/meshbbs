@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.1] - 2025-10-15
+## [1.1.2] - 2025-01-16
+
+### Added
+- **Configurable Help Command**: The public help command keyword can now be configured to use "HELP", "MENU", or "INFO" instead of the default "HELP". This addresses networks where !HELP might be reserved for emergency assistance (e.g., 911-style emergency calls). Configure via `help_command` in the `[bbs]` section of config.toml. All help text generation throughout the system (ident beacons, public broadcasts, DM help, verbose help, and welcome messages) now uses the configured keyword.
+
+## [1.1.1] - 2025-01-15
 
 ### Added - Complete Data-Driven Admin System
 

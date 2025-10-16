@@ -152,7 +152,7 @@ pub struct BbsServer {
 }
 
 // Verbose HELP material & chunker (outside impl so usable without Self scoping issues during compilation ordering)
-fn verbose_help_with_prefix(pfx: char) -> String {
+fn verbose_help_with_prefix(pfx: char, help_cmd: &str) -> String {
     format!(
         concat!(
         "Meshbbs Extended Help\n",
@@ -163,16 +163,17 @@ fn verbose_help_with_prefix(pfx: char) -> String {
         "Moderator (level 5+):\n  Threads:  D<n> delete  P<n> pin/unpin  R<n> <title> rename  K lock/unlock area\n  Read:     D delete     P pin/unpin     R <title>            K lock/unlock area\n\n",
         "Sysop (level 10):\n  G @user=LEVEL|ROLE      Grant level (1/5/10) or USER/MOD/SYSOP\n\n",
         "Administration (mod/sysop):\n  USERS [pattern]         List users (filter optional)\n  WHO                     Show logged-in users\n  USERINFO <user>         Detailed user info\n  SESSIONS                List all sessions\n  KICK <user>             Force logout user\n  BROADCAST <msg>         Broadcast to all\n  ADMIN / DASHBOARD       System overview\n\n",
-        "Misc:\n  HELP        Compact help\n  HELP+ / HELP V  Verbose help (this)\n  Weather (public)       Send WEATHER on public channel\n  Slot Machine (public)  {p}SLOT or {p}SLOTMACHINE to play\n  Slot Stats (public)    {p}SLOTSTATS\n  Magic 8-Ball (public)  {p}8BALL\n  Fortune (public)       {p}FORTUNE for classic Unix wisdom\n\n",
+        "Misc:\n  {h}        Compact help\n  {h}+ / {h} V  Verbose help (this)\n  Weather (public)       Send WEATHER on public channel\n  Slot Machine (public)  {p}SLOT or {p}SLOTMACHINE to play\n  Slot Stats (public)    {p}SLOTSTATS\n  Magic 8-Ball (public)  {p}8BALL\n  Fortune (public)       {p}FORTUNE for classic Unix wisdom\n\n",
         "Limits:\n  Max frame ~230 bytes; verbose help auto-splits.\n"),
-        p = pfx
+        p = pfx,
+        h = help_cmd
     )
 }
 
-fn chunk_verbose_help_with_prefix(pfx: char) -> Vec<String> {
+fn chunk_verbose_help_with_prefix(pfx: char, help_cmd: &str) -> Vec<String> {
     const MAX: usize = 230;
     let mut chunks = Vec::new();
-    let verbose = verbose_help_with_prefix(pfx);
+    let verbose = verbose_help_with_prefix(pfx, help_cmd);
     let mut current = String::new();
     for line in verbose.lines() {
         let candidate_len = current.len() + line.len() + 1;
@@ -450,6 +451,7 @@ impl BbsServer {
             ),
             public_parser: PublicCommandParser::new_with_prefix(
                 config.bbs.public_command_prefix.clone(),
+                Some(config.bbs.help_command.clone()),
             ),
             #[cfg(feature = "weather")]
             weather_service: WeatherService::new(config.weather.clone()),
@@ -860,12 +862,14 @@ impl BbsServer {
         };
 
         let ident_prefix = self.public_parser.primary_prefix_char();
+        let help_cmd = self.public_parser.help_command();
         let ident_msg = format!(
-            "[IDENT] {} ({}) - {} UTC - Type {}HELP for commands",
+            "[IDENT] {} ({}) - {} UTC - Type {}{} for commands",
             self.config.bbs.name,
             id_display,
             now.format("%Y-%m-%d %H:%M:%S"),
-            ident_prefix
+            ident_prefix,
+            help_cmd
         );
 
         // Send to public channel
@@ -1986,8 +1990,9 @@ impl BbsServer {
         // Send private guide if enabled
         if self.config.welcome.private_guide {
             let cmd_prefix = self.public_parser.primary_prefix_char();
+            let help_cmd = self.public_parser.help_command();
             let guide =
-                welcome::private_guide(&event.long_name, &suggested_callsign, &emoji, cmd_prefix);
+                welcome::private_guide(&event.long_name, &suggested_callsign, &emoji, cmd_prefix, help_cmd);
 
             // Send via scheduler as a reliable DM
             if let Some(scheduler) = &self.scheduler {
@@ -2268,7 +2273,7 @@ impl BbsServer {
                 {
                     // tolerate minor spacing variants - store chunks to send after borrow ends
                     let chunks =
-                        chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char());
+                        chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char(), self.public_parser.help_command());
                     deferred_chunks = Some(chunks);
                 } else if upper == "H"
                     || (upper == "?" && session.state != super::session::SessionState::TinyHack)
@@ -3288,8 +3293,9 @@ impl BbsServer {
 
                         // Create broadcast message showing available public commands with chunking
                         let primary_prefix = self.public_parser.primary_prefix_char();
+                        let help_cmd = self.public_parser.help_command();
                         let mut public_commands = vec![
-                            format!("{p}HELP - Show this help", p = primary_prefix),
+                            format!("{p}{h} - Show this help", p = primary_prefix, h = help_cmd),
                             format!("{p}LOGIN <user> - Register for BBS", p = primary_prefix),
                         ];
 
@@ -3313,8 +3319,10 @@ impl BbsServer {
                         debug!("Processing HELP DM for node {} (0x{:08x}). Raw ev.source={}, node_key='{}'", node_key, ev.source, ev.source, node_key);
 
                         let help_text = format!(
-                            "[{}] HELP: REGISTER <user> <pass>; then LOGIN <user> <pass>. Type HELP in DM for more.",
-                            self.config.bbs.name
+                            "[{}] {}: REGISTER <user> <pass>; then LOGIN <user> <pass>. Type {} in DM for more.",
+                            self.config.bbs.name,
+                            help_cmd,
+                            help_cmd
                         );
 
                         match self.send_message(&node_key, &help_text).await {
@@ -3911,7 +3919,7 @@ impl BbsServer {
             session.update_activity();
             if upper == "HELP+" || upper == "HELP V" || upper == "HELP  V" || upper == "HELP  +" {
                 let chunks =
-                    chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char());
+                    chunk_verbose_help_with_prefix(self.public_parser.primary_prefix_char(), self.public_parser.help_command());
                 let total = chunks.len();
                 for (i, chunk) in chunks.into_iter().enumerate() {
                     let last = i + 1 == total;

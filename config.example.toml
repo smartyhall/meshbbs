@@ -33,6 +33,11 @@ welcome_message = "Welcome to this Mesh BBS"
 # Default is "^" if omitted
 public_command_prefix = "^"
 
+# Public help command keyword (HELP, MENU, or INFO)
+# This addresses networks where !HELP might be used for emergency assistance
+# Default is "HELP" if omitted or invalid
+help_command = "HELP"
+
 # Allow public channel LOGIN command (security consideration)
 # When false, users must initiate login via direct message only
 # Recommended: false (prevents username enumeration on public channels)

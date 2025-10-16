@@ -105,10 +105,18 @@ pub struct BbsConfig {
     /// Defaults to true for backwards compatibility. Set to false for enhanced security.
     #[serde(default = "default_allow_public_login")]
     pub allow_public_login: bool,
+    /// Public help command keyword. Must be one of: "HELP", "MENU", "INFO".
+    /// Defaults to "HELP" if unset or invalid.
+    #[serde(default = "default_help_command")]
+    pub help_command: String,
 }
 
 fn default_allow_public_login() -> bool {
     true
+}
+
+fn default_help_command() -> String {
+    "HELP".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -368,6 +376,7 @@ impl Default for Config {
                 sysop_password_hash: None,
                 public_command_prefix: Some("^".to_string()),
                 allow_public_login: true,
+                help_command: "HELP".to_string(),
             },
             meshtastic: MeshtasticConfig {
                 port: "/dev/ttyUSB0".to_string(),

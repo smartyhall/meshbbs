@@ -138,21 +138,36 @@ impl PublicState {
 #[derive(Clone)]
 pub struct PublicCommandParser {
     prefix: char,
+    help_command: String,
 }
 
 impl PublicCommandParser {
-    /// Create a parser with a single prefix. If `prefix_opt` is None or invalid, defaults to '^'.
-    pub fn new_with_prefix(prefix_opt: Option<String>) -> Self {
+    /// Create a parser with a single prefix and help command keyword.
+    /// If `prefix_opt` is None or invalid, defaults to '^'.
+    /// If `help_command_opt` is None or invalid, defaults to "HELP".
+    pub fn new_with_prefix(prefix_opt: Option<String>, help_command_opt: Option<String>) -> Self {
         let default = '^';
         let allowed: &[char] = &['^', '!', '+', '$', '/', '>'];
         let p = prefix_opt
             .and_then(|s| s.chars().next())
             .filter(|c| allowed.contains(c))
             .unwrap_or(default);
-        Self { prefix: p }
+        
+        let allowed_help: &[&str] = &["HELP", "MENU", "INFO"];
+        let help_cmd = help_command_opt
+            .filter(|s| allowed_help.iter().any(|&a| a.eq_ignore_ascii_case(s)))
+            .unwrap_or_else(|| "HELP".to_string())
+            .to_uppercase();
+        
+        Self { prefix: p, help_command: help_cmd }
     }
     pub fn new() -> Self {
-        Self::new_with_prefix(None)
+        Self::new_with_prefix(None, None)
+    }
+    
+    /// Returns the configured help command keyword for use in help text.
+    pub fn help_command(&self) -> &str {
+        &self.help_command
     }
 
     /// Returns the configured prefix for use in help text and parsing.
@@ -171,7 +186,7 @@ impl PublicCommandParser {
             return PublicCommand::Unknown;
         }
         let body: String = chars.collect();
-        if body.eq_ignore_ascii_case("HELP") || body == "?" {
+        if body.eq_ignore_ascii_case(&self.help_command) || body == "?" {
             trace!("Parsed HELP from '{}'", raw);
             return PublicCommand::Help;
         }
