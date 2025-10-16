@@ -1311,27 +1311,53 @@ pub fn seed_npc_dialogues_if_needed(
                 .with_choice(DialogChoice::new("Never mind").exit()));
 
                 tree.insert("prices".to_string(), DialogNode::new(
-                    "I've got a few items on hand: A basic knife (15 credits) - handy for cutting rope and \
-                    general tasks. A signal booster (50 credits) - essential for wilderness travel. More items \
-                    available at the main shop!"
+                    "I've got a few items on hand:\n\n\
+                    • Basic Knife - 15 credits. Handy for cutting rope and general tasks.\n\
+                    • Signal Booster - 50 credits. Essential for wilderness travel, extends range by 50%.\n\n\
+                    What would you like?"
                 )
-                .with_choice(DialogChoice::new("I'll buy the knife").goto("purchase_knife"))
-                .with_choice(DialogChoice::new("I'll buy the booster").goto("buy_booster"))
+                .with_choice(DialogChoice::new("I'll buy the knife (15 credits)")
+                    .goto("purchase_knife")
+                    .with_condition(DialogCondition::HasCurrency { amount: 15 }))
+                .with_choice(DialogChoice::new("I'll buy the booster (50 credits)")
+                    .goto("buy_booster")
+                    .with_condition(DialogCondition::HasCurrency { amount: 50 }))
+                .with_choice(DialogChoice::new("I need to earn more credits first")
+                    .goto("earning_tips"))
                 .with_choice(DialogChoice::new("Just looking for now").exit()));
 
-                // Note: These nodes would use DialogCondition::HasCurrency and DialogAction::TakeCurrency + GiveItem
-                // but we're keeping them simple text for now. The @DIALOG EDIT command can add the actions.
-                tree.insert("purchase_knife".to_string(), DialogNode::new(
-                    "The knife is 15 credits. (This is a placeholder - use @DIALOG EDIT to add currency \
-                    conditions and give_item actions)"
+                // Earning tips for players who need more credits
+                tree.insert("earning_tips".to_string(), DialogNode::new(
+                    "Plenty of ways to earn credits! Complete quests from the Mayor or other NPCs, \
+                    craft items at the workshop and sell them, explore the wilderness for valuable salvage, \
+                    or help other players with their projects. The mesh economy rewards hard work!"
                 )
+                .with_choice(DialogChoice::new("Good to know!").exit())
+                .with_choice(DialogChoice::new("Show me what you have again").goto("prices")));
+
+                // Purchase nodes with actual transactions
+                tree.insert("purchase_knife".to_string(), DialogNode::new(
+                    "Excellent choice! Here's your knife - keep it sharp and it'll serve you well. \
+                    That's 15 credits. Pleasure doing business with you!"
+                )
+                .with_action(DialogAction::TakeCurrency { amount: 15 })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "vendor_basic_knife".to_string(), 
+                    quantity: 1 
+                })
                 .with_choice(DialogChoice::new("Thanks!").exit())
                 .with_choice(DialogChoice::new("What else do you have?").goto("prices")));
 
                 tree.insert("buy_booster".to_string(), DialogNode::new(
-                    "The signal booster is 50 credits. (This is a placeholder - use @DIALOG EDIT to add \
-                    currency conditions and give_item actions)"
+                    "Smart investment! This signal booster is top quality - built by my family's shop. \
+                    It'll keep you connected even in the deep wilderness. That's 50 credits. \
+                    Safe travels, friend!"
                 )
+                .with_action(DialogAction::TakeCurrency { amount: 50 })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "vendor_signal_booster".to_string(), 
+                    quantity: 1 
+                })
                 .with_choice(DialogChoice::new("Thanks!").exit())
                 .with_choice(DialogChoice::new("What else?").goto("prices")));
 
@@ -1752,6 +1778,58 @@ pub fn create_example_trigger_objects(now: DateTime<Utc>) -> Vec<ObjectRecord> {
         "message(\"🍄 The mushroom chimes a cheerful tune as you enter the room!\")".to_string(),
     );
     objects.push(singing_mushroom);
+
+    // 7. Basic Knife - Merchant item for sale
+    let basic_knife = ObjectRecord {
+        id: "vendor_basic_knife".to_string(),
+        name: "Basic Knife".to_string(),
+        description: "A simple but sturdy knife with a wooden handle. Perfect for cutting rope, \
+preparing food, or general utility tasks. The blade is sharp and well-maintained.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 1,
+        currency_value: CurrencyAmount::decimal(15),
+        value: 15,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(basic_knife);
+
+    // 8. Signal Booster - Merchant item for sale (purchasable version of the craftable item)
+    let signal_booster = ObjectRecord {
+        id: "vendor_signal_booster".to_string(),
+        name: "Signal Booster".to_string(),
+        description: "A professional-grade signal booster manufactured by Mira's family workshop. \
+Extends mesh network range by 50% and improves signal clarity in weak areas. Essential equipment \
+for wilderness exploration. The copper coils are wrapped with precision, and the circuit board \
+bears the family mark of quality.".to_string(),
+        owner: ObjectOwner::World,
+        created_at: now,
+        weight: 3,
+        currency_value: CurrencyAmount::decimal(50),
+        value: 50,
+        takeable: true,
+        usable: false,
+        actions: std::collections::HashMap::new(),
+        flags: vec![],
+        locked: false,
+        clone_depth: 0,
+        clone_source_id: None,
+        clone_count: 0,
+        created_by: "world".to_string(),
+        ownership_history: vec![],
+        schema_version: OBJECT_SCHEMA_VERSION,
+    };
+    objects.push(signal_booster);
 
     objects
 }
