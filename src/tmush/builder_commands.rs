@@ -446,6 +446,14 @@ pub fn handle_wizard_step(
     store: &TinyMushStore,
 ) -> Result<String, TinyMushError> {
     let input = input.trim();
+    
+    // Normalize smart/curly quotes to straight quotes for trigger scripts
+    // macOS and some terminals auto-convert quotes which breaks DSL parsing
+    let input = input
+        .replace('\u{201C}', "\"")  // " LEFT DOUBLE QUOTATION MARK
+        .replace('\u{201D}', "\"")  // " RIGHT DOUBLE QUOTATION MARK
+        .replace('\u{2018}', "'")   // ' LEFT SINGLE QUOTATION MARK
+        .replace('\u{2019}', "'");  // ' RIGHT SINGLE QUOTATION MARK
 
     // Clone the current state to avoid borrow checker issues
     let current_state = session.state.clone();
@@ -490,7 +498,7 @@ pub fn handle_wizard_step(
             object_name,
         } => {
             // Parse trigger type selection
-            let trigger_type = match input {
+            let trigger_type = match input.as_str() {
                 "1" => ObjectTrigger::OnLook,
                 "2" => ObjectTrigger::OnUse,
                 "3" => ObjectTrigger::OnTake,
@@ -538,7 +546,7 @@ pub fn handle_wizard_step(
             trigger_type,
         } => {
             // Parse action selection and generate script
-            let script = match input {
+            let script = match input.as_str() {
                 "1" => {
                     // Message action - move to customize step
                     session.state = WizardState::CustomizeAction {
