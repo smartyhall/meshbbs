@@ -81,11 +81,11 @@ fn test_malformed_trigger_script_handling() {
     // Execute trigger - should handle gracefully
     let messages = execute_on_use(&obj, &player_name, &room_id, &store);
 
-    // Should handle gracefully without crashing (returns empty vec for errors)
-    // This is intentional - script errors shouldn't break gameplay
+    // Should show user-friendly error message instead of crashing
+    // This is intentional - script errors should be visible to users/admins
     assert!(
-        messages.is_empty(),
-        "Malformed scripts should fail silently"
+        !messages.is_empty() && messages[0].contains("Trigger error"),
+        "Malformed scripts should return error message, got: {:?}", messages
     );
 }
 
@@ -122,10 +122,10 @@ fn test_missing_function_handling() {
     // Execute trigger - should handle gracefully
     let messages = execute_on_use(&obj, &player_name, &room_id, &store);
 
-    // Should handle gracefully without crashing (logs warning, returns empty vec)
+    // Should show user-friendly error message instead of crashing
     assert!(
-        messages.is_empty(),
-        "Undefined functions should fail silently"
+        !messages.is_empty() && messages[0].contains("Trigger error"),
+        "Undefined functions should return error message, got: {:?}", messages
     );
 }
 
@@ -213,11 +213,11 @@ fn test_nested_logic_depth() {
     // Execute trigger
     let messages = execute_on_use(&obj, &player_name, &room_id, &store);
 
-    // Should handle nested logic correctly (if parser supports it)
+    // Should handle nested logic correctly (if parser supports it) OR show error
     // Note: Current parser may not support complex nesting
     assert!(
-        messages.is_empty() || messages.iter().any(|m| m.contains("Deep!")),
-        "Should either execute nested logic or fail gracefully"
+        messages.iter().any(|m| m.contains("Deep!") || m.contains("Trigger error")),
+        "Should either execute nested logic or fail with error message, got: {:?}", messages
     );
 }
 

@@ -9107,13 +9107,30 @@ Not fancy, but it gets the job done.",
             }
             "SHOW" => {
                 if args.is_empty() {
-                    return Ok("Usage: @OBJECT SHOW <id>\nExample: @OBJECT SHOW basic_torch".to_string());
+                    return Ok("Usage: @OBJECT SHOW <id or name>\nExample: @OBJECT SHOW basic_torch\nExample: @OBJECT SHOW wooden torch".to_string());
                 }
-                let object_id = args[0].to_lowercase();
+                let search_term = args.join(" ").to_lowercase();
 
-                let object = match store.get_object(&object_id) {
-                    Ok(o) => o,
-                    Err(_) => return Ok(format!("Object '{}' not found.", object_id)),
+                // Try exact ID match first
+                let object = if let Ok(obj) = store.get_object(&search_term) {
+                    obj
+                } else {
+                    // Try fuzzy matching by name across all objects
+                    let all_objects = store.list_object_ids()?;
+                    let matches = self.find_objects_by_partial_name(&search_term, &all_objects);
+                    
+                    if matches.is_empty() {
+                        return Ok(format!("Object '{}' not found. Use exact ID or object name.", search_term));
+                    } else if matches.len() > 1 {
+                        let names: Vec<String> = matches.iter()
+                            .map(|o| format!("{} ({})", o.name, o.id))
+                            .collect();
+                        return Ok(format!("Multiple objects match '{}'. Please be more specific:\n{}", 
+                            search_term, 
+                            names.join("\n")));
+                    }
+                    
+                    matches.into_iter().next().unwrap()
                 };
 
                 let flags_str = if object.flags.is_empty() {

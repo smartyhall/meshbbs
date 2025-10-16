@@ -241,12 +241,15 @@ pub fn execute_on_use(
         Ok(TriggerResult::Success(messages)) => messages,
         Ok(TriggerResult::NoScript) => vec![],
         Ok(TriggerResult::Skipped) => vec![],
-        Ok(TriggerResult::RateLimited) => vec![],
-        Ok(TriggerResult::Failed(_)) => vec![],
-        Ok(TriggerResult::TimedOut) => vec![],
+        Ok(TriggerResult::RateLimited) => vec!["⏰ Action rate limited.".to_string()],
+        Ok(TriggerResult::Failed(reason)) => {
+            warn!("execute_on_use: Trigger failed: {}", reason);
+            vec![format!("⚠️  Trigger error: {}", reason)]
+        },
+        Ok(TriggerResult::TimedOut) => vec!["⏱️  Trigger execution timed out.".to_string()],
         Err(e) => {
             error!("execute_on_use: Trigger execution failed: {}", e);
-            vec![]
+            vec![format!("⚠️  Trigger system error: {}", e)]
         }
     }
 }
