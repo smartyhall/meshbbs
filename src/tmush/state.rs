@@ -1385,6 +1385,7 @@ pub fn seed_npc_dialogues_if_needed(
                 .with_choice(DialogChoice::new("Tell me about the museum").goto("about_museum"))
                 .with_choice(DialogChoice::new("What's the history here?").goto("history"))
                 .with_choice(DialogChoice::new("Any special exhibits?").goto("exhibit"))
+                .with_choice(DialogChoice::new("Can I help with research?").goto("research_offer"))
                 .with_choice(DialogChoice::new("Just looking around").exit()));
 
                 // Museum branch
@@ -1462,6 +1463,91 @@ pub fn seed_npc_dialogues_if_needed(
                 )
                 .with_choice(DialogChoice::new("I should learn more").exit())
                 .with_choice(DialogChoice::new("Thanks for sharing").exit()));
+
+                // Research Kit branch - gives items to players
+                tree.insert("research_offer".to_string(), DialogNode::new(
+                    "Wonderful! We're always looking for field researchers to test historical artifacts \
+                    and document their functionality. I can provide you with a research kit containing \
+                    some example items from our collection."
+                )
+                .with_choice(DialogChoice::new("I'd be honored!")
+                    .goto("receive_kit")
+                    .with_condition(DialogCondition::HasFlag { 
+                        flag: "received_research_kit".to_string(), 
+                        value: false 
+                    }))
+                .with_choice(DialogChoice::new("I already received one")
+                    .goto("already_received")
+                    .with_condition(DialogCondition::HasFlag { 
+                        flag: "received_research_kit".to_string(), 
+                        value: true 
+                    }))
+                .with_choice(DialogChoice::new("What's in the kit?").goto("kit_details"))
+                .with_choice(DialogChoice::new("No thank you, maybe another time").exit()));
+
+                // Already received kit - alternative message
+                tree.insert("already_received".to_string(), DialogNode::new(
+                    "Ah yes, of course! You're one of our field researchers. How's the work going? \
+                    Have you discovered anything interesting about the artifacts? The museum is always \
+                    interested in field reports!"
+                )
+                .with_choice(DialogChoice::new("Still studying them").exit())
+                .with_choice(DialogChoice::new("They're quite fascinating!").exit())
+                .with_choice(DialogChoice::new("The teleport stone works perfectly!").exit()));
+
+                tree.insert("kit_details".to_string(), DialogNode::new(
+                    "The research kit includes:\n\
+                    • A Healing Potion - demonstrates early medicinal technology\n\
+                    • An Ancient Key - shows pre-mesh security systems\n\
+                    • A Mystery Box - random reward mechanisms from old games\n\
+                    • A Tattered Note - fragment of historical correspondence\n\
+                    • A Teleport Stone - experimental transit technology\n\
+                    • A Singing Mushroom - bioluminescent communication experiment\n\n\
+                    These are working replicas you can use and study!"
+                )
+                .with_choice(DialogChoice::new("I'll take the kit!")
+                    .goto("receive_kit")
+                    .with_condition(DialogCondition::HasFlag { 
+                        flag: "received_research_kit".to_string(), 
+                        value: false 
+                    }))
+                .with_choice(DialogChoice::new("Sounds fascinating!").exit()));
+
+                tree.insert("receive_kit".to_string(), DialogNode::new(
+                    "Excellent! Here's your museum research kit. Please document your findings - \
+                    these artifacts represent important chapters in our network's history. Use them \
+                    wisely and report back if you discover anything interesting!"
+                )
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "example_healing_potion".to_string(), 
+                    quantity: 1 
+                })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "example_ancient_key".to_string(), 
+                    quantity: 1 
+                })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "example_mystery_box".to_string(), 
+                    quantity: 1 
+                })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "example_quest_clue".to_string(), 
+                    quantity: 1 
+                })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "example_teleport_stone".to_string(), 
+                    quantity: 1 
+                })
+                .with_action(DialogAction::GiveItem { 
+                    item_id: "example_singing_mushroom".to_string(), 
+                    quantity: 1 
+                })
+                .with_action(DialogAction::SetFlag { 
+                    flag: "received_research_kit".to_string(), 
+                    value: true 
+                })
+                .with_choice(DialogChoice::new("Thank you, Dr. Reeves!").exit())
+                .with_choice(DialogChoice::new("I'll take good care of these").exit()));
 
                 curator.dialog_tree = tree;
                 store.put_npc(curator)?;
