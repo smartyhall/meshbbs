@@ -25,7 +25,7 @@
 //! See the library crate docs for module‑level details: `meshbbs::`.
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use log::{info, warn};
+use log::{error, info, warn};
 
 // Use the published library crate modules instead of redefining them here.
 use meshbbs::bbs::BbsServer;
@@ -128,6 +128,7 @@ async fn main() -> Result<()> {
 
                 // Continue with normal startup
                 let configured_port = config.meshtastic.port.clone();
+                let require_device = config.meshtastic.require_device_at_startup;
                 let mut bbs = BbsServer::new(config).await?;
 
                 // Determine which port to use
@@ -146,14 +147,30 @@ async fn main() -> Result<()> {
                     match bbs.connect_device(&port_path).await {
                         Ok(_) => info!("Connected to Meshtastic device on {}", port_path),
                         Err(e) => {
-                            warn!(
-                                "Failed to connect to device on {}: {} (BBS continuing without device)",
-                                port_path, e
-                            );
+                            error!("Failed to connect to device on {}: {}", port_path, e);
+                            
+                            // Check if device is required at startup
+                            if require_device {
+                                error!("Device connection required but failed - exiting");
+                                error!("To allow BBS to start without a device, set:");
+                                error!("  [meshtastic]");
+                                error!("  require_device_at_startup = false");
+                                std::process::exit(2);
+                            } else {
+                                warn!("BBS continuing without device connection");
+                            }
                         }
                     }
                 } else {
-                    info!("No --port specified and no configured device port set; starting without device.");
+                    // No port specified
+                    if require_device {
+                        error!("Device connection required but no port specified");
+                        error!("Either specify --port or set 'port' in config.toml");
+                        error!("Or set require_device_at_startup = false to start without device");
+                        std::process::exit(2);
+                    } else {
+                        info!("No --port specified and no configured device port set; starting without device.");
+                    }
                 }
 
                 info!("BBS server starting...");
@@ -174,8 +191,9 @@ async fn main() -> Result<()> {
             init_logging(&Some(config.clone()), cli.verbose);
             info!("Starting Meshbbs v{}", env!("CARGO_PKG_VERSION"));
 
-            // Capture configured port before moving config into server
+            // Capture configured port and device requirement before moving config into server
             let configured_port = config.meshtastic.port.clone();
+            let require_device = config.meshtastic.require_device_at_startup;
             let mut bbs = BbsServer::new(config).await?;
 
             // Determine which port to use: CLI overrides config; fallback to config when CLI absent
@@ -194,15 +212,30 @@ async fn main() -> Result<()> {
                 match bbs.connect_device(&port_path).await {
                     Ok(_) => info!("Connected to Meshtastic device on {}", port_path),
                     Err(e) => {
-                        // Fail fast? For now we warn and continue so the BBS can still run (e.g., for web or offline ops)
-                        warn!(
-                            "Failed to connect to device on {}: {} (BBS continuing without device)",
-                            port_path, e
-                        );
+                        error!("Failed to connect to device on {}: {}", port_path, e);
+                        
+                        // Check if device is required at startup
+                        if require_device {
+                            error!("Device connection required but failed - exiting");
+                            error!("To allow BBS to start without a device, set:");
+                            error!("  [meshtastic]");
+                            error!("  require_device_at_startup = false");
+                            std::process::exit(2);
+                        } else {
+                            warn!("BBS continuing without device connection");
+                        }
                     }
                 }
             } else {
-                info!("No --port specified and no configured device port set; starting without device.");
+                // No port specified
+                if require_device {
+                    error!("Device connection required but no port specified");
+                    error!("Either specify --port or set 'port' in config.toml");
+                    error!("Or set require_device_at_startup = false to start without device");
+                    std::process::exit(2);
+                } else {
+                    info!("No --port specified and no configured device port set; starting without device.");
+                }
             }
 
             info!("BBS server starting...");

@@ -58,6 +58,13 @@ baud_rate = 115200
 # Channel to monitor (0 = primary channel)
 channel = 0
 
+# Require device connection at startup (default: false)
+# When true: BBS exits with error code 2 if device connection fails
+# When false: BBS starts without device (useful for testing or alternative transports)
+# Set to true for production deployments where device is essential
+# Applies to all transport types: serial, Bluetooth (future), TCP/UDP (future)
+require_device_at_startup = false
+
 # Writer tuning (optional) - Defaults follow Meshtastic fairness rules
 # Minimum time between any text sends (ms). Values below 2000 clamped to 2000.
 min_send_gap_ms = 2000

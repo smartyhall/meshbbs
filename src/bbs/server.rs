@@ -149,6 +149,12 @@ pub struct BbsServer {
     #[allow(dead_code)]
     #[doc(hidden)]
     pub(crate) test_messages: Vec<(String, String)>, // collected outbound messages (testing)
+    #[cfg(feature = "meshtastic-proto")]
+    last_scheduler_stats_check: Instant, // track when we last checked scheduler health
+    #[cfg(feature = "meshtastic-proto")]
+    scheduler_drops_last_count: u64, // track drops to detect new drops
+    #[cfg(feature = "meshtastic-proto")]
+    scheduler_queue_high_warnings: u64, // count high queue warnings
 }
 
 // Verbose HELP material & chunker (outside impl so usable without Self scoping issues during compilation ordering)
@@ -502,6 +508,12 @@ impl BbsServer {
             startup_welcomes_queued: false,
             game_registry: crate::bbs::GameRegistry::new(),
             test_messages: Vec::new(),
+            #[cfg(feature = "meshtastic-proto")]
+            last_scheduler_stats_check: Instant::now(),
+            #[cfg(feature = "meshtastic-proto")]
+            scheduler_drops_last_count: 0,
+            #[cfg(feature = "meshtastic-proto")]
+            scheduler_queue_high_warnings: 0,
         };
         // Legacy compatibility: previously, topics could be defined in TOML.
         // New behavior initializes topics in data/topics.json during `meshbbs init`.
@@ -916,6 +928,51 @@ impl BbsServer {
         Ok(())
     }
 
+    /// Check scheduler health and log warnings about queue saturation
+    /// 
+    /// This monitors the message scheduler for signs of trouble:
+    /// - High queue depth (>80% capacity)
+    /// - Message drops due to overflow
+    /// - Escalations due to aging
+    ///
+    /// Called every 30 seconds from the main event loop.
+    #[cfg(feature = "meshtastic-proto")]
+    async fn check_scheduler_health(&mut self) -> Result<()> {
+        if let Some(ref scheduler) = self.scheduler {
+            if let Some(stats) = scheduler.snapshot().await {
+                let max_queue = self.config.meshtastic.scheduler_max_queue.unwrap_or(512);
+                let queue_pct = (stats.queued as f64 / max_queue as f64) * 100.0;
+                
+                // Warn if queue is >80% full
+                if stats.queued > (max_queue * 80 / 100) {
+                    self.scheduler_queue_high_warnings += 1;
+                    warn!(
+                        "Scheduler queue high: {}/{} messages ({:.1}%) - drops={} escalations={} (warning #{})",
+                        stats.queued, max_queue, queue_pct, stats.dropped_total, 
+                        stats.escalations, self.scheduler_queue_high_warnings
+                    );
+                }
+                
+                // Alert if new drops detected
+                if stats.dropped_total > self.scheduler_drops_last_count {
+                    let new_drops = stats.dropped_total - self.scheduler_drops_last_count;
+                    error!(
+                        "Message scheduler dropping messages! New drops: {} (total: {}, overflow: {})",
+                        new_drops, stats.dropped_total, stats.dropped_overflow
+                    );
+                    self.scheduler_drops_last_count = stats.dropped_total;
+                }
+                
+                // Periodic info log when things are healthy
+                if stats.queued == 0 && self.scheduler_queue_high_warnings > 0 {
+                    info!("Scheduler queue recovered: 0 messages queued");
+                    self.scheduler_queue_high_warnings = 0;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 4. **Session Management**: Handles user session lifecycle and timeouts
     /// 5. **Weather Updates**: Provides proactive weather information (if enabled)
     /// 6. **Audit Logging**: Records security and administrative events
@@ -1058,6 +1115,14 @@ impl BbsServer {
                         // Check if automatic backup is needed
                         if let Err(e) = self.check_and_backup().await {
                             debug!("Backup scheduler error: {}", e);
+                        }
+
+                        // Health monitoring: check scheduler status every 30 seconds
+                        if self.last_scheduler_stats_check.elapsed() >= Duration::from_secs(30) {
+                            if let Err(e) = self.check_scheduler_health().await {
+                                warn!("Scheduler health check error: {}", e);
+                            }
+                            self.last_scheduler_stats_check = Instant::now();
                         }
                     },
 
@@ -3631,8 +3696,24 @@ impl BbsServer {
     pub async fn send_message(&mut self, to_node: &str, message: &str) -> Result<()> {
         #[cfg(feature = "meshtastic-proto")]
         {
-            // If we have an active scheduler prefer enqueue path, else fallback to direct channel
+            // Circuit breaker: check scheduler health before enqueueing
             if let Some(scheduler) = &self.scheduler {
+                // Check if we should throttle based on queue state
+                if let Some(stats) = scheduler.snapshot().await {
+                    let max_queue = self.config.meshtastic.scheduler_max_queue.unwrap_or(512);
+                    
+                    // If queue is critically full (>95%), reject non-critical messages
+                    if stats.queued > (max_queue * 95 / 100) {
+                        warn!(
+                            "Scheduler queue critically full ({}/{}), dropping message to {} to prevent total failure",
+                            stats.queued, max_queue, to_node
+                        );
+                        return Err(anyhow::anyhow!(
+                            "Message queue full - system overloaded"
+                        ));
+                    }
+                }
+                
                 let node_id = if let Some(hex) = to_node
                     .strip_prefix("0x")
                     .or_else(|| to_node.strip_prefix("0X"))

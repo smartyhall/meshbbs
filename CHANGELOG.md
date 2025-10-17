@@ -7,6 +7,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2025-01-17
+
+### Added - Queue Health Monitoring & Graceful Device Startup
+
+This release focuses on production reliability and operational visibility, addressing
+long-running stability issues and improving service management integration.
+
+#### Queue Health Monitoring System
+- **Scheduler Health Checks**: Automatic monitoring every 30 seconds detects queue saturation
+  - Warns when queue depth exceeds 80% capacity (>410/512 messages)
+  - Alerts immediately when messages are dropped due to overflow
+  - Logs recovery when queue returns to normal state
+  - Tracks priority escalations and aging patterns
+
+- **Circuit Breaker**: Prevents cascade failures at 95% queue capacity
+  - Rejects new messages when queue critically full (>486/512 messages)
+  - Returns clear error instead of silently dropping
+  - Prevents system from accepting work it cannot complete
+  - Users see "system overloaded" rather than timeout
+
+- **Bounded Pending HashMap**: Limits awaiting ACKs to prevent unbounded memory growth
+  - Maximum 100 pending reliable sends (previously unlimited)
+  - Automatic cleanup every 5 minutes removes stale entries
+  - Removes entries older than 10 minutes
+  - Warns when approaching limit (>80 entries)
+
+- **Observable Metrics**: Comprehensive logging of health indicators
+  - Queue depth percentage and absolute counts
+  - Drop counts (total and overflow-specific)
+  - Priority escalation events
+  - Pending HashMap size and cleanup statistics
+
+**Problem Solved**: After ~2 hours of runtime, BBS would stop responding to commands
+while ident beacons continued. Root cause was silent queue saturation where the bounded
+512-message scheduler queue filled faster than messages could transmit over low-bandwidth
+mesh radio, eventually dropping even high-priority command responses.
+
+See [QUEUE_HEALTH_MONITORING.md](QUEUE_HEALTH_MONITORING.md) and 
+[BUG_FIX_SUMMARY.md](BUG_FIX_SUMMARY.md) for complete details.
+
+#### Graceful Device Startup Handling
+- **New Configuration Option**: `require_device_at_startup` (default: false)
+  - When `false`: BBS continues starting without device (backward compatible)
+  - When `true`: BBS exits immediately with error code 2 if device unavailable
+
+- **Proper Exit Codes for Service Managers**:
+  - Exit code 0: Clean shutdown (normal operation)
+  - Exit code 1: Configuration error (invalid config)
+  - Exit code 2: Device connection failed (when required)
+
+- **Clear Error Messages**: Guides troubleshooting
+  - Reports exact connection error (permission denied, device not found, etc.)
+  - Suggests configuration changes to allow startup without device
+  - Recommends solutions (add user to dialout group, check device path)
+
+- **Future-Ready Design**: Transport-agnostic architecture
+  - Works with current serial connections
+  - Will support future Bluetooth connections
+  - Will support future TCP/UDP network connections
+  - Single configuration option controls all transport types
+
+- **Production-Friendly**: Service manager integration
+  - systemd can detect device failures via exit code
+  - Docker/Kubernetes health checks work correctly
+  - No restart loops when device persistently unavailable
+  - Clear "failed" status instead of appearing healthy
+
+**Problem Solved**: When serial device unavailable at startup (USB disconnected, wrong
+permissions, device busy), BBS would log warning and continue, appearing healthy to
+service managers while being unable to communicate with mesh network.
+
+See [DEVICE_STARTUP_HANDLING.md](DEVICE_STARTUP_HANDLING.md) and
+[GRACEFUL_STARTUP_SUMMARY.md](GRACEFUL_STARTUP_SUMMARY.md) for complete details.
+
+### Configuration
+- **config.example.toml**: Added `require_device_at_startup` documentation
+  - Defaults to `false` for backward compatibility
+  - Recommended `true` for production deployments
+  - Works with all current and future transport types
+
+### Documentation
+- **QUEUE_HEALTH_MONITORING.md**: Comprehensive monitoring guide
+  - Health check frequency and thresholds
+  - Log analysis commands
+  - Tuning recommendations
+  - Future enhancement roadmap
+
+- **BUG_FIX_SUMMARY.md**: Bug analysis and fix summary
+  - Root cause analysis
+  - Before/after behavior comparison
+  - Testing recommendations
+
+- **DEVICE_STARTUP_HANDLING.md**: Complete device startup guide
+  - Configuration options and behavior modes
+  - Production deployment examples (systemd, docker)
+  - Troubleshooting common errors
+  - Future transport planning
+
+- **GRACEFUL_STARTUP_SUMMARY.md**: Quick reference guide
+  - Exit code meanings
+  - Common errors and solutions
+  - Migration guide for existing installations
+
+### Changed
+- **Writer Task**: Enhanced heartbeat interval with cleanup logic
+  - Periodic pending HashMap cleanup (every 5 minutes)
+  - Warns when pending HashMap exceeds 80% of limit
+  - Removes entries older than 10 minutes
+  - Removes oldest entries when limit exceeded
+
+- **Main Event Loop**: Added periodic health monitoring
+  - Scheduler health check every 30 seconds
+  - Tracks cumulative drops and queue high warnings
+  - Logs recovery when system stabilizes
+
+- **Startup Sequence**: Device connection validation
+  - Captures `require_device_at_startup` flag before moving config
+  - Clear error paths for missing device and missing port
+  - Consistent behavior in daemon and non-daemon modes
+
+### Fixed
+- **Queue Saturation After 2+ Hours**: Prevents silent lockup
+  - Early warning when queue depth exceeds 80%
+  - Circuit breaker prevents accepting work when overloaded
+  - Bounded resources prevent unbounded memory growth
+  - System degrades gracefully with clear errors
+
+- **Silent Device Failures**: Proper exit codes and error messages
+  - Service managers can detect device connection failures
+  - Clear guidance for resolving permission issues
+  - No zombie processes appearing healthy but non-functional
+
+### Performance
+- **Scheduler Efficiency**: Minimal overhead from health checks
+  - Health check runs once per 30 seconds (negligible CPU impact)
+  - Snapshot operation is fast (atomic read of stats)
+  - No performance impact during normal operation
+
+- **Memory Bounds**: Pending HashMap limited growth
+  - Maximum 100 entries (previously unlimited)
+  - Periodic cleanup prevents accumulation
+  - Typical usage: 0-20 entries under normal load
+
 ## [1.1.2] - 2025-01-16
 
 ### Added

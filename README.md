@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.1.2-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -24,6 +24,16 @@ Meshbbs revolutionizes communication on mesh networks by bringing the beloved Bu
 Perfect for emergency communications, remote areas, outdoor adventures, and building resilient community networks.
 
 ## 📝 Release Notes
+
+**Version 1.1.3** adds comprehensive queue health monitoring and graceful device startup handling to prevent system lockups and improve production reliability.
+
+**Key Features:**
+- **Queue Health Monitoring**: Automatic detection and prevention of message queue saturation with circuit breakers, bounded resources, and health checks every 30 seconds
+- **Graceful Device Startup**: New `require_device_at_startup` configuration option for production deployments with proper exit codes (exit code 2) for service managers
+- **Bounded Resources**: Pending message HashMap limited to 100 entries with automatic cleanup every 5 minutes
+- **Observable Behavior**: Clear warning and error messages before system degradation occurs
+
+See [QUEUE_HEALTH_MONITORING.md](QUEUE_HEALTH_MONITORING.md) and [DEVICE_STARTUP_HANDLING.md](DEVICE_STARTUP_HANDLING.md) for complete details.
 
 **Version 1.1.2** adds configurable help command keywords to address emergency assistance protocol concerns on some mesh networks.
 

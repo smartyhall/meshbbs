@@ -147,6 +147,12 @@ pub struct MeshtasticConfig {
     #[serde(default)]
     pub node_id: String,
     pub channel: u8,
+    /// Require device to be available at startup. If true and device connection fails,
+    /// the BBS will exit with an error code. If false (default), the BBS will start
+    /// without a device connection (useful for testing or alternative transport methods).
+    /// Applies to all transport types: serial, Bluetooth, TCP/UDP.
+    #[serde(default)]
+    pub require_device_at_startup: bool,
     /// Minimum gap between consecutive text sends (ms). Must be >= 2000ms.
     #[serde(default)]
     pub min_send_gap_ms: Option<u64>,
@@ -383,6 +389,7 @@ impl Default for Config {
                 baud_rate: 115200,
                 node_id: "".to_string(),
                 channel: 0,
+                require_device_at_startup: false,
                 min_send_gap_ms: Some(2000),
                 dm_resend_backoff_seconds: Some(vec![4, 8, 16]),
                 post_dm_broadcast_gap_ms: Some(1200),

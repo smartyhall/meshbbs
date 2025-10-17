@@ -599,7 +599,14 @@ pub struct MeshtasticWriter {
     tuning: WriterTuning,
     // Optional scheduler handle for enqueuing retry envelopes
     scheduler: Option<crate::bbs::dispatch::SchedulerHandle>,
+    // Health tracking
+    last_pending_cleanup: std::time::Instant,
 }
+
+// Limit pending HashMap to prevent unbounded growth
+const MAX_PENDING_SENDS: usize = 100;
+const PENDING_CLEANUP_INTERVAL_SECS: u64 = 300; // 5 minutes
+const PENDING_MAX_AGE_SECS: u64 = 600; // 10 minutes
 
 #[derive(Debug, Clone)]
 struct PendingSend {
@@ -2269,6 +2276,7 @@ impl MeshtasticWriter {
             last_text_send: None,
             tuning,
             scheduler: None,
+            last_pending_cleanup: std::time::Instant::now(),
         })
     }
 
@@ -2294,6 +2302,7 @@ impl MeshtasticWriter {
             last_text_send: None,
             tuning,
             scheduler: None,
+            last_pending_cleanup: std::time::Instant::now(),
         })
     }
 
@@ -2596,8 +2605,23 @@ impl MeshtasticWriter {
                 _ = heartbeat_interval.tick() => {
                     // periodic heartbeat
                     if let Err(e) = self.send_heartbeat() { debug!("Heartbeat send error: {:?}", e); }
-                    // expire stale broadcast ack trackers
+                    
+                    // Clean up pending sends periodically
                     let now = std::time::Instant::now();
+                    if now.duration_since(self.last_pending_cleanup).as_secs() >= PENDING_CLEANUP_INTERVAL_SECS {
+                        self.cleanup_pending();
+                        self.last_pending_cleanup = now;
+                    }
+                    
+                    // Log warning if pending HashMap is getting large
+                    if self.pending.len() > MAX_PENDING_SENDS * 80 / 100 {
+                        warn!(
+                            "Writer pending HashMap getting large: {} entries (limit {})",
+                            self.pending.len(), MAX_PENDING_SENDS
+                        );
+                    }
+                    
+                    // expire stale broadcast ack trackers
                     let expired: Vec<u32> = self.pending_broadcast.iter()
                         .filter_map(|(id, bp)| if bp.expires_at <= now { Some(*id) } else { None })
                         .collect();
@@ -2997,6 +3021,61 @@ impl MeshtasticWriter {
             debug!("Sent ToRadio LEN frame ({} bytes payload)", payload.len());
         }
         Ok(())
+    }
+
+    /// Clean up old pending sends to prevent HashMap from growing unbounded
+    /// 
+    /// Called periodically (every 5 minutes) to remove:
+    /// - Sends older than MAX_AGE (10 minutes)
+    /// - Excess entries beyond MAX_PENDING_SENDS when at limit
+    fn cleanup_pending(&mut self) {
+        let now = std::time::Instant::now();
+        
+        // Remove entries older than max age
+        let before_count = self.pending.len();
+        self.pending.retain(|id, p| {
+            let age = now.duration_since(p.sent_at);
+            if age.as_secs() > PENDING_MAX_AGE_SECS {
+                warn!(
+                    "Dropping stale pending send: id={} to=0x{:08x} age={}s ({})",
+                    id, p.to, age.as_secs(), p.content_preview
+                );
+                false
+            } else {
+                true
+            }
+        });
+        
+        let after_age_cleanup = self.pending.len();
+        
+        // If still over limit, remove oldest entries
+        if self.pending.len() > MAX_PENDING_SENDS {
+            let to_remove = self.pending.len() - MAX_PENDING_SENDS;
+            let mut entries: Vec<_> = self.pending.iter()
+                .map(|(id, p)| (*id, p.sent_at))
+                .collect();
+            entries.sort_by_key(|(_id, sent_at)| *sent_at);
+            
+            for (id, _) in entries.iter().take(to_remove) {
+                if let Some(removed) = self.pending.remove(id) {
+                    warn!(
+                        "Dropping pending send (limit reached): id={} to=0x{:08x} ({})",
+                        id, removed.to, removed.content_preview
+                    );
+                }
+            }
+        }
+        
+        let removed_count = before_count.saturating_sub(self.pending.len());
+        if removed_count > 0 {
+            info!(
+                "Pending cleanup: removed {} entries ({} by age, {} by limit), {} remaining",
+                removed_count,
+                before_count - after_age_cleanup,
+                after_age_cleanup.saturating_sub(self.pending.len()),
+                self.pending.len()
+            );
+        }
     }
 
     // Removed ensure_want_config: WantConfigId is now sent only once at startup.
