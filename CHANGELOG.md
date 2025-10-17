@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.4] - 2025-10-17
+
+### Added - Vending Machine System & Documentation
+
+#### Shop System Enhancement
+- **Vending Machine Support**: Clone-based item purchasing system
+  - Added `clone_items: bool` field to `ShopRecord` for vending vs regular shops
+  - New `ShopRecord::new_vending_machine()` constructor for easy creation
+  - `clone_object_internal()` helper for shop purchases (bypasses player clone security)
+  - Each purchase creates unique clone with new UUID and owner tracking
+  - Stock tracking separate from item cloning (limited vs infinite inventory)
+
+- **Museum Trinket Vending Machine**: Example world content
+  - Located in `mesh_museum` location
+  - 4 commemorative trinkets with tiered pricing:
+    - Mesh Network Keychain (25 coins, 50 stock)
+    - Commemorative Antenna Pin (50 coins, 30 stock)
+    - Storm '19 Memorial Coin (75 coins, 20 stock)
+    - Museum Replica Node (100 coins, 10 stock)
+  - All items are Clonable and takeable
+  - Demonstrates clone-based purchasing mechanics
+
+- **Shop Seeding System**: Automatic world initialization
+  - Added `seed_shops_if_needed()` function in storage layer
+  - Integrated into world initialization sequence
+  - Shops seed automatically on first startup
+  - Vending machine and trinkets created from `seed_starter_vending_machine()`
+
+#### Documentation
+- **DATA_DRIVEN_STATUS.md**: Comprehensive system status (360 lines)
+  - Verification that all Phase 1-6 data-driven systems are 100% complete
+  - Documentation of 6 admin command systems (@ACHIEVEMENT, @NPC, @COMPANION, @ROOM, @OBJECT, @QUEST)
+  - JSON seed file status for all content types
+  - Architecture overview and example usage
+  - Confirms 387 tests passing with zero compiler warnings
+
+- **COMBAT_TODO.md**: Complete combat system implementation plan (944 lines)
+  - 6-week phased implementation roadmap
+  - Data-driven approach extending existing NPC/Object systems
+  - JSON-configurable enemies, loot tables, aggression types
+  - PvE and PvP design with opt-in mechanics
+  - Companion combat assist integration
+  - Achievement tracking for kills
+  - Boss fight mechanics and safe zone enforcement
+  - Example NPCs: training dummy, goblin raider, dragon boss
+
+- **TODO.md Cleanup**: Removed 1,610 lines of completed items
+  - Cleaned from 1,762 lines to 152 lines
+  - Removed all completed Phase 1-10 work
+  - Now contains only "Future Enhancements (Post-Alpha Launch)"
+  - Updated with recent completions (vending machine, vendor NPCs)
+  - Documented vendor NPC dialog integration (Mira the Vendor)
+
+### Changed
+- **Shop Purchase Logic**: Modified `handle_buy()` to support dual modes
+  - Checks `shop.clone_items` flag to decide clone vs transfer
+  - Clone mode: Creates new item with `clone_object_internal()`
+  - Transfer mode: Removes item from shop inventory (original behavior)
+  - Maintains backward compatibility with existing shops
+
+### Fixed
+- **Test Configuration**: Added missing `require_device_at_startup` field
+  - Updated 12 test files with proper MeshtasticConfig initialization
+  - Ensures all tests compile with latest configuration schema
+  - Files: admin_commands, deletion_log, ident_beacon_behavior, lock_persistence,
+    moderation, password_enforcement, permissions, role_commands, sysop_seed,
+    tmush_admin_command_handlers, unread_indicators, unread_messages
+
+### Technical Notes
+- All new fields use `#[serde(default)]` for backward compatibility
+- No database migration required
+- Clone tracking via `clone_source_id` for genealogy
+- Ownership history preserved for all cloned items
+- Security: Shop cloning bypasses player quotas/cooldowns (appropriate for purchases)
+- Performance: Async database operations maintained for 500-1000 user scale
+
 ## [1.1.3] - 2025-01-17
 
 ### Added - Queue Health Monitoring & Graceful Device Startup

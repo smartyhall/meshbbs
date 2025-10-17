@@ -5,7 +5,7 @@
   
   **A modern Bulletin Board System for Meshtastic mesh networks**
   
-      [![Version](https://img.shields.io/badge/version-1.1.3-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
+      [![Version](https://img.shields.io/badge/version-1.1.4-blue.svg)](https://github.com/martinbogo/meshbbs/releases)
    [![License](https://img.shields.io/badge/license-CC--BY--NC--4.0-green.svg)](LICENSE)
    [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
    [![Platform](https://img.shields.io/badge/platform-Meshtastic-purple.svg)](https://meshtastic.org/)
@@ -25,7 +25,7 @@ Perfect for emergency communications, remote areas, outdoor adventures, and buil
 
 ## 📝 Release Notes
 
-**Version 1.1.3** adds comprehensive queue health monitoring and graceful device startup handling to prevent system lockups and improve production reliability.
+**Version 1.1.4** adds vending machine system with item cloning, comprehensive data-driven system documentation, and combat system planning.
 
 **Key Features:**
 - **Queue Health Monitoring**: Automatic detection and prevention of message queue saturation with circuit breakers, bounded resources, and health checks every 30 seconds
