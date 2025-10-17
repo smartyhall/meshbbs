@@ -39,6 +39,7 @@ async fn unread_message_count_on_login() {
             scheduler_max_queue: None,
             scheduler_aging_threshold_ms: None,
             scheduler_stats_interval_ms: None,
+            require_device_at_startup: false,
         },
         storage: StorageConfig {
             data_dir: data_dir.to_string_lossy().to_string(),
