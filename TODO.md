@@ -38,8 +38,6 @@
 ### Economy Enhancements
 - [ ] Item quality/condition system for value degradation
 - [ ] Reputation discounts based on player standing
-- [ ] Vendor NPC dialog integration
-- [ ] Vendor scripting for specific merchants (Bakery, General Store, etc.)
 - [ ] Bank vault storage for items (limited slots)
 - [ ] Interest/fees configuration (optional, world-level)
 - [ ] Bank NPC integration at specific locations
@@ -111,6 +109,9 @@ mdbook serve docs              # View documentation locally
 - All 6 admin commands working: @ACHIEVEMENT, @NPC, @COMPANION, @ROOM, @OBJECT, @QUEST
 - JSON seed files in place for all content types
 - Comprehensive documentation created
+- Vending machine system with item cloning (Museum trinket vendor)
+- Vendor NPC dialog integration complete (Mira the Vendor with 13 dialogue nodes)
+- Shop system with clone-based and transfer-based purchasing
 
 ### Next Steps
 Choose one of:
