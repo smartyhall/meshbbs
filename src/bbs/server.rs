@@ -167,7 +167,7 @@ fn verbose_help_with_prefix(pfx: char, help_cmd: &str) -> String {
     "Topics → Subtopics → Threads → Read:\n  In Subtopics: 1-9 pick, U up\n  In Threads:   1-9 read, N new, F <text> filter, U up\n  In Read:      + next, - prev, Y reply\n\n",
     "Posting:\n  From Topics:  R recent messages  P compose  L list\n  While posting: type message text, '.' to finish or cancel\n\n",
         "Moderator (level 5+):\n  Threads:  D<n> delete  P<n> pin/unpin  R<n> <title> rename  K lock/unlock area\n  Read:     D delete     P pin/unpin     R <title>            K lock/unlock area\n\n",
-        "Sysop (level 10):\n  G @user=LEVEL|ROLE      Grant level (1/5/10) or USER/MOD/SYSOP\n\n",
+        "Sysop (level 10):\n  G @user=LEVEL|ROLE      Grant level (1/5/10) or USER/MOD/SYSOP\n  SYSLOG LEVEL <msg>      Log message (INFO/WARN/ERROR)\n\n",
         "Administration (mod/sysop):\n  USERS [pattern]         List users (filter optional)\n  WHO                     Show logged-in users\n  USERINFO <user>         Detailed user info\n  SESSIONS                List all sessions\n  KICK <user>             Force logout user\n  BROADCAST <msg>         Broadcast to all\n  ADMIN / DASHBOARD       System overview\n\n",
         "Misc:\n  {h}        Compact help\n  {h}+ / {h} V  Verbose help (this)\n  Weather (public)       Send WEATHER on public channel\n  Slot Machine (public)  {p}SLOT or {p}SLOTMACHINE to play\n  Slot Stats (public)    {p}SLOTSTATS\n  Magic 8-Ball (public)  {p}8BALL\n  Fortune (public)       {p}FORTUNE for classic Unix wisdom\n\n",
         "Limits:\n  Max frame ~230 bytes; verbose help auto-splits.\n"),

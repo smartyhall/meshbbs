@@ -596,7 +596,7 @@ impl CommandProcessor {
                     );
                 }
                 if session.user_level >= 10 {
-                    out.push_str("ADM: Roles/logging via admin tools\n");
+                    out.push_str("ADM: G @user=LEVEL | SYSLOG LEVEL msg | ADMIN\n");
                 }
                 out.push_str("OTHER: WHERE | U | Q\n");
                 // Ensure length <=230 (should already be compact; final guard)
