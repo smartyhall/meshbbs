@@ -35,6 +35,7 @@ async fn test_config_with_beacon(enabled: bool, frequency: &str) -> Config {
             scheduler_max_queue: None,
             scheduler_aging_threshold_ms: None,
             scheduler_stats_interval_ms: None,
+            require_device_at_startup: false,
         },
         storage: StorageConfig {
             data_dir: tempfile::tempdir()

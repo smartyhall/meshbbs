@@ -1011,6 +1011,85 @@ Legendary piece of equipment.",
     npcs
 }
 
+/// Seed starter vending machine with trinkets
+pub fn seed_starter_vending_machine() -> (crate::tmush::shop::ShopRecord, Vec<crate::tmush::types::ObjectRecord>) {
+    use crate::tmush::shop::{ShopRecord, ShopItem};
+    use crate::tmush::types::{ObjectRecord, ObjectFlag, CurrencyAmount};
+    
+    // Create vending machine shop
+    let mut vending_machine = ShopRecord::new_vending_machine(
+        "vm_museum".to_string(),
+        "Museum Trinket Vending Machine".to_string(),
+        "mesh_museum".to_string(),
+    );
+    
+    vending_machine.description = "A sleek vending machine filled with commemorative trinkets and \
+        museum souvenirs. Insert coins and press the button to receive your item.".to_string();
+    
+    // Create 4 trinket objects to sell
+    let mut trinkets = Vec::new();
+    
+    // Trinket 1: Mesh Network Keychain - 25 coins
+    let mut keychain = ObjectRecord::new_world(
+        "trinket_keychain",
+        "Mesh Network Keychain",
+        "A small metal keychain shaped like a mesh network node. The logo glows faintly \
+            in the dark. Perfect for attaching to your gear.",
+    );
+    keychain.currency_value = CurrencyAmount::multi_tier(25);
+    keychain.weight = 1;
+    keychain.flags = vec![ObjectFlag::Clonable];
+    keychain.takeable = true;
+    trinkets.push(keychain);
+    vending_machine.add_item(ShopItem::limited("trinket_keychain".to_string(), 50)).ok();
+    
+    // Trinket 2: Commemorative Antenna Pin - 50 coins
+    let mut pin = ObjectRecord::new_world(
+        "trinket_pin",
+        "Commemorative Antenna Pin",
+        "A silver pin shaped like the town's famous relay antenna. Engraved with \
+            'Old Towne Mesh - Est. 2015'. A fashionable way to show your community pride.",
+    );
+    pin.currency_value = CurrencyAmount::multi_tier(50);
+    pin.weight = 1;
+    pin.flags = vec![ObjectFlag::Clonable];
+    pin.takeable = true;
+    trinkets.push(pin);
+    vending_machine.add_item(ShopItem::limited("trinket_pin".to_string(), 30)).ok();
+    
+    // Trinket 3: Storm '19 Memorial Coin - 75 coins
+    let mut coin = ObjectRecord::new_world(
+        "trinket_coin",
+        "Storm '19 Memorial Coin",
+        "A brass commemorative coin honoring the legendary 72-hour relay operation \
+            during the Winter Storm of 2019. One side shows the relay tower, the other reads \
+            'Connected Through the Storm'. A collector's item.",
+    );
+    coin.currency_value = CurrencyAmount::multi_tier(75);
+    coin.weight = 2;
+    coin.flags = vec![ObjectFlag::Clonable];
+    coin.takeable = true;
+    trinkets.push(coin);
+    vending_machine.add_item(ShopItem::limited("trinket_coin".to_string(), 20)).ok();
+    
+    // Trinket 4: Museum Replica Node - 100 coins
+    let mut replica = ObjectRecord::new_world(
+        "trinket_replica",
+        "Museum Replica Node",
+        "A detailed miniature replica of the original mesh node displayed in the museum. \
+            Complete with tiny LED lights that blink in a realistic pattern. This exquisite piece is \
+            handcrafted by local artisans and makes an excellent desk ornament.",
+    );
+    replica.currency_value = CurrencyAmount::multi_tier(100);
+    replica.weight = 5;
+    replica.flags = vec![ObjectFlag::Clonable];
+    replica.takeable = true;
+    trinkets.push(replica);
+    vending_machine.add_item(ShopItem::limited("trinket_replica".to_string(), 10)).ok();
+    
+    (vending_machine, trinkets)
+}
+
 /// Seed full dialogue trees for all NPCs (called after seed_npcs_if_needed)
 pub fn seed_npc_dialogues_if_needed(
     store: &crate::tmush::storage::TinyMushStore,
