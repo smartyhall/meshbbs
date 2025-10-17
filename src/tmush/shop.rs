@@ -169,6 +169,9 @@ pub struct ShopRecord {
     pub currency: CurrencyAmount,
     /// Shop configuration
     pub config: ShopConfig,
+    /// If true, purchases create clones instead of transferring originals
+    /// Perfect for vending machines and automated shops
+    pub clone_items: bool,
     /// When shop was created
     pub created_at: DateTime<Utc>,
     /// When shop was last modified
@@ -188,9 +191,17 @@ impl ShopRecord {
             inventory: HashMap::new(),
             currency: CurrencyAmount::default(),
             config: ShopConfig::default(),
+            clone_items: false,
             created_at: now,
             updated_at: now,
         }
+    }
+
+    /// Create a new vending machine (shop with cloning enabled)
+    pub fn new_vending_machine(id: String, name: String, location: String) -> Self {
+        let mut shop = Self::new(id, name, location, "system".to_string());
+        shop.clone_items = true;
+        shop
     }
 
     /// Add an item to shop inventory

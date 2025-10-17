@@ -47,6 +47,7 @@ fn sysop_user_seeded_with_hash() {
                 scheduler_max_queue: None,
                 scheduler_aging_threshold_ms: None,
                 scheduler_stats_interval_ms: None,
+            require_device_at_startup: false,
             },
             storage: StorageConfig {
                 data_dir: datadir.to_str().unwrap().to_string(),

@@ -36,6 +36,7 @@ async fn passwordless_user_prompt_and_set() {
             scheduler_max_queue: None,
             scheduler_aging_threshold_ms: None,
             scheduler_stats_interval_ms: None,
+            require_device_at_startup: false,
         },
         storage: StorageConfig {
             data_dir: data_dir.clone(),

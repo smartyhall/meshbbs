@@ -3270,22 +3270,32 @@ Not fancy, but it gets the job done.",
                 use crate::tmush::inventory::add_item_to_inventory;
                 use crate::tmush::types::InventoryConfig;
                 let config = InventoryConfig::default();
+                
                 for _ in 0..actual_qty {
-                    // Clone the object and add ownership tracking (Phase 5)
-                    let mut owned_object = object.clone();
-                    owned_object.owner = crate::tmush::types::ObjectOwner::Player {
-                        username: player.username.clone(),
+                    let item_to_add = if shop.clone_items {
+                        // Vending machine mode: clone the template object
+                        match self.clone_object_internal(&object.id, &player.username, &object) {
+                            Ok(cloned) => cloned,
+                            Err(e) => {
+                                return Ok(format!("Failed to clone item: {}", e));
+                            }
+                        }
+                    } else {
+                        // Traditional shop: prepare object for ownership transfer
+                        let mut owned_object = object.clone();
+                        owned_object.owner = crate::tmush::types::ObjectOwner::Player {
+                            username: player.username.clone(),
+                        };
+                        Self::record_ownership_transfer(
+                            &mut owned_object,
+                            None, // Purchased from shop
+                            player.username.clone(),
+                            crate::tmush::types::OwnershipReason::Purchased,
+                        );
+                        owned_object
                     };
-                    Self::record_ownership_transfer(
-                        &mut owned_object,
-                        None, // Purchased from shop
-                        player.username.clone(),
-                        crate::tmush::types::OwnershipReason::Purchased,
-                    );
-                    // TODO: Store the updated object with ownership history
-                    // self.store().put_object(owned_object)?;
 
-                    add_item_to_inventory(&mut player, &object, 1, &config);
+                    add_item_to_inventory(&mut player, &item_to_add, 1, &config);
                 }
 
                 // Capture balance before moving player
@@ -6375,9 +6385,7 @@ Not fancy, but it gets the job done.",
     ) -> Result<String> {
         let player = self.get_or_create_player(session).await?;
 
-        // TODO: Add proper role-based permissions when admin system is implemented
-        // For now, allowing any authenticated user for testing
-
+        // Note: Allowing any authenticated user for alpha testing
         let store = self.store();
 
         // Validate description length (500 char max)
@@ -11754,6 +11762,52 @@ Not fancy, but it gets the job done.",
     /// ```
     ///
     /// See docs/development/CLONING_SECURITY.md for full threat model.
+    fn clone_object_internal(
+        &self,
+        source_id: &str,
+        buyer_username: &str,
+        source_object: &crate::tmush::types::ObjectRecord,
+    ) -> Result<crate::tmush::types::ObjectRecord> {
+        use uuid::Uuid;
+        
+        // Create a simple clone for shop purchases (no security checks needed)
+        let mut cloned = source_object.clone();
+        
+        // Generate new unique ID
+        cloned.id = format!("obj_{}", Uuid::new_v4().to_string().replace("-", "")[..12].to_string());
+        
+        // Set new owner
+        cloned.owner = crate::tmush::types::ObjectOwner::Player {
+            username: buyer_username.to_string(),
+        };
+        
+        // Preserve clone depth (vending machines keep originals, so depth stays 0)
+        // But track in clone_source_id for genealogy
+        cloned.clone_source_id = Some(source_id.to_string());
+        
+        // Clear any flags that shouldn't transfer
+        cloned.flags.retain(|f| {
+            !matches!(f, 
+                crate::tmush::types::ObjectFlag::Unique | 
+                crate::tmush::types::ObjectFlag::QuestItem |
+                crate::tmush::types::ObjectFlag::Companion
+            )
+        });
+        
+        // Record ownership
+        Self::record_ownership_transfer(
+            &mut cloned,
+            None,
+            buyer_username.to_string(),
+            crate::tmush::types::OwnershipReason::Purchased,
+        );
+        
+        // Save the cloned object to database
+        self.store().put_object(cloned.clone())?;
+        
+        Ok(cloned)
+    }
+
     async fn handle_clone(
         &mut self,
         session: &Session,

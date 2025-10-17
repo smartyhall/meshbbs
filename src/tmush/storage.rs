@@ -218,6 +218,7 @@ impl TinyMushStore {
             store.seed_companions_if_needed()?;
             store.seed_recipes_if_needed()?;
             store.seed_npcs_if_needed()?;
+            store.seed_shops_if_needed()?;
 
             // Seed full dialogue trees for NPCs
             crate::tmush::state::seed_npc_dialogues_if_needed(&store)?;
@@ -2818,6 +2819,31 @@ impl TinyMushStore {
             inserted += 1;
         }
         Ok(inserted)
+    }
+
+    /// Seed starter shop (vending machine) with trinkets (idempotent)
+    ///
+    /// Creates a vending machine in the Museum that sells commemorative trinkets.
+    /// Uses clone_items mode to sell unlimited clones of the seed objects.
+    pub fn seed_shops_if_needed(&self) -> Result<usize, TinyMushError> {
+        // Check if shops already exist
+        let shop_ids = self.list_shop_ids()?;
+        if !shop_ids.is_empty() {
+            return Ok(0); // Shops already seeded
+        }
+
+        // Seed vending machine and trinkets
+        let (vending_machine, trinkets) = crate::tmush::state::seed_starter_vending_machine();
+
+        // Store trinkets as objects
+        for trinket in trinkets {
+            self.put_object(trinket)?;
+        }
+
+        // Store vending machine shop
+        self.put_shop(vending_machine)?;
+
+        Ok(1) // 1 shop created
     }
 
     /// Seed initial admin account if no admins exist (idempotent)
