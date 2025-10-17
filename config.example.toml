@@ -1,170 +1,309 @@
+# ============================================================================
 # MeshBBS Configuration File
-# Copy this to config.toml and customize for your setup
+# ============================================================================
+# Copy this file to config.toml and customize for your deployment
+# Documentation: https://github.com/martinbogo/meshbbs
 
+# ============================================================================
+# [bbs] - Core BBS Settings
+# ============================================================================
 [bbs]
-# Display name for your BBS (shown to users)
+# BBS display name (shown to users in welcome messages and prompts)
 name = "Your MeshBBS Name"
 
 # Sysop (system operator) username
+# Must be 2-20 characters, alphanumeric with spaces/underscores/hyphens/periods
+# Cannot be a reserved name (admin, system, guest, anonymous, etc.)
 sysop = "sysop"
 
-# Sysop password hash (use: meshbbs --hash-password)
-# CRITICAL: Generate your own hash! Do not leave default!
-# Run: echo -n "your_secure_password" | meshbbs --hash-password
-# Or the installer will generate this for you
+# Sysop password hash
+# CRITICAL: Generate your own hash before first use!
+# Method 1: echo -n "your_secure_password" | meshbbs --hash-password
+# Method 2: Run the installer script (generates automatically)
+# Do NOT leave this as the default placeholder!
 sysop_password_hash = "REPLACE_WITH_YOUR_PASSWORD_HASH"
 
-# Location identifier (ZIP code, city name, or grid square)
+# Location identifier
+# Examples: ZIP code (90210), city name (Los Angeles), grid square (DM13)
 location = "90210"
 
-# Description of your BBS (shown in welcome messages)
-description = "Some information about your MeshBBS"
+# BBS description (shown in welcome messages and help)
+description = "A community BBS on the mesh network"
 
-# Maximum concurrent users
+# Maximum concurrent users allowed
 max_users = 100
 
-# Session timeout in minutes of inactivity
+# Session timeout (minutes)
+# Users are automatically logged out after this period of inactivity
 session_timeout = 30
 
 # Welcome message shown at login
 welcome_message = "Welcome to this Mesh BBS"
 
-# Public command prefix (single character: ^ ! + $ / >)
-# Default is "^" if omitted
+# Public command prefix
+# Valid options: ^ ! + $ / >
+# Default: "^" (Example: ^HELP, ^SLOT, ^WEATHER)
 public_command_prefix = "^"
 
-# Public help command keyword (HELP, MENU, or INFO)
-# This addresses networks where !HELP might be used for emergency assistance
-# Default is "HELP" if omitted or invalid
+# Public help command keyword
+# Valid options: HELP, MENU, INFO
+# Use "INFO" or "MENU" on networks where "HELP" is reserved for emergency assistance
+# Default: "HELP"
 help_command = "HELP"
 
-# Allow public channel LOGIN command (security consideration)
-# When false, users must initiate login via direct message only
-# Recommended: false (prevents username enumeration on public channels)
+# Allow public channel LOGIN command
+# Security consideration: Set to false to prevent username enumeration
+# When false: Users must initiate login via direct message only
+# When true: Users can login via public channel (less secure)
+# Recommended: false
 allow_public_login = false
 
+# ============================================================================
+# [meshtastic] - Meshtastic Device Configuration
+# ============================================================================
 [meshtastic]
-# Serial port for Meshtastic device
-# Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/ttyUSB1
-# Windows: COM3, COM4, etc.
+# Serial port path
+# Linux/macOS examples: /dev/ttyUSB0, /dev/ttyACM0, /dev/ttyUSB1
+# Windows examples: COM3, COM4, COM5
+# To find your device: Linux/macOS: ls /dev/tty* | Windows: Device Manager
 port = "/dev/ttyUSB0"
 
-# Baud rate (usually 115200)
+# Baud rate (standard is 115200)
 baud_rate = 115200
 
-# Optional: Your Meshtastic node ID (auto-detected if omitted)
-# Example: node_id = "0x1234ABCD"  # can be decimal or 0xHEX
+# Your Meshtastic node ID (optional, auto-detected if omitted)
+# Formats: Decimal (305419896) or Hex (0x1234ABCD)
+# Used as fallback display value if node info unavailable
+# node_id = "0x1234ABCD"
 
-# Channel to monitor (0 = primary channel)
+# Channel to monitor
+# 0 = primary channel (default)
+# 1-7 = secondary channels (if configured on your device)
 channel = 0
 
-# Require device connection at startup (default: false)
-# When true: BBS exits with error code 2 if device connection fails
-# When false: BBS starts without device (useful for testing or alternative transports)
-# Set to true for production deployments where device is essential
-# Applies to all transport types: serial, Bluetooth (future), TCP/UDP (future)
+# Require device connection at startup
+# Production: Set to true (BBS exits with error code 2 if device unavailable)
+# Development: Set to false (BBS starts without device for testing)
+# Default: false
+# Note: Applies to all transport types (serial, Bluetooth, TCP/UDP)
 require_device_at_startup = false
 
-# Writer tuning (optional) - Defaults follow Meshtastic fairness rules
-# Minimum time between any text sends (ms). Values below 2000 clamped to 2000.
+# --- Advanced Tuning (Optional) ---
+# These settings follow Meshtastic airtime fairness rules
+# Only modify if you understand the implications
+
+# Minimum gap between any text transmissions (milliseconds)
+# Values below 2000ms are clamped to 2000ms for safety
+# Default: 2000
 min_send_gap_ms = 2000
 
-# Retransmit backoff schedule in seconds for reliable DMs
+# Retransmit backoff schedule for reliable direct messages (seconds)
+# Defines delays between retry attempts: [1st retry, 2nd retry, 3rd retry]
+# Default: [4, 8, 16]
 dm_resend_backoff_seconds = [4, 8, 16]
 
-# Extra delay before a broadcast immediately after a reliable DM (ms)
+# Delay before broadcast immediately after reliable DM (milliseconds)
+# Helps prevent rate limiting when sending DM followed by broadcast
+# Default: 1200
 post_dm_broadcast_gap_ms = 1200
 
-# Gap between consecutive reliable DMs (ms)
+# Gap between consecutive reliable direct messages (milliseconds)
+# Prevents back-to-back DM transmission issues
+# Default: 600
 dm_to_dm_gap_ms = 600
 
-# Identification beacon settings
+# ============================================================================
+# [ident_beacon] - Station Identification Beacon
+# ============================================================================
 [ident_beacon]
-# Send identification beacon periodically
+# Enable periodic identification beacon
+# Broadcasts station info to help users discover and identify your BBS
+# Default: true
 enabled = true
-# Beacon frequency: "5min", "15min", "30min", "1hour" (default), "2hours", "4hours"
+
+# Beacon transmission frequency
+# Valid options: "5min", "15min", "30min", "1hour", "2hours", "4hours"
+# Recommended: "1hour" (balances discoverability with airtime usage)
+# Default: "1hour"
 frequency = "1hour"
 
+# ============================================================================
+# [storage] - Data Storage Configuration
+# ============================================================================
 [storage]
-# Directory to store BBS data (use absolute path in production)
+# Data directory path
+# Relative path: ./data (relative to meshbbs binary location)
+# Absolute path: /var/lib/meshbbs/data (recommended for production)
+# Default: "./data"
 data_dir = "./data"
 
-# Maximum size for a single message (bytes)
-# Meshtastic has ~30 bytes protocol overhead, so we limit text content to 200 bytes
-# to ensure the final packet stays under the 230 byte Meshtastic limit
+# Maximum message size (bytes)
+# Meshtastic protocol overhead: ~30 bytes
+# Text content limit: 200 bytes ensures total packet < 230 byte limit
+# Do not exceed 200 unless you understand Meshtastic packet structure
+# Default: 200
 max_message_size = 200
 
-# Show chunk markers for debugging out-of-order message delivery
-# When enabled, multi-chunk messages will include " [n/total]" markers
-# Example: "Long message text [1/3]", "continued here [2/3]", "final chunk [3/3]"
-# This helps identify when Meshtastic delivers chunks out of order
+# Show chunk markers in multi-part messages
+# Useful for debugging out-of-order message delivery
+# When enabled: "Message text [1/3]", "continues here [2/3]", "final [3/3]"
+# When disabled: "Message text", "continues here", "final"
+# Production: false (cleaner appearance)
+# Debugging: true (helps identify ordering issues)
 # Default: false
 show_chunk_markers = false
 
-# Automatic backup configuration
+# --- Automatic Backup Configuration ---
 [storage.backup]
-# Enable automatic backups
+# Enable automatic periodic backups
+# Backups are stored in data_dir/backups/
+# Default: true
 enabled = true
-# Keep backups for this many days
+
+# Backup retention period (days)
+# Older backups are automatically deleted
+# Default: 30
 retention_days = 30
-# How often to create backups (hours)
+
+# Backup frequency (hours)
+# How often to create automatic backups
+# Default: 24 (once per day)
 interval_hours = 24
 
+# ============================================================================
+# [logging] - Logging Configuration
+# ============================================================================
 [logging]
-# Log level: trace, debug, info, warn, error
+# Log level filter
+# Options: trace, debug, info, warn, error
+# trace: Very verbose, shows all internal operations
+# debug: Detailed information for troubleshooting
+# info: General operational messages (recommended)
+# warn: Warning messages only
+# error: Error messages only
+# Default: "info"
 level = "info"
 
-# Optional: Log to file
+# Log file path (optional)
+# When specified, logs are written to file in addition to console
+# Relative path: meshbbs.log (relative to working directory)
+# Absolute path: /var/log/meshbbs/meshbbs.log (recommended for production)
+# Uncomment to enable file logging:
 # file = "meshbbs.log"
 
+# Security audit log (optional)
+# Logs authentication attempts, admin actions, moderation
+# Uncomment to enable security logging:
+# security_file = "meshbbs-security.log"
+
+# ============================================================================
+# [games] - Interactive Games Configuration
+# ============================================================================
 [games]
-# Enable TinyHack roguelike game
+# Enable TinyHack roguelike dungeon game
+# Classic roguelike with dungeons, monsters, items, and permadeath
+# Access: G command from main menu, select TinyHack
+# Default: true
 tinyhack_enabled = true
 
-# Enable TinyMUSH multi-user game
+# Enable TinyMUSH multi-user text adventure
+# Persistent world with rooms, NPCs, quests, crafting, and companions
+# Access: G command from main menu, select TinyMUSH
+# Default: true
 tinymush_enabled = true
 
-# Optional: Override TinyMUSH database path (defaults to <data_dir>/tinymush)
+# TinyMUSH database path (optional)
+# Override default location for game data
+# Default: <data_dir>/tinymush
+# Uncomment to customize:
 # tinymush_db_path = "./data/tinymush"
 
+# ============================================================================
+# [weather] - Weather Service Integration (Optional)
+# ============================================================================
 [weather]
-# OpenWeatherMap API configuration
+# OpenWeatherMap API key
 # Get a free API key at: https://openweathermap.org/api
-# IMPORTANT: You must replace this with your actual API key!
+# REQUIRED: Replace this placeholder with your actual API key
+# IMPORTANT: Weather feature will not work without a valid key
 api_key = "REPLACE_WITH_YOUR_API_KEY"
 
-# Enable weather functionality (requires valid API key)
+# Enable weather functionality
+# Requires valid API key above
+# Users can query weather via WEATHER command or ^WEATHER on public channel
+# Default: false
 enabled = false
 
 # Default location for weather queries
+# Examples: "Los Angeles", "New York", "London"
 default_location = "Los Angeles"
 
-# Location type: "city", "zipcode", or "city_id"
+# Location type
+# Options: "city", "zipcode", "city_id"
+# city: Use city name (default_location = "Los Angeles")
+# zipcode: Use postal code (default_location = "90210", requires country_code)
+# city_id: Use OpenWeatherMap city ID (default_location = "5368361")
+# Default: "city"
 location_type = "city"
 
-# Country code for zipcode lookups (e.g., "US", "GB")
-# Required when using zipcode location_type
+# Country code (required for zipcode lookups)
+# ISO 3166 country codes: "US", "GB", "CA", "AU", etc.
+# Only used when location_type = "zipcode"
+# Default: "US"
 country_code = "US"
 
-# Cache duration in minutes
+# Weather data cache TTL (minutes)
+# Reduces API calls by caching recent queries
+# Default: 10
 cache_ttl_minutes = 10
 
-# Request timeout in seconds
+# API request timeout (seconds)
+# Maximum time to wait for weather API response
+# Default: 5
 timeout_seconds = 5
 
+# ============================================================================
+# [welcome] - Automatic Welcome System (Optional)
+# ============================================================================
 [welcome]
-# Automatic welcome message system
-# Greets new nodes detected on the mesh network
+# Enable automatic welcome for new nodes
+# Greets new Meshtastic nodes detected on the mesh network
+# Helps users discover your BBS and provides helpful information
+# Default: false (disabled to reduce airtime usage)
 enabled = false
 
-# Send public greeting via public channel
+# Send public greeting on public channel
+# Brief announcement welcoming the new node
+# Visible to all mesh users
+# Default: true
 public_greeting = true
 
-# Send private guide via DM
+# Send private guide via direct message
+# Detailed welcome with BBS information and commands
+# Only visible to the new user
+# Default: true
 private_guide = true
 
-# Minimum time between any welcomes (minutes) to prevent spam
+# Welcome cooldown period (minutes)
+# Minimum time between ANY welcome messages (prevents spam)
+# Applies globally across all nodes
+# Default: 5
 cooldown_minutes = 5
 
-# Maximum times to welcome the same node (prevents repeated welcomes)
+# Maximum welcomes per node
+# Prevents repeatedly welcoming the same node
+# Set to 1 to welcome each node only once
+# Default: 1
 max_welcomes_per_node = 1
+
+# ============================================================================
+# End of Configuration
+# ============================================================================
+# After editing this file:
+# 1. Save as config.toml in the same directory as the meshbbs binary
+# 2. Generate sysop password hash if needed
+# 3. Update API keys if using weather or other external services
+# 4. Adjust paths to absolute paths for production deployments
+# 5. Test configuration: meshbbs start
+# 6. Monitor logs for any configuration errors
+# ============================================================================
