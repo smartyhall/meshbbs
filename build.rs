@@ -17,6 +17,7 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=MESHTASTIC_PROTO_DIR");
     println!("cargo:rerun-if-changed=protos");
+    println!("cargo:rerun-if-changed=third_party/meshtastic-protobufs");
 
     let proto_dir = env::var("MESHTASTIC_PROTO_DIR").unwrap_or_else(|_| "protos".into());
     let proto_path = PathBuf::from(&proto_dir); // original requested path ("protos" by default)
@@ -67,18 +68,9 @@ fn main() {
     }
 
     if protos.is_empty() {
-        // Provide a fallback dummy proto to allow build to succeed. Use the
-        // same package name (meshtastic) that the real protos use so the rest
-        // of the code can consistently include the generated file
-        // `meshtastic.rs`.
-        let fallback = proto_path.join("meshtastic_placeholder.proto");
-        std::fs::create_dir_all(&proto_path).expect("create proto dir");
-        std::fs::write(
-            &fallback,
-            b"syntax = \"proto3\"; package meshtastic; message Placeholder { string note = 1; }",
-        )
-        .expect("write placeholder proto");
-        protos.push(fallback);
+        panic!(
+            "No Meshtastic .proto files found. Set MESHTASTIC_PROTO_DIR to valid protos or initialize submodule: git submodule update --init --recursive"
+        );
     }
 
     // Determine include paths. If the provided directory's final component is

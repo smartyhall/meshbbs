@@ -118,6 +118,9 @@ fn default_allow_public_login() -> bool {
 fn default_help_command() -> String {
     "HELP".to_string()
 }
+fn default_meshtastic_transport() -> String {
+    "serial".to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -142,6 +145,10 @@ pub struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshtasticConfig {
+    /// Transport selection: "serial" (default) or "tcp".
+    #[serde(default = "default_meshtastic_transport")]
+    pub transport: String,
+    /// Serial path (e.g. /dev/ttyUSB0) or TCP endpoint (tcp://host:port).
     pub port: String,
     pub baud_rate: u32,
     #[serde(default)]
@@ -385,6 +392,7 @@ impl Default for Config {
                 help_command: "HELP".to_string(),
             },
             meshtastic: MeshtasticConfig {
+                transport: "serial".to_string(),
                 port: "/dev/ttyUSB0".to_string(),
                 baud_rate: 115200,
                 node_id: "".to_string(),
@@ -514,6 +522,73 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.ident_beacon.enabled, true);
         assert_eq!(config.ident_beacon.frequency, "15min");
+    }
+
+    #[test]
+    fn test_meshtastic_transport_default_is_serial() {
+        let config = Config::default();
+        assert_eq!(config.meshtastic.transport, "serial");
+    }
+
+    #[test]
+    fn test_meshtastic_transport_deserializes_with_default() {
+        let toml = r#"
+[bbs]
+name = "Test"
+sysop = "sysop"
+location = "Nowhere"
+description = "desc"
+max_users = 10
+session_timeout = 10
+welcome_message = ""
+allow_public_login = true
+help_command = "HELP"
+
+[meshtastic]
+port = "/dev/ttyUSB0"
+baud_rate = 115200
+channel = 0
+
+[storage]
+data_dir = "./data"
+max_message_size = 200
+
+[logging]
+level = "info"
+"#;
+        let config: Config = toml::from_str(toml).expect("config should deserialize");
+        assert_eq!(config.meshtastic.transport, "serial");
+    }
+
+    #[test]
+    fn test_meshtastic_transport_deserializes_tcp() {
+        let toml = r#"
+[bbs]
+name = "Test"
+sysop = "sysop"
+location = "Nowhere"
+description = "desc"
+max_users = 10
+session_timeout = 10
+welcome_message = ""
+allow_public_login = true
+help_command = "HELP"
+
+[meshtastic]
+transport = "tcp"
+port = "192.168.1.50:4403"
+baud_rate = 115200
+channel = 0
+
+[storage]
+data_dir = "./data"
+max_message_size = 200
+
+[logging]
+level = "info"
+"#;
+        let config: Config = toml::from_str(toml).expect("config should deserialize");
+        assert_eq!(config.meshtastic.transport, "tcp");
     }
 
     #[test]

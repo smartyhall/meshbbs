@@ -62,7 +62,10 @@ allow_public_login = false
 # [meshtastic] - Meshtastic Device Configuration
 # ============================================================================
 [meshtastic]
-# Serial port path
+# Transport type: "serial" or "tcp"
+transport = "serial"
+
+# Serial port path (serial) OR endpoint in form tcp://host:port (tcp)
 # Linux/macOS examples: /dev/ttyUSB0, /dev/ttyACM0, /dev/ttyUSB1
 # Windows examples: COM3, COM4, COM5
 # To find your device: Linux/macOS: ls /dev/tty* | Windows: Device Manager
