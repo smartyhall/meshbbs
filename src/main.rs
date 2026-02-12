@@ -128,6 +128,7 @@ async fn main() -> Result<()> {
 
                 // Continue with normal startup
                 let configured_port = config.meshtastic.port.clone();
+                let configured_transport = config.meshtastic.transport.clone();
                 let require_device = config.meshtastic.require_device_at_startup;
                 let mut bbs = BbsServer::new(config).await?;
 
@@ -136,7 +137,10 @@ async fn main() -> Result<()> {
                     Some(cli_port) => Some(cli_port),
                     None => {
                         if !configured_port.is_empty() {
-                            Some(configured_port)
+                            Some(normalize_meshtastic_endpoint(
+                                &configured_transport,
+                                configured_port,
+                            ))
                         } else {
                             None
                         }
@@ -148,7 +152,7 @@ async fn main() -> Result<()> {
                         Ok(_) => info!("Connected to Meshtastic device on {}", port_path),
                         Err(e) => {
                             error!("Failed to connect to device on {}: {}", port_path, e);
-                            
+
                             // Check if device is required at startup
                             if require_device {
                                 error!("Device connection required but failed - exiting");
@@ -193,6 +197,7 @@ async fn main() -> Result<()> {
 
             // Capture configured port and device requirement before moving config into server
             let configured_port = config.meshtastic.port.clone();
+            let configured_transport = config.meshtastic.transport.clone();
             let require_device = config.meshtastic.require_device_at_startup;
             let mut bbs = BbsServer::new(config).await?;
 
@@ -201,7 +206,10 @@ async fn main() -> Result<()> {
                 Some(cli_port) => Some(cli_port),
                 None => {
                     if !configured_port.is_empty() {
-                        Some(configured_port)
+                        Some(normalize_meshtastic_endpoint(
+                            &configured_transport,
+                            configured_port,
+                        ))
                     } else {
                         None
                     }
@@ -213,7 +221,7 @@ async fn main() -> Result<()> {
                     Ok(_) => info!("Connected to Meshtastic device on {}", port_path),
                     Err(e) => {
                         error!("Failed to connect to device on {}: {}", port_path, e);
-                        
+
                         // Check if device is required at startup
                         if require_device {
                             error!("Device connection required but failed - exiting");
@@ -384,6 +392,14 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn normalize_meshtastic_endpoint(transport: &str, endpoint: String) -> String {
+    if transport.eq_ignore_ascii_case("tcp") && !endpoint.starts_with("tcp://") {
+        format!("tcp://{}", endpoint)
+    } else {
+        endpoint
+    }
 }
 
 fn init_logging(config: &Option<Config>, verbosity: u8) {
